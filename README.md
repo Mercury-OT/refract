@@ -1,4 +1,18 @@
-# Refract
+<p align="center">
+  <img src="assets/logo.png" alt="Refract logo" width="200"/>
+</p>
+
+<h1 align="center">Refract</h1>
+
+<p align="center">
+  <i>Bounding drift by contract, exposing drift by evidence.</i>
+</p>
+
+<p align="center">
+  <a href="MANIFESTO.md"><b>Read the Refract Manifesto →</b></a>
+</p>
+
+---
 
 Refract is a product-neutral testing infrastructure core for the AI era.
 
@@ -76,11 +90,16 @@ adapters/demo/       reference adapter implementation
 examples/demo-app/   self-contained example target
 scenarios/           public demo scenarios
 SCENARIO.md          scenario contract
+MANIFESTO.md         project philosophy and beliefs
 ```
 
 ## Contract
 
 See [`SCENARIO.md`](SCENARIO.md) for the public scenario contract.
+
+## Philosophy
+
+See [`MANIFESTO.md`](MANIFESTO.md) for the beliefs and vision behind this framework.
 
 ## License
 
