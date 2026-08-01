@@ -1,0 +1,23 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+
+# macOS metadata
+.DS_Store
+
+# Virtual environments (matches .venv, .venv311, .venv-exec-verify, etc.)
+.venv*/
+venv/
+env/
+
+# Build / packaging artifacts
+dist/
+build/
+*.egg-info/
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/

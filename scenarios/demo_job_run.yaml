@@ -1,0 +1,59 @@
+version: 2
+scenario: demo.job_run
+grid: {level: regression, module: demo}
+actor: user
+inputs:
+  - {rows: 3}
+intent: Submit a job, wait for completion, fetch the result, and archive it.
+steps:
+  - id: create_job
+    request:
+      method: POST
+      path: jobs
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: jobId}
+      backend_state:
+        - {check: span_exists, span: job.create}
+  - id: wait_done
+    request:
+      method: GET
+      path: jobs/{jobId}/status
+    bind:
+      jobId:
+        from: create_job
+        field: jobId
+    poll:
+      on_timeout: FAIL
+    expect:
+      response:
+        - {check: has, field: result}
+  - id: fetch_result
+    request:
+      method: GET
+      path: jobs/{jobId}/result
+    bind:
+      jobId:
+        from: create_job
+        field: jobId
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: result}
+      backend_state:
+        - {check: span_exists, span: job.result.read}
+  - id: archive_job
+    request:
+      method: POST
+      path: archives
+      body:
+        job: "{jobId}"
+        note: archived
+    bind:
+      jobId:
+        from: create_job
+        field: jobId
+    expect:
+      response:
+        - {check: success}

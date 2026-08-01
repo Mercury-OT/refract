@@ -1,0 +1,23 @@
+# Product-neutral fixture scenario for the offline core test suite.
+scenario: refracto.synthetic_probe
+grid: {level: smoke, module: generic}
+actor: actor1
+precondition:
+  - {ref: resource.owned_by_actor}
+inputs:
+  - {payload: testdata/synthetic_input.txt}
+intent: >
+  actor1 performs an abstract action; the response carries a task id, a result
+  row becomes visible, and two backend spans confirm the operation completed.
+expect:
+  frontend:
+    - {check: visible, anchor: result_row}
+    - {check: count_gt, anchor: result_row, n: 0}
+  request:
+    - {check: request, method: POST, path: resource/action, async: taskId}
+  response:
+    - {check: success}
+    - {check: has, field: taskId}
+  backend_state:
+    - {check: span_exists, span: "POST /resource/action"}
+    - {check: span_exists, span: "INSERT resource.job_queue"}

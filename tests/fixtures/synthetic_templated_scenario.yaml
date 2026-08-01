@@ -1,0 +1,31 @@
+# Product-neutral v2 fixture scenario for offline contract and runner tests.
+version: 2
+scenario: refracto.synthetic_templated_probe
+grid: {level: smoke, module: generic}
+actor: actor1
+precondition: []
+inputs:
+  - {payload: testdata/synthetic_input.txt}
+intent: >
+  actor1 performs an abstract action that returns a task id, then polls the
+  task status by id through a templated second-step path.
+steps:
+  - id: create
+    request:
+      method: POST
+      path: resource/action
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: taskId}
+  - id: get_status
+    request:
+      method: GET
+      path: resource/{taskId}/status
+    bind:
+      taskId:
+        from: create
+        field: taskId
+    expect:
+      response:
+        - {check: success}

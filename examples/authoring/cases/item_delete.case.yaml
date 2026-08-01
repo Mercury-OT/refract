@@ -1,0 +1,9 @@
+id: demo.item_delete
+actor: user
+intent: The user deletes an existing item.
+precondition:
+    - An item exists.
+inputs: []
+oracle:
+    - The response succeeds.
+    - The backend emits the item.delete semantic span.

@@ -1,0 +1,18 @@
+scenario: demo.item_create
+grid: {level: smoke, module: demo}
+actor: user
+precondition: []
+inputs: [{rows: 3}]
+intent: The user creates an item, the list renders it, and the backend emits a semantic span for the row count.
+expect:
+  frontend:
+    - {check: visible, anchor: item_row}
+    - {check: count_gt, anchor: item_row, n: 0}
+  request:
+    - {check: request, method: POST, path: items, async: itemId}
+  response:
+    - {check: success}
+    - {check: has, field: itemId}
+  backend_state:
+    - {check: span_exists, span: item.create}
+    - {check: span_attr, span: item.create, attr: row_count, op: ">", value: 0}

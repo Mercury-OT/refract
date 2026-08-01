@@ -1,0 +1,10 @@
+id: demo.item_list_after_create
+actor: user
+intent: After creating an item, the user sees it rendered in the list.
+precondition: []
+inputs:
+    - rows: 3
+oracle:
+    - The page shows an item row.
+    - The number of item rows is greater than zero.
+    - The frontend sends the item-creation POST request.

@@ -1,0 +1,15 @@
+scenario: demo.item_update
+grid: {level: regression, module: demo}
+actor: user
+precondition: [{ref: item_exists}]
+inputs: [{new_name: renamed}]
+intent: The user renames an existing item and the backend emits the item.update semantic span with row-count evidence.
+expect:
+  request:
+    - {check: request, method: PUT, path: items}
+  response:
+    - {check: success}
+    - {check: has, field: itemId}
+  backend_state:
+    - {check: span_exists, span: item.update}
+    - {check: span_attr, span: item.update, attr: row_count, op: ">", value: 0}

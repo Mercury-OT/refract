@@ -1,0 +1,13 @@
+scenario: demo.item_delete
+grid: {level: regression, module: demo}
+actor: user
+precondition: [{ref: item_exists}]
+inputs: []
+intent: The user deletes an existing item and the backend emits the item.delete semantic span.
+expect:
+  request:
+    - {check: request, method: DELETE, path: items}
+  response:
+    - {check: success}
+  backend_state:
+    - {check: span_exists, span: item.delete}

@@ -1,0 +1,10 @@
+id: demo.item_update
+actor: user
+intent: The user renames an existing item.
+precondition:
+    - An item exists.
+inputs:
+    - new_name: renamed
+oracle:
+    - The response succeeds and returns the updated item's itemId.
+    - The backend emits the item.update semantic span and records a positive row count.
