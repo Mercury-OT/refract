@@ -5,13 +5,13 @@ on:
   pull_request:
 
 jobs:
-  neutrality:
+  repository_hygiene:
     name: product-neutrality gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run neutrality gate
-        run: bash scripts/check_neutrality.sh
+      - name: Run repository hygiene checks
+        run: bash scripts/check_repository_hygiene.sh
 
   test:
     name: tests (offline core)
