@@ -9,6 +9,7 @@ import dataclasses
 import secrets
 from refracto import asyncwait
 from refracto.declaration import binding
+from refracto.declaration.model import ValueRef
 from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
 
 
@@ -27,7 +28,26 @@ def _eval_response(assertion, norm):
     return CheckResult("response", assertion.check, False, "unknown response check")
 
 
-def _eval_span(assertion, facts):
+def _resolve_value(val, bound_values):
+    """Resolve a `span_attr` comparison value to its concrete form.
+
+    A plain literal passes through unchanged. A `ValueRef` is resolved against
+    the step's already-computed bound values (the loader guarantees the
+    referenced placeholder was declared in this step's `bind`). This is the
+    only value-reference source implemented so far (`from_bind`); a future
+    `from_input` source would resolve here too, against `scenario.inputs`.
+    """
+    if not isinstance(val, ValueRef):
+        return val, None
+    if val.source != "bind":
+        return None, f"unsupported value reference source {val.source!r}"
+    bound_values = bound_values or {}
+    if val.key not in bound_values:
+        return None, f"value reference from_bind:{val.key} has no resolved bound value"
+    return bound_values[val.key], None
+
+
+def _eval_span(assertion, facts, bound_values=None):
     # Consider every matching span with the requested name. A repeated operation,
     # parent/child pair, or retry must not collapse into one observation.
     name = assertion.params["span"]
@@ -39,7 +59,10 @@ def _eval_span(assertion, facts):
     if assertion.check == "span_attr":
         if not matching:
             return CheckResult("backend_state", "span_attr", False, f"no span {name!r}")
-        attr, op, val = assertion.params["attr"], assertion.params["op"], assertion.params["value"]
+        attr, op = assertion.params["attr"], assertion.params["op"]
+        val, ref_error = _resolve_value(assertion.params["value"], bound_values)
+        if ref_error is not None:
+            return CheckResult("backend_state", "span_attr", False, ref_error)
         observed = [s.attributes.get(attr) for s in matching]
         try:
             ok = any(a is not None and _cmp(a, op, val) for a in observed)
@@ -68,12 +91,15 @@ def _cmp(a, op, b):
 
 
 def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interval=1,
-                              now=None, sleep=None):
+                              now=None, sleep=None, bound_values=None):
     """Evaluate a step's backend-state assertions.
 
     * `state is None` -> visible degradation
     * `trace_id is None` with declared expectations -> failing check
     * otherwise poll on the assertion predicate until it holds or times out
+
+    `bound_values` carries this step's already-resolved `bind` values, used to
+    resolve any `span_attr.value` that references a bound placeholder.
     """
     checks, skipped = [], []
     if not step.expect.backend_state:
@@ -90,7 +116,7 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
     # Poll on the full backend-state predicate, not merely on span-name presence.
     def _poll():
         facts = state.observe(trace_id)
-        ok = all(_eval_span(a, facts).ok for a in step.expect.backend_state)
+        ok = all(_eval_span(a, facts, bound_values).ok for a in step.expect.backend_state)
         return (ok, facts)
 
     try:
@@ -101,10 +127,10 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
         # recent observation rather than a generic timeout marker.
         facts = state.observe(trace_id)
         for a in step.expect.backend_state:
-            checks.append(_eval_span(a, facts))
+            checks.append(_eval_span(a, facts, bound_values))
     else:
         for a in step.expect.backend_state:
-            checks.append(_eval_span(a, res.value))
+            checks.append(_eval_span(a, res.value, bound_values))
     return checks, skipped
 
 
@@ -143,7 +169,7 @@ def _check_option_b(step, template, spec):
 
 
 def _run_poll_step(step, template, spec, api, session, recorder, normalizer, state,
-                    poll_config, now, sleep):
+                    poll_config, now, sleep, bound_values=None):
     """Poll a step until its response assertions pass.
 
     The stop condition is response-only. Once the step becomes ready, evaluate
@@ -207,7 +233,7 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
     final_trace_id = winning_resp.trace_id or winning_traceparent.split("-")[1]
     # Business polling and backend-state polling use independent timing budgets.
     state_checks, skips = assert_backend_state_for(
-        step, state, final_trace_id, now=now, sleep=sleep)
+        step, state, final_trace_id, now=now, sleep=sleep, bound_values=bound_values)
     for c in state_checks:
         c.step = step.id
 
@@ -218,11 +244,11 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
 
 
 def _run_step(step, template, spec, api, session, recorder, normalizer, state,
-              poll_config, now, sleep):
+              poll_config, now, sleep, bound_values=None):
     """Send one step request and evaluate its expectation set."""
     if step.poll is not None:
         return _run_poll_step(step, template, spec, api, session, recorder,
-                               normalizer, state, poll_config, now, sleep)
+                               normalizer, state, poll_config, now, sleep, bound_values)
 
     spec.traceparent = gen_traceparent()
     resp = api.send(spec, session)
@@ -246,7 +272,7 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
 
     # Business polling and backend-state polling use independent timing budgets.
     state_checks, skips = assert_backend_state_for(
-        step, state, trace_id, now=now, sleep=sleep)
+        step, state, trace_id, now=now, sleep=sleep, bound_values=bound_values)
     for c in state_checks:
         c.step = step.id
 
@@ -277,7 +303,7 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
             spec = resolve_request(scenario, step, template)
             _check_option_b(step, template, spec)
             sr, norm = _run_step(step, template, spec, api, session, recorder,
-                                  normalizer, state, poll_config, now, sleep)
+                                  normalizer, state, poll_config, now, sleep, values)
         except Exception as exc:
             sr = StepResult(step.id, ERROR, detail=str(exc))
         step_results.append(sr)

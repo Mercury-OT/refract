@@ -38,6 +38,21 @@ _OPTIONAL = {
 COMPARISON_OPS = (">", ">=", "<", "<=", "==")
 ORDERING_OPS = (">", ">=", "<", "<=")
 
+# Value-reference sources for `span_attr.value`. A reference is a data-only
+# pointer (no expressions/arithmetic/concatenation) written as a single-key
+# mapping `{<source_tag>: <key>}`. Only `from_bind` is supported today; the
+# family is designed so a future `from_input` source (C-10) slots in here
+# without changing the reference shape.
+#   tag in scenario YAML -> canonical source name stored on model.ValueRef
+VALUE_REF_SOURCES = {
+    "from_bind": "bind",
+}
+
+# A value reference may only be compared with equality in this step. Ordering
+# comparisons against a reference have no clear identity semantics and would
+# force type checks to be deferred to runtime, so they are rejected at load.
+VALUE_REF_OPS = ("==",)
+
 # Poll policy for v2 step polling.
 POLL_ON_TIMEOUT = ("FAIL", "SKIP")
 POLL_SAFE_METHODS = ("GET",)

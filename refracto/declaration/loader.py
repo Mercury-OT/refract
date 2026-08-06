@@ -4,6 +4,7 @@ import yaml
 from refracto.declaration import vocabulary as vocab
 from refracto.declaration.model import (
     Scenario, Grid, Ref, Input, Assertion, Expect, RequestTemplate, Binding, PollPolicy, Step,
+    ValueRef,
 )
 
 
@@ -120,6 +121,32 @@ def _is_number(v) -> bool:
     return isinstance(v, numbers.Real) and not isinstance(v, bool)
 
 
+def _parse_value_ref(raw, where: str):
+    """Recognize a data-only value reference `{<source_tag>: <key>}`.
+
+    Return a `ValueRef` if `raw` is a well-formed reference mapping, or `None`
+    if `raw` is a plain literal (not a mapping keyed by a known source tag).
+    Malformed references — a reference tag with extra keys, or a non-string
+    key — are rejected fail-loud.
+    """
+    if not isinstance(raw, dict):
+        return None
+    ref_tags = set(raw) & set(vocab.VALUE_REF_SOURCES)
+    if not ref_tags:
+        # A mapping that carries no known source tag is not a reference; it is
+        # simply an unexpected value type and is left for the caller to reject.
+        return None
+    if len(raw) != 1:
+        raise DeclarationError(
+            f"{where}: a value reference must be a single-key mapping "
+            f"{{{'|'.join(sorted(vocab.VALUE_REF_SOURCES))}: <key>}}, got {raw!r}")
+    (tag, key), = raw.items()
+    if not isinstance(key, str) or not key.strip():
+        raise DeclarationError(
+            f"{where}: value reference {tag!r} must name a non-empty key, got {key!r}")
+    return ValueRef(source=vocab.VALUE_REF_SOURCES[tag], key=key)
+
+
 def _validate_param_values(point: str, check: str, params: dict) -> None:
     if check == "count_gt" and not _is_number(params.get("n")):
         raise DeclarationError(f"{point}.count_gt: 'n' must be a number, got {params.get('n')!r}")
@@ -128,6 +155,16 @@ def _validate_param_values(point: str, check: str, params: dict) -> None:
         if op not in vocab.COMPARISON_OPS:
             raise DeclarationError(
                 f"{point}.span_attr: 'op' must be one of {list(vocab.COMPARISON_OPS)}, got {op!r}")
+        ref = _parse_value_ref(params.get("value"), f"{point}.span_attr.value")
+        if ref is not None:
+            # A value reference is compared for identity only; ordering ops are
+            # rejected because they carry no clear reference semantics.
+            if op not in vocab.VALUE_REF_OPS:
+                raise DeclarationError(
+                    f"{point}.span_attr: a value reference requires op "
+                    f"{list(vocab.VALUE_REF_OPS)}, got {op!r}")
+            params["value"] = ref
+            return
         if op in vocab.ORDERING_OPS and not _is_number(params.get("value")):
             raise DeclarationError(
                 f"{point}.span_attr: 'value' must be a number for op {op!r}, got {params.get('value')!r}")
@@ -279,6 +316,22 @@ def _parse_v2_steps(steps_raw: list) -> list:
         if request.body is not None:
             used_placeholders |= set(_scan_body_placeholders(request.body, f"{where}.request.body"))
         bound_placeholders = {b.placeholder for b in bind}
+
+        # A `span_attr.value` that references a bound value both (a) requires the
+        # referenced placeholder to be declared in this step's `bind`, and (b)
+        # counts as a use of that placeholder — so binding a value solely to
+        # assert against a span is a legal, non-"unused" pattern.
+        for a in expect.backend_state:
+            if a.check != "span_attr":
+                continue
+            val = a.params.get("value")
+            if isinstance(val, ValueRef) and val.source == "bind":
+                if val.key not in bound_placeholders:
+                    raise DeclarationError(
+                        f"{where}.expect.backend_state.span_attr.value: "
+                        f"from_bind {val.key!r} must reference a placeholder declared "
+                        f"in this step's 'bind'")
+                used_placeholders.add(val.key)
 
         unbound = used_placeholders - bound_placeholders
         if unbound:

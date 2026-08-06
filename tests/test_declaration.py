@@ -790,3 +790,140 @@ def test_precondition_unknown_key_rejected(tmp_path):
     with pytest.raises(DeclarationError) as e:
         load_scenario(str(bad))
     assert "unknown" in str(e.value) and "extra" in str(e.value)
+
+# --- C-2 Step 1: span_attr.value as a data-only reference to a bound value ---
+
+def test_span_attr_from_bind_reference_parses(tmp_path):
+    """A `span_attr.value: {from_bind: X}` where X is declared in this step's
+    `bind` parses into a `model.ValueRef(source='bind', key='X')`."""
+    good = tmp_path / "good.yaml"
+    good.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n        - {check: has, field: itemId}\n"
+        "  - id: update\n"
+        "    request: {method: PUT, path: 'items/{itemId}'}\n"
+        "    bind:\n      itemId: {from: create, field: itemId}\n"
+        "    expect:\n"
+        "      response:\n        - {check: success}\n"
+        "      backend_state:\n"
+        "        - {check: span_attr, span: item.update, attr: entity_id, op: '==', "
+        "value: {from_bind: itemId}}\n",
+        encoding="utf-8")
+    s = load_scenario(str(good))
+    update = s.steps[1]
+    span_attr = next(a for a in update.expect.backend_state if a.check == "span_attr")
+    assert span_attr.params["value"] == model.ValueRef(source="bind", key="itemId")
+
+
+def test_span_attr_from_bind_only_use_is_not_flagged_unused(tmp_path):
+    """A bound placeholder used only inside `span_attr.value` (never in the
+    request path/body) is a legal, non-'unused' pattern."""
+    good = tmp_path / "good.yaml"
+    good.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n        - {check: has, field: itemId}\n"
+        "  - id: update\n"
+        "    request: {method: PUT, path: items}\n"
+        "    bind:\n      itemId: {from: create, field: itemId}\n"
+        "    expect:\n"
+        "      backend_state:\n"
+        "        - {check: span_attr, span: item.update, attr: entity_id, op: '==', "
+        "value: {from_bind: itemId}}\n",
+        encoding="utf-8")
+    s = load_scenario(str(good))
+    assert s.steps[1].bind == [model.Binding(placeholder="itemId", from_step="create", field="itemId")]
+
+
+def test_span_attr_from_bind_ordering_op_rejected(tmp_path):
+    """A value reference may only be compared with `==`; ordering operators
+    against a reference are rejected at load time (Step 1 boundary)."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n        - {check: has, field: itemId}\n"
+        "  - id: update\n"
+        "    request: {method: PUT, path: 'items/{itemId}'}\n"
+        "    bind:\n      itemId: {from: create, field: itemId}\n"
+        "    expect:\n"
+        "      backend_state:\n"
+        "        - {check: span_attr, span: item.update, attr: entity_id, op: '>', "
+        "value: {from_bind: itemId}}\n",
+        encoding="utf-8")
+    with pytest.raises(DeclarationError) as e:
+        load_scenario(str(bad))
+    assert "value reference requires op" in str(e.value)
+
+
+def test_span_attr_from_bind_unknown_placeholder_rejected(tmp_path):
+    """`from_bind` must reference a placeholder declared in this step's own
+    `bind` — not merely any name that happens to exist elsewhere."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n        - {check: has, field: itemId}\n"
+        "  - id: update\n"
+        "    request: {method: PUT, path: items}\n"
+        "    expect:\n"
+        "      backend_state:\n"
+        "        - {check: span_attr, span: item.update, attr: entity_id, op: '==', "
+        "value: {from_bind: itemId}}\n",
+        encoding="utf-8")
+    with pytest.raises(DeclarationError) as e:
+        load_scenario(str(bad))
+    assert "must reference a placeholder declared" in str(e.value)
+
+
+def test_span_attr_from_bind_malformed_multikey_rejected(tmp_path):
+    """A value-reference mapping with more than one key is malformed — it must
+    not silently pick one and ignore the other."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n        - {check: has, field: itemId}\n"
+        "  - id: update\n"
+        "    request: {method: PUT, path: 'items/{itemId}'}\n"
+        "    bind:\n      itemId: {from: create, field: itemId}\n"
+        "    expect:\n"
+        "      backend_state:\n"
+        "        - {check: span_attr, span: item.update, attr: entity_id, op: '==', "
+        "value: {from_bind: itemId, extra: 1}}\n",
+        encoding="utf-8")
+    with pytest.raises(DeclarationError) as e:
+        load_scenario(str(bad))
+    assert "single-key mapping" in str(e.value)
+
+
+def test_span_attr_from_bind_empty_key_rejected(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n        - {check: has, field: itemId}\n"
+        "  - id: update\n"
+        "    request: {method: PUT, path: 'items/{itemId}'}\n"
+        "    bind:\n      itemId: {from: create, field: itemId}\n"
+        "    expect:\n"
+        "      backend_state:\n"
+        "        - {check: span_attr, span: item.update, attr: entity_id, op: '==', "
+        "value: {from_bind: ''}}\n",
+        encoding="utf-8")
+    with pytest.raises(DeclarationError) as e:
+        load_scenario(str(bad))
+    assert "non-empty key" in str(e.value)

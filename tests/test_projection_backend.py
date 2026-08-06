@@ -530,3 +530,86 @@ def test_span_attr_type_mismatch_is_failed_not_error(tmp_path):
     failing = [c for c in res.checks if c.check == "span_attr" and not c.ok]
     assert len(failing) == 1
     assert "cannot be compared" in failing[0].detail
+
+
+# --- C-2 Step 1: span_attr.value as a data-only reference to a bound value ---
+
+_FROM_BIND_FLOW_YAML = (
+    "version: 2\n"
+    "scenario: identity_flow\ngrid: {level: r, module: m}\nactor: a\n"
+    "steps:\n"
+    "  - id: create\n"
+    "    request: {method: POST, path: items}\n"
+    "    expect:\n"
+    "      response:\n"
+    "        - {check: success}\n"
+    "        - {check: has, field: itemId}\n"
+    "  - id: update\n"
+    "    request: {method: PUT, path: \"items/{itemId}\"}\n"
+    "    bind: {itemId: {from: create, field: itemId}}\n"
+    "    expect:\n"
+    "      response:\n"
+    "        - {check: success}\n"
+    "      backend_state:\n"
+    "        - {check: span_attr, span: item.update, attr: entity_id, op: '==', "
+    "value: {from_bind: itemId}}\n"
+)
+
+
+def test_span_attr_from_bind_passes_when_span_matches_bound_value(tmp_path):
+    """Positive: the update step binds `itemId` from create's response (42), and the
+    `item.update` span records `entity_id: 42` — the same object that was operated on.
+    The reference resolves against the step's own bound values and the check passes."""
+    y = tmp_path / "s.yaml"
+    y.write_text(_FROM_BIND_FLOW_YAML, encoding="utf-8")
+    s = load_scenario(str(y))
+    api = FakeApi(responses={
+        ("POST", "items"): {"status": 200, "json": {"success": True, "data": {"itemId": 42}}},
+        ("PUT", "items/42"): {"status": 200, "json": {"success": True}},
+    })
+    state = FakeStateProbe()
+    state.observe = lambda tid: ports.StateFacts(tid, [ports.Span("item.update", {"entity_id": 42})])
+    res = backend.run(s, auth=FakeAuth(), api=api, state=state, recorder=FakeRecorder(),
+                      resolve_request=_resolver, normalizer=FakeNormalizer())
+    assert res.passed
+    assert any(c.check == "span_attr" and c.ok for c in res.checks)
+
+
+def test_span_attr_from_bind_fails_when_span_records_wrong_object(tmp_path):
+    """Regression target (A2/A3-style mutation): the update step operates on itemId=42,
+    but the `item.update` span records `entity_id: 41` — a different object entirely.
+    The reference-based comparison must catch this; a literal-value assertion or a
+    bare `span_exists` would have missed it."""
+    y = tmp_path / "s.yaml"
+    y.write_text(_FROM_BIND_FLOW_YAML, encoding="utf-8")
+    s = load_scenario(str(y))
+    api = FakeApi(responses={
+        ("POST", "items"): {"status": 200, "json": {"success": True, "data": {"itemId": 42}}},
+        ("PUT", "items/42"): {"status": 200, "json": {"success": True}},
+    })
+    state = FakeStateProbe()
+    # Span records the WRONG object's id — simulates a real identity/correspondence bug.
+    state.observe = lambda tid: ports.StateFacts(tid, [ports.Span("item.update", {"entity_id": 41})])
+    clock = FakeClock()
+    res = backend.run(s, auth=FakeAuth(), api=api, state=state, recorder=FakeRecorder(),
+                      resolve_request=_resolver, normalizer=FakeNormalizer(),
+                      now=clock.now, sleep=clock.sleep)
+    assert not res.passed
+    failing = [c for c in res.checks if c.check == "span_attr" and not c.ok]
+    assert len(failing) == 1
+    assert "entity_id=[41]" in failing[0].detail
+
+
+def test_span_attr_from_bind_still_passes_via_reference_after_literal_regression_baseline(tmp_path):
+    """Sanity check that plain-literal span_attr assertions (the existing capability)
+    keep working unchanged alongside the new reference form — no shared-state leakage
+    between the two resolution paths."""
+    y = tmp_path / "s.yaml"
+    y.write_text(_SPAN_ATTR_YAML, encoding="utf-8")
+    s = load_scenario(str(y))
+    state = FakeStateProbe()
+    state.observe = lambda tid: ports.StateFacts(tid, [ports.Span("dataset.import", {"row_count": 3})])
+    res = backend.run(s, auth=FakeAuth(), api=FakeApi(), state=state, recorder=FakeRecorder(),
+                      resolve_request=_resolver, normalizer=FakeNormalizer())
+    assert any(c.check == "span_attr" and c.ok for c in res.checks)
+

@@ -14,6 +14,18 @@ class Input:
     kind: str
     value: str
 
+@dataclass(frozen=True)
+class ValueRef:
+    """A data-only reference to a value resolved elsewhere in the scenario.
+
+    `source` names where the value comes from (currently only ``"bind"``; a
+    future ``"input"`` source lands here without changing the shape). `key`
+    names the specific entry within that source. This carries no expression,
+    arithmetic, or concatenation — it is purely a pointer to one value.
+    """
+    source: str
+    key: str
+
 @dataclass
 class Assertion:
     check: str
