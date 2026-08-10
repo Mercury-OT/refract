@@ -1,7 +1,11 @@
 """Contract projection.
 
 Diff the declaration's consumer contract against the provider contract built
-from real recordings. This projection is offline and browser-free.
+from real recordings.
+
+This projection issues no requests of its own: it only reads recordings the
+backend projection already produced, so it needs no browser and no network. It
+is therefore not runnable on its own — see `runner.run_scenario`.
 
 Scenarios with templated step paths currently degrade the contract domain
 instead of partially diffing only their static steps.

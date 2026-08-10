@@ -2,7 +2,8 @@
 
 Load a scenario, apply grid selection, run the requested projections through
 adapter ports, and aggregate the results into a RunReport. The contract
-projection consumes provider recordings produced by the backend projection.
+projection consumes provider recordings produced by the backend projection, so
+it may only be requested together with `backend`.
 """
 from dataclasses import dataclass
 from refracto.declaration.loader import load_scenario
@@ -56,6 +57,15 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         raise ValueError(f"unknown projection(s): {sorted(unknown)}; valid: {sorted(_VALID_PROJECTIONS)}")
     if adapters.normalizer is None:
         raise ValueError("adapters.normalizer is required (a ResponseNormalizer)")
+    # The contract projection diffs the declaration against recordings the backend
+    # projection produces. Refuse the combination up front rather than quietly
+    # running a real backend to manufacture them: a caller who asked for contract
+    # alone is expecting an offline check, and would not expect real requests with
+    # real side effects.
+    if "contract" in projections and "backend" not in projections:
+        raise ValueError(
+            "the contract projection consumes provider recordings produced by the "
+            "backend projection and cannot run on its own; add 'backend' to projections")
 
     if not grid.select(scenario, level=level, module=module):
         # A filtered-out scenario is not a silent pass.
@@ -84,22 +94,7 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
                                             normalizer=adapters.normalizer, poll_config=poll_config,
                                             now=now, sleep=sleep))
     if "contract" in projections:
-        # A scenario with any templated step path degrades the contract
-        # projection. In that case, avoid a real backend run solely to gather
-        # recordings that the contract projection will not consume.
-        templated = any(step.request is not None and "{" in step.request.path
-                        for step in scenario.steps)
-        if templated:
-            report.domains.append(contract_proj.run(scenario, [], adapters.normalizer))
-        else:
-            if not provider_recordings:
-                rec = adapters.recorder_factory()
-                b = backend_proj.run(scenario, auth=adapters.auth, api=adapters.api,
-                                     state=adapters.state, recorder=rec,
-                                     resolve_request=adapters.resolve_request,
-                                     resolve_precondition=adapters.resolve_precondition,
-                                     normalizer=adapters.normalizer, poll_config=poll_config,
-                                     now=now, sleep=sleep)
-                provider_recordings = b.provider_recordings
-            report.domains.append(contract_proj.run(scenario, provider_recordings, adapters.normalizer))
+        # The contract projection decides for itself whether a templated path forces it
+        # to degrade, so the runner does not need to duplicate that judgement.
+        report.domains.append(contract_proj.run(scenario, provider_recordings, adapters.normalizer))
     return report
