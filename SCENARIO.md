@@ -136,12 +136,16 @@ grid:
     level: regression
     module: demo
 actor: user
+precondition:
+    - ref: item_exists
+inputs:
+    - new_name: renamed
 intent: rename an existing item
 expect:
     request:
-        check: request
-        method: PUT
-        path: items/1
+        - check: request
+          method: PUT
+          path: items
     response:
         - check: success
         - check: has
@@ -152,9 +156,15 @@ expect:
         - check: span_attr
           span: item.update
           attr: row_count
-          op: gt
+          op: ">"
           value: 0
 ```
+
+Note two things this example models:
+
+* every observation point holds a **list** of assertions, including `request`;
+* the declared `path` is the **logical** template (`items`), not a concrete resource
+  path. Mapping it to the actual path the product serves is the adapter's job.
 
 ## Validation
 

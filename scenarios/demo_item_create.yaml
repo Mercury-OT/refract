@@ -15,4 +15,4 @@ expect:
     - {check: has, field: itemId}
   backend_state:
     - {check: span_exists, span: item.create}
-    - {check: span_attr, span: item.create, attr: row_count, op: ">", value: 0}
+    - {check: span_attr, span: item.create, attr: row_count, op: "==", value: 3}

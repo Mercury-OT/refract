@@ -5,18 +5,24 @@ on:
   pull_request:
 
 jobs:
-  repository_hygiene:
-    name: product-neutrality gate
+  hygiene:
+    name: repository hygiene
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Run repository hygiene checks
         run: bash scripts/check_repository_hygiene.sh
 
-  test:
-    name: tests (offline core)
+  # Bare install: proves the offline core suite runs with ONLY the `dev` extra — i.e.
+  # that the demo-adapter tests are correctly collection-gated and the core needs no
+  # product, browser, or network dependency. This job is what guards the
+  # "product-agnostic core" claim. Running only the litmus file would prove the import
+  # direction but not that the core is actually testable in isolation.
+  core-only:
+    name: offline core (dev extra only)
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
@@ -25,9 +31,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install core with dev extras
+      - name: Install core with dev extras only
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Run the offline core litmus test
+      - name: Run the product-agnostic core litmus
         run: pytest tests/test_opensource_litmus.py -q
+      - name: Run the offline core suite (demo tests must skip, not error)
+        run: pytest -q
+
+  # Full suite: core plus the demo adapter across all four projections, which needs the
+  # `demo` extra and a real browser. Without this job the frozen scenarios in
+  # `scenarios/` and the four-projection Definition-of-Done test are never executed.
+  full-suite:
+    name: full suite (core + demo, four projections)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install core with dev and demo extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,demo]"
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run the full test suite
+        run: pytest -q

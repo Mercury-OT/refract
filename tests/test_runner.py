@@ -84,12 +84,37 @@ def test_partial_unknown_projection_raises():
         assert "bogus" in str(e)
 
 
-def test_contract_only_skips_backend_fallback_when_templated():
+def test_contract_without_backend_is_refused_before_any_request():
+    """The contract projection consumes recordings the backend projection produces.
+
+    Requesting it alone used to quietly run a full backend pass to manufacture those
+    recordings — real requests, real side effects, and no trace of them in the report,
+    even though the projection documents itself as issuing no requests. It is now
+    refused up front, before any request is sent.
+    """
     ad = _adapters()
-    rep = runner.run_scenario("tests/fixtures/synthetic_templated_scenario.yaml", ad, projections=("contract",))
+    try:
+        runner.run_scenario("tests/fixtures/synthetic_scenario.yaml", ad, projections=("contract",))
+        assert False, "expected ValueError for contract without backend"
+    except ValueError as e:
+        assert "backend" in str(e)
     assert ad.api.sent == []
-    assert {d.projection for d in rep.domains} == {"contract"}
-    contract_domain = rep.domains[0]
+
+
+def test_contract_with_backend_reuses_its_recordings_without_resending():
+    """One backend pass feeds both domains: the scenario's single request is sent once."""
+    ad = _adapters()
+    rep = runner.run_scenario("tests/fixtures/synthetic_scenario.yaml", ad,
+                              projections=("backend", "contract"))
+    assert len(ad.api.sent) == 1
+    assert {d.projection for d in rep.domains} == {"backend", "contract"}
+
+
+def test_contract_degrades_on_templated_paths():
+    ad = _adapters()
+    rep = runner.run_scenario("tests/fixtures/synthetic_templated_scenario.yaml", ad,
+                              projections=("backend", "contract"))
+    contract_domain = next(d for d in rep.domains if d.projection == "contract")
     assert contract_domain.status == DEGRADED
     assert contract_domain.skipped
 
