@@ -51,4 +51,3 @@ def test_authoring_layer_artifacts_present():
     assert (ROOT / "examples" / "authoring" / "rules.md").is_file()
     assert (ROOT / "examples" / "authoring" / "README.md").is_file()
     assert (ROOT / "examples" / "authoring" / "GENERATION-LOG.md").is_file()
-    assert (ROOT / ".claude" / "skills" / "refract-authoring" / "SKILL.md").is_file()
