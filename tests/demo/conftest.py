@@ -17,8 +17,12 @@ import tempfile
 import time
 from pathlib import Path
 
-import httpx
 import pytest
+
+# Skip this whole directory cleanly when the `demo` extra is absent. A bare import here
+# would raise during collection, which aborts the entire run rather than skipping these
+# tests -- and the offline core job installs `dev` only, on purpose.
+httpx = pytest.importorskip("httpx")
 
 DEMO_APP_DIR = Path(__file__).resolve().parent.parent.parent / "examples" / "demo-app"
 RUN_PY = DEMO_APP_DIR / "run.py"

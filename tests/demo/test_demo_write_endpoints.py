@@ -1,7 +1,9 @@
 """Direct product-side checks for the demo app write endpoints (`PUT`/`DELETE`) and their semantic spans. These tests call the local demo app with `httpx`, generate a production-style traceparent, and read spans back from `/debug/traces/{trace_id}` without involving adapters."""
-import httpx
+import pytest
 
-from refracto.projection.backend import gen_traceparent
+httpx = pytest.importorskip("httpx")  # skip cleanly (not abort collection) without the demo extra
+
+from refracto.projection.backend import gen_traceparent  # noqa: E402
 
 
 def _create(base_url, rows=(1, 2, 3)):

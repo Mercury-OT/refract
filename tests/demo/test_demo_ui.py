@@ -23,20 +23,23 @@ presence: a fixture that tries a real chromium.launch()/close() and skips the te
 cleanly if that raises. With Chromium installed they run for real (not just skip).
 """
 import pytest
-from playwright.sync_api import sync_playwright
 
-from refracto.declaration.model import (
+pytest.importorskip("playwright")  # skip cleanly (not abort collection) without the demo extra
+
+from playwright.sync_api import sync_playwright  # noqa: E402
+
+from refracto.declaration.model import (  # noqa: E402
     Assertion, Expect, Grid, Input, RequestTemplate, Scenario, Step,
 )
-from refracto.projection import e2e as e2e_proj
-from refracto.projection import frontend as frontend_proj
-from refracto.recorder import InMemoryRecorder
+from refracto.projection import e2e as e2e_proj  # noqa: E402
+from refracto.projection import frontend as frontend_proj  # noqa: E402
+from refracto.recorder import InMemoryRecorder  # noqa: E402
 
-from adapters.demo.auth import DemoAuthenticator
-from adapters.demo.config import DemoConfig
-from adapters.demo.normalizer import DemoResponseNormalizer
-from adapters.demo.state import DemoStateProbe
-from adapters.demo.ui import DemoUiDriver
+from adapters.demo.auth import DemoAuthenticator  # noqa: E402
+from adapters.demo.config import DemoConfig  # noqa: E402
+from adapters.demo.normalizer import DemoResponseNormalizer  # noqa: E402
+from adapters.demo.state import DemoStateProbe  # noqa: E402
+from adapters.demo.ui import DemoUiDriver  # noqa: E402
 
 
 @pytest.fixture(scope="module")

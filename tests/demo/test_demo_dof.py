@@ -14,12 +14,15 @@ run_scenario's internals inline — so this test skips as a whole when Chromium 
 unavailable, and otherwise runs green.
 """
 import pytest
-from playwright.sync_api import sync_playwright
 
-from adapters.demo.ui import DemoUiDriver
-from adapters.demo.wiring import build_adapters
-from adapters.demo.config import DemoConfig
-from refracto import runner
+pytest.importorskip("playwright")  # skip cleanly (not abort collection) without the demo extra
+
+from playwright.sync_api import sync_playwright  # noqa: E402
+
+from adapters.demo.ui import DemoUiDriver  # noqa: E402
+from adapters.demo.wiring import build_adapters  # noqa: E402
+from adapters.demo.config import DemoConfig  # noqa: E402
+from refracto import runner  # noqa: E402
 
 
 @pytest.fixture(scope="module")
