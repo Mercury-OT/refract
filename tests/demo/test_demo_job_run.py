@@ -4,14 +4,16 @@ The scenario is loaded from `scenarios/demo_job_run.yaml` and executed through
 only the backend projection. This keeps the test focused on ordered execution,
 binding, polling, span attribution, and fail-fast semantics using the real demo
 server."""
-from adapters.demo.wiring import build_adapters
 from refracto import runner
+
+from adapters.demo.wiring import build_adapters
+
+SCENARIO_PATH = "scenarios/demo_job_run.yaml"
 
 
 def test_demo_job_run_backend_projection_green(demo_server):
     adapters = build_adapters(demo_server)
-    rep = runner.run_scenario("scenarios/demo_job_run.yaml", adapters,
-                              projections=("backend",))
+    rep = runner.run_scenario(SCENARIO_PATH, adapters, projections=("backend",))
     assert rep.status == "PASSED", rep.localize()
 
     (d,) = rep.domains
@@ -28,3 +30,5 @@ def test_demo_job_run_backend_projection_green(demo_server):
 
     assert any(c.check == "span_exists" and c.ok and c.step == "create_job" for c in d.checks)
     assert any(c.check == "span_exists" and c.ok and c.step == "fetch_result" for c in d.checks)
+    assert any(c.check == "span_attr" and c.ok and c.step == "create_job" for c in d.checks)
+    assert any(c.check == "span_attr" and c.ok and c.step == "fetch_result" for c in d.checks)
