@@ -4,7 +4,7 @@ grid: {level: regression, module: demo}
 actor: user
 inputs:
   - {rows: 3}
-intent: Submit a job, wait for completion, fetch the result, and archive it.
+intent: Submit a job carrying the declared number of rows, wait for completion, fetch the result, and archive it; the backend must account for that exact row count both when the job is created and when its result is read.
 steps:
   - id: create_job
     request:
@@ -16,6 +16,7 @@ steps:
         - {check: has, field: jobId}
       backend_state:
         - {check: span_exists, span: job.create}
+        - {check: span_attr, span: job.create, attr: row_count, op: "==", value: 3}
   - id: wait_done
     request:
       method: GET
@@ -43,6 +44,7 @@ steps:
         - {check: has, field: result}
       backend_state:
         - {check: span_exists, span: job.result.read}
+        - {check: span_attr, span: job.result.read, attr: row_count, op: "==", value: 3}
   - id: archive_job
     request:
       method: POST
