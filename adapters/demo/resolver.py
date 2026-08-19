@@ -13,17 +13,42 @@ class DemoResolver:
     def __init__(self, config=None):
         self._config = config
         self._item_id = None
+        # How many items the `item_exists` precondition materializes. The frozen
+        # `demo_item_delete` scenario declares this as an `existing_items` input so the
+        # "zero remaining after one delete" assertion has a source in the declaration
+        # rather than in knowledge of the demo app. Kept as adapter state (not read from
+        # the scenario at precondition time) because core calls resolve_precondition as
+        # `(ref, session)`; the count is applied via `prime_from_scenario` before a run.
+        self._existing_items = 1
+
+    def prime_from_scenario(self, scenario):
+        """Read declaration-level inputs this resolver honours before a run.
+
+        Currently only `existing_items: N` (how many items the `item_exists`
+        precondition should create). Absent input keeps the single-item default, so
+        scenarios written before this input behave unchanged. This is an
+        adapter-side, product-specific mapping; the scenario stays pure data.
+        """
+        declared = next((i.value for i in scenario.inputs if i.kind == "existing_items"), None)
+        if declared is not None:
+            self._existing_items = int(declared)
+        return self
 
     def resolve_precondition(self, ref, session):
-        """Materialize the `item_exists` precondition in the demo application."""
+        """Materialize the `item_exists` precondition in the demo application.
+
+        Creates `self._existing_items` items; the id of the last one is what later
+        steps (PUT/DELETE) act on.
+        """
         if getattr(ref, "ref", None) == "item_exists":
-            r = httpx.post(
-                f"{self._config.base_url}/items",
-                json={"name": "demo-item", "rows": [1, 2, 3]},
-                timeout=30.0,
-            )
-            r.raise_for_status()
-            self._item_id = r.json()["data"]["itemId"]
+            for _ in range(self._existing_items):
+                r = httpx.post(
+                    f"{self._config.base_url}/items",
+                    json={"name": "demo-item", "rows": [1, 2, 3]},
+                    timeout=30.0,
+                )
+                r.raise_for_status()
+                self._item_id = r.json()["data"]["itemId"]
         return None
 
     def resolve_request(self, scenario, step, template) -> ports.RequestSpec:
