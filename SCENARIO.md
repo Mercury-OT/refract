@@ -126,6 +126,22 @@ Possible step outcomes include:
 * `BLOCKED`
 * `ERROR`
 
+## Contract Projection Identity
+
+The contract projection consumes recordings produced by the backend projection;
+it does not execute requests on its own.
+
+For both static and templated multi-step requests, consumer and provider entries
+are matched by:
+
+* step id
+* request method
+* the declared request path template
+
+The path after binding and the adapter-resolved path remain recording evidence,
+but do not replace the declared template as contract identity. For a polled step,
+only the recording marked as final contributes to the provider contract.
+
 ## Worked Example
 
 A minimal public example stays product-neutral by using the demo namespace:

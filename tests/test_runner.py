@@ -1,5 +1,5 @@
 from refracto import ports, runner
-from refracto.report import DEGRADED, EMPTY, NOT_SELECTED
+from refracto.report import EMPTY, NOT_SELECTED
 from tests.fakes import FakeApi, FakeAuth, FakeNormalizer, FakeRecorder, FakeStateProbe, FakeUi
 
 
@@ -110,13 +110,13 @@ def test_contract_with_backend_reuses_its_recordings_without_resending():
     assert {d.projection for d in rep.domains} == {"backend", "contract"}
 
 
-def test_contract_degrades_on_templated_paths():
+def test_contract_passes_on_templated_paths_using_backend_recording_identity():
     ad = _adapters()
     rep = runner.run_scenario("tests/fixtures/synthetic_templated_scenario.yaml", ad,
                               projections=("backend", "contract"))
     contract_domain = next(d for d in rep.domains if d.projection == "contract")
-    assert contract_domain.status == DEGRADED
-    assert contract_domain.skipped
+    assert contract_domain.status == "PASSED"
+    assert contract_domain.skipped == []
 
 
 def test_missing_normalizer_raises():

@@ -94,7 +94,5 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
                                             normalizer=adapters.normalizer, poll_config=poll_config,
                                             now=now, sleep=sleep))
     if "contract" in projections:
-        # The contract projection decides for itself whether a templated path forces it
-        # to degrade, so the runner does not need to duplicate that judgement.
         report.domains.append(contract_proj.run(scenario, provider_recordings, adapters.normalizer))
     return report

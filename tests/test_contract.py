@@ -3,7 +3,7 @@ from refracto.contract import store
 from refracto.declaration.loader import load_scenario
 from refracto.declaration.model import Assertion, Expect, Grid, RequestTemplate, Scenario, Step
 from refracto.projection import contract as contract_proj
-from refracto.report import DEGRADED, FAILED, PASSED
+from refracto.report import FAILED, PASSED
 from tests.fakes import FakeNormalizer
 
 
@@ -108,11 +108,43 @@ def test_diff_clean_when_provider_satisfies():
     assert store.diff(consumer, provider) == []
 
 
-def test_contract_run_degrades_on_templated_multi_step():
+def test_contract_run_templated_multi_step_clean_passes():
     static_step = Step(
         id="create",
         request=RequestTemplate(method="POST", path="resource/action"),
-        expect=Expect(response=[Assertion(check="success")]),
+        expect=Expect(response=[
+            Assertion(check="success"),
+            Assertion(check="has", params={"field": "itemId"}),
+        ]),
+    )
+    templated_step = Step(
+        id="get_item",
+        request=RequestTemplate(method="GET", path="items/{itemId}"),
+        expect=Expect(response=[
+            Assertion(check="success"),
+            Assertion(check="has", params={"field": "name"}),
+        ]),
+    )
+    s = _scenario([static_step, templated_step])
+    recs = [
+        _resp("POST", "/api/items", 200, ["itemId"],
+              step_id="create", template_path="resource/action"),
+        _resp("GET", "/api/items/42", 200, ["name"],
+              step_id="get_item", template_path="items/{itemId}"),
+    ]
+
+    res = contract_proj.run(s, recs, FakeNormalizer())
+
+    assert res.status == PASSED
+    assert res.skipped == []
+    assert res.checks[0].ok is True
+
+
+def test_contract_run_templated_multi_step_drift_names_failing_step():
+    static_step = Step(
+        id="create",
+        request=RequestTemplate(method="POST", path="resource/action"),
+        expect=Expect(response=[Assertion(check="has", params={"field": "itemId"})]),
     )
     templated_step = Step(
         id="get_item",
@@ -120,10 +152,19 @@ def test_contract_run_degrades_on_templated_multi_step():
         expect=Expect(response=[Assertion(check="has", params={"field": "name"})]),
     )
     s = _scenario([static_step, templated_step])
-    res = contract_proj.run(s, [], FakeNormalizer())
-    assert res.steps == []
-    assert res.skipped == ["multi-step contract with templated paths is not currently supported"]
-    assert res.status == DEGRADED
+    recs = [
+        _resp("POST", "/api/items", 200, ["itemId"],
+              step_id="create", template_path="resource/action"),
+        _resp("GET", "/api/items/42", 200, ["renamedField"],
+              step_id="get_item", template_path="items/{itemId}"),
+    ]
+
+    res = contract_proj.run(s, recs, FakeNormalizer())
+
+    assert res.status == FAILED
+    assert len(res.checks) == 1
+    assert res.checks[0].step == "get_item"
+    assert "name" in res.checks[0].detail
 
 
 def test_contract_run_static_only_clean_passes():
