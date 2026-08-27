@@ -168,6 +168,20 @@ def _validate_param_values(point: str, check: str, params: dict) -> None:
         if op in vocab.ORDERING_OPS and not _is_number(params.get("value")):
             raise DeclarationError(
                 f"{point}.span_attr: 'value' must be a number for op {op!r}, got {params.get('value')!r}")
+    if check == "field_equals":
+        field = params.get("field")
+        if not isinstance(field, str) or not field.strip():
+            raise DeclarationError(
+                f"{point}.field_equals: 'field' must be a non-empty string, got {field!r}")
+        ref = _parse_value_ref(params.get("value"), f"{point}.field_equals.value")
+        if ref is not None:
+            params["value"] = ref
+            return
+        value = params.get("value")
+        if value is not None and not isinstance(value, (str, int, float, bool)):
+            raise DeclarationError(
+                f"{point}.field_equals: 'value' must be a JSON scalar or a value reference, "
+                f"got {value!r}")
 
 
 def _parse_assertions(point: str, raw_list) -> list:
@@ -211,7 +225,7 @@ def _parse_request(raw, where: str) -> RequestTemplate:
     return RequestTemplate(method=method, path=path, body=raw.get("body"))
 
 
-def _parse_bindings(raw_bind, seen_has_fields: dict, where: str) -> list:
+def _parse_bindings(raw_bind, seen_guaranteed_fields: dict, where: str) -> list:
     """Parse bindings against already-processed prior steps only."""
     if raw_bind is None:
         return []
@@ -229,13 +243,14 @@ def _parse_bindings(raw_bind, seen_has_fields: dict, where: str) -> list:
                 f"allowed: {sorted(_BINDING_KEYS)}")
         from_step = spec.get("from")
         field = spec.get("field")
-        if from_step not in seen_has_fields:
+        if from_step not in seen_guaranteed_fields:
             raise DeclarationError(
                 f"{where}.bind.{placeholder}: 'from' {from_step!r} must reference a prior step id")
-        if field not in seen_has_fields[from_step]:
+        if field not in seen_guaranteed_fields[from_step]:
             raise DeclarationError(
                 f"{where}.bind.{placeholder}: bound field {field!r} not guaranteed by source step "
-                f"{from_step!r} (source step must declare {{check: has, field: {field!r}}} "
+                f"{from_step!r} (source step must declare a has or field_equals assertion "
+                f"for field {field!r} "
                 f"in its expect.response; 'success' does not satisfy this)")
         out.append(Binding(placeholder=placeholder, from_step=from_step, field=field))
     return out
@@ -271,16 +286,57 @@ def _build_expect(raw_expect, allowed_points, where: str) -> Expect:
     if unknown_points:
         raise DeclarationError(
             f"unknown {where} block(s) {sorted(unknown_points)}; allowed: {list(allowed_points)}")
-    return Expect(
+    expect = Expect(
         frontend=_parse_assertions("frontend", raw_expect.get("frontend")),
         response=_parse_assertions("response", raw_expect.get("response")),
         backend_state=_parse_assertions("backend_state", raw_expect.get("backend_state")),
     )
+    equal_fields = [
+        a.params["field"] for a in expect.response if a.check == "field_equals"
+    ]
+    duplicates = sorted({field for field in equal_fields if equal_fields.count(field) > 1})
+    if duplicates:
+        raise DeclarationError(
+            f"{where}.response: duplicate field_equals constraint(s) for {duplicates}")
+    return expect
 
 
-def _parse_v2_steps(steps_raw: list) -> list:
+def _validate_value_refs(expect, bound_placeholders, input_counts, where: str) -> set:
+    """Validate reference scope and return bindings consumed by assertions."""
+    references = []
+    for assertion in expect.response:
+        if assertion.check == "field_equals":
+            references.append((
+                f"{where}.expect.response.field_equals.value",
+                assertion.params.get("value"),
+            ))
+    for assertion in expect.backend_state:
+        if assertion.check == "span_attr":
+            references.append((
+                f"{where}.expect.backend_state.span_attr.value",
+                assertion.params.get("value"),
+            ))
+
+    used_bindings = set()
+    for ref_where, value in references:
+        if not isinstance(value, ValueRef):
+            continue
+        if value.source == "bind":
+            if value.key not in bound_placeholders:
+                raise DeclarationError(
+                    f"{ref_where}: from_bind {value.key!r} must reference a placeholder "
+                    f"declared in this step's 'bind'")
+            used_bindings.add(value.key)
+        elif value.source == "input" and input_counts.get(value.key, 0) != 1:
+            raise DeclarationError(
+                f"{ref_where}: from_input {value.key!r} must name exactly one declared "
+                f"scenario input (found {input_counts.get(value.key, 0)})")
+    return used_bindings
+
+
+def _parse_v2_steps(steps_raw: list, input_counts: dict) -> list:
     """Parse v2 steps in file order and validate prior-step bindings."""
-    seen_has_fields = {}   # step_id -> set of fields declared via {check: has, field: ...}
+    seen_guaranteed_fields = {}  # step_id -> response fields guaranteed to be present
     steps = []
     for idx, raw in enumerate(steps_raw):
         if not isinstance(raw, dict):
@@ -293,7 +349,7 @@ def _parse_v2_steps(steps_raw: list) -> list:
         step_id = raw.get("id")
         if not isinstance(step_id, str) or not step_id.strip():
             raise DeclarationError(f"step[{idx}]: 'id' must be a non-empty string, got {step_id!r}")
-        if step_id in seen_has_fields:
+        if step_id in seen_guaranteed_fields:
             raise DeclarationError(f"step id {step_id!r} is duplicated")
         where = f"step {step_id!r}"
 
@@ -302,9 +358,12 @@ def _parse_v2_steps(steps_raw: list) -> list:
         request = _parse_request(raw["request"], f"{where}.request")
 
         expect = _build_expect(raw.get("expect"), _STEP_EXPECT_POINTS, f"{where}.expect")
-        has_fields = {a.params["field"] for a in expect.response if a.check == "has"}
+        guaranteed_fields = {
+            a.params["field"] for a in expect.response
+            if a.check in ("has", "field_equals")
+        }
 
-        bind = _parse_bindings(raw.get("bind"), seen_has_fields, where)
+        bind = _parse_bindings(raw.get("bind"), seen_guaranteed_fields, where)
         poll = _parse_poll(raw.get("poll"), request.method, where)
 
         if poll is not None and not expect.response:
@@ -316,22 +375,8 @@ def _parse_v2_steps(steps_raw: list) -> list:
         if request.body is not None:
             used_placeholders |= set(_scan_body_placeholders(request.body, f"{where}.request.body"))
         bound_placeholders = {b.placeholder for b in bind}
-
-        # A `span_attr.value` that references a bound value both (a) requires the
-        # referenced placeholder to be declared in this step's `bind`, and (b)
-        # counts as a use of that placeholder — so binding a value solely to
-        # assert against a span is a legal, non-"unused" pattern.
-        for a in expect.backend_state:
-            if a.check != "span_attr":
-                continue
-            val = a.params.get("value")
-            if isinstance(val, ValueRef) and val.source == "bind":
-                if val.key not in bound_placeholders:
-                    raise DeclarationError(
-                        f"{where}.expect.backend_state.span_attr.value: "
-                        f"from_bind {val.key!r} must reference a placeholder declared "
-                        f"in this step's 'bind'")
-                used_placeholders.add(val.key)
+        used_placeholders |= _validate_value_refs(
+            expect, bound_placeholders, input_counts, where)
 
         unbound = used_placeholders - bound_placeholders
         if unbound:
@@ -341,11 +386,11 @@ def _parse_v2_steps(steps_raw: list) -> list:
             raise DeclarationError(f"{where}: declared bind never used: {sorted(unused)}")
 
         steps.append(Step(id=step_id, request=request, expect=expect, bind=bind, poll=poll))
-        seen_has_fields[step_id] = has_fields
+        seen_guaranteed_fields[step_id] = guaranteed_fields
     return steps
 
 
-def _load_v1_step(d: dict) -> Step:
+def _load_v1_step(d: dict, input_counts: dict) -> Step:
     """Normalize a legacy flat scenario into one implicit step."""
     exp = d.get("expect", {})
     if not isinstance(exp, dict):
@@ -368,6 +413,7 @@ def _load_v1_step(d: dict) -> Step:
         if async_field and not any(
                 a.check == "has" and a.params.get("field") == async_field for a in expect.response):
             expect.response.append(Assertion(check="has", params={"field": async_field}))
+    _validate_value_refs(expect, set(), input_counts, "step 'main'")
     return Step(id="main", request=request, expect=expect)
 
 
@@ -423,6 +469,9 @@ def load_scenario(path: str) -> Scenario:
                 raise DeclarationError(f"inputs: each entry must be a mapping with exactly one key, got {item!r}")
             (kind, value), = item.items()
             inputs.append(Input(kind=kind, value=value))
+        input_counts = {}
+        for item in inputs:
+            input_counts[item.kind] = input_counts.get(item.kind, 0) + 1
 
         precondition_raw = d.get("precondition", [])
         if not isinstance(precondition_raw, list):
@@ -442,9 +491,9 @@ def load_scenario(path: str) -> Scenario:
             steps_raw = d["steps"]
             if not isinstance(steps_raw, list):
                 raise DeclarationError(f"'steps' must be a list, got {type(steps_raw).__name__}")
-            steps = _parse_v2_steps(steps_raw)
+            steps = _parse_v2_steps(steps_raw, input_counts)
         else:
-            steps = [_load_v1_step(d)]
+            steps = [_load_v1_step(d, input_counts)]
 
         return Scenario(
             id=d["scenario"], grid=grid, actor=d["actor"],

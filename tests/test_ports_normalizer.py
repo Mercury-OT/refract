@@ -1,4 +1,5 @@
 from refracto import ports
+from adapters.demo.normalizer import DemoResponseNormalizer
 from tests.fakes import FakeNormalizer
 
 
@@ -35,8 +36,16 @@ def test_fake_normalizer_synthesize_builds_stub_body():
 
 
 def test_demo_normalizer_maps_envelope():
-    from adapters.demo.normalizer import DemoResponseNormalizer
     n = DemoResponseNormalizer()
     norm = n.normalize(_resp({"success": True, "error": None, "data": {"itemId": 7}}))
     assert norm.succeeded is True and norm.fields == {"itemId": 7}
     assert n.synthesize({"itemId"})["data"] == {"itemId": "<stub:itemId>"}
+
+
+def test_normalizers_synthesize_declared_values_over_stubs():
+    for normalizer in (FakeNormalizer(), DemoResponseNormalizer()):
+        body = normalizer.synthesize({"itemId", "state"}, {"state": "ready"})
+        assert body["data"] == {
+            "itemId": "<stub:itemId>",
+            "state": "ready",
+        }

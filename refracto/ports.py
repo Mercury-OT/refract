@@ -75,7 +75,13 @@ class ResponseNormalizer(ABC):
     def normalize(self, resp: RecordedResponse) -> NormalizedResponse: ...
 
     @abstractmethod
-    def synthesize(self, fields) -> dict: ...
+    def synthesize(self, fields, values=None) -> dict:
+        """Build a product-shaped success response for declared fields.
+
+        ``values`` supplies concrete values for equality-constrained fields;
+        other fields may use adapter-defined placeholders.
+        """
+        ...
 
 
 class StateProbe(ABC):

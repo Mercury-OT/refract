@@ -6,6 +6,8 @@ use a real backend or a state probe.
 """
 from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED
 from refracto.contract import store
+from refracto.declaration import values
+from refracto.declaration.loader import DeclarationError
 
 
 def build_mock(scenario, normalizer) -> dict:
@@ -14,8 +16,21 @@ def build_mock(scenario, normalizer) -> dict:
     # The mock presented to UI drivers is keyed on (method, path). Frontend and
     # e2e projections only run single-step scenarios, so this key shape remains
     # sufficient here.
-    return {(method, path): normalizer.synthesize(shape.response_fields)
-            for (_step_id, method, path), shape in consumer.entries.items()}
+    mocks = {}
+    for (_step_id, method, path), shape in consumer.entries.items():
+        concrete = {}
+        for field, declared in shape.response_values.items():
+            resolved, error = values.resolve(declared, inputs=scenario.inputs)
+            if error is not None:
+                raise DeclarationError(error)
+            concrete[field] = resolved
+        if concrete:
+            mocks[(method, path)] = normalizer.synthesize(shape.response_fields, concrete)
+        else:
+            # Preserve compatibility for adapters implementing the original
+            # one-argument synthesizer until they opt into value assertions.
+            mocks[(method, path)] = normalizer.synthesize(shape.response_fields)
+    return mocks
 
 
 def _eval_frontend(assertion, rendered):

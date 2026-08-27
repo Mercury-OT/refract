@@ -19,16 +19,37 @@ from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILE
 def run(scenario, provider_recordings, normalizer) -> DomainResult:
     consumer = store.consumer_contract(scenario)
     provider = store.provider_contract(provider_recordings, normalizer)
-    mismatches = store.diff(consumer, provider)
+    bound_values = store.provider_binding_values(scenario, provider)
+    mismatches = store.diff(
+        consumer,
+        provider,
+        inputs=scenario.inputs,
+        bound_values_by_step=bound_values,
+    )
 
     if not mismatches:
         checks = [CheckResult("contract", "diff", True, "no drift", step="contract")]
         status = PASSED
     else:
-        checks = [CheckResult("contract", "diff", False,
-                              f"{m.endpoint}: missing {set(m.missing_fields)} {m.note}",
-                              step=m.endpoint[0] or "contract")
-                  for m in mismatches]
+        checks = []
+        for mismatch in mismatches:
+            details = [f"{mismatch.endpoint}:"]
+            if mismatch.missing_fields:
+                details.append(f"missing {set(mismatch.missing_fields)}")
+            if mismatch.note:
+                details.append(mismatch.note)
+            for field_name, (expected, observed) in mismatch.wrong_values.items():
+                details.append(
+                    f"field={field_name!r} expected={expected!r} observed={observed!r}")
+            for field_name, error in mismatch.value_errors.items():
+                details.append(f"field={field_name!r} {error}")
+            checks.append(CheckResult(
+                "contract",
+                "diff",
+                False,
+                " ".join(details),
+                step=mismatch.endpoint[0] or "contract",
+            ))
         status = FAILED
 
     return DomainResult(projection="contract",

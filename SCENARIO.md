@@ -84,6 +84,18 @@ Optional v1 param:
 |---|---|
 | `success` | none |
 | `has` | `field` |
+| `field_equals` | `field`, `value` |
+
+`field_equals` requires the normalized response to contain `field` and for its
+value to equal the declared expected value with exact type and value equality.
+Its `value` is one of:
+
+* a YAML/JSON scalar literal (`null`, boolean, number, or string)
+* `{from_input: key}` — exactly one top-level input with that key
+* `{from_bind: key}` — a binding declared by the current step
+
+References are data-only. They do not support expressions, JSONPath,
+arithmetic, concatenation, or coercion.
 
 ### backend_state
 
@@ -99,7 +111,8 @@ Bindings are explicit references from a later step to a prior step.
 A binding:
 
 * must reference a prior step id
-* must reference a field explicitly declared by that source step through `response: {check: has, field: ...}`
+* must reference a field explicitly guaranteed by that source step through a
+  response `has` or `field_equals` assertion
 * substitutes path placeholders and whole-value body placeholders
 * does not support expressions, arithmetic, or inline interpolation
 
@@ -110,6 +123,10 @@ Polling is step-local.
 * currently GET-only
 * stop condition is the step's `expect.response`
 * `on_timeout` supports `FAIL` and `SKIP`
+
+Because the full response assertion list is the stop condition,
+`field_equals` polling waits for the declared value rather than stopping as
+soon as the field appears.
 
 ## Execution Semantics
 

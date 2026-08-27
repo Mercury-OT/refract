@@ -21,6 +21,7 @@ _TERMS = {
     "response": {
         "success": (),
         "has": ("field",),
+        "field_equals": ("field", "value"),
     },
     "backend_state": {
         "span_exists": ("span",),
@@ -38,14 +39,13 @@ _OPTIONAL = {
 COMPARISON_OPS = (">", ">=", "<", "<=", "==")
 ORDERING_OPS = (">", ">=", "<", "<=")
 
-# Value-reference sources for `span_attr.value`. A reference is a data-only
+# Value-reference sources for bounded assertion values. A reference is a data-only
 # pointer (no expressions/arithmetic/concatenation) written as a single-key
-# mapping `{<source_tag>: <key>}`. Only `from_bind` is supported today; the
-# family is designed so a future `from_input` source (C-10) slots in here
-# without changing the reference shape.
+# mapping `{<source_tag>: <key>}`.
 #   tag in scenario YAML -> canonical source name stored on model.ValueRef
 VALUE_REF_SOURCES = {
     "from_bind": "bind",
+    "from_input": "input",
 }
 
 # A value reference may only be compared with equality in this step. Ordering
