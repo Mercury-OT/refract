@@ -67,12 +67,13 @@ deny "machine-local absolute path; use a repository-relative path" '(/[U]sers/|/
 echo "[hygiene] e-mail addresses"
 deny "e-mail address in a tracked file" '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}'
 
-# Only loopback, documentation domains, and the licence URL may appear. Anything else
-# is a host that exists somewhere real, which is how internal service names escape.
+# Only loopback, documentation domains, the licence URL, and official package hosts
+# required by the generated dependency lock may appear. Anything else is a host that
+# exists somewhere real, which is how internal service names escape.
 echo "[hygiene] non-allowlisted hosts"
-deny "URL pointing at a host outside the allow-list (loopback / example.* / apache.org)" \
+deny "URL pointing at a host outside the public allow-list" \
      'https?://[A-Za-z0-9._:/-]+' \
-     '://(localhost|127\.0\.0\.1|0\.0\.0\.0|example\.(com|org|net)|www\.apache\.org)'
+     '://(localhost|127\.0\.0\.1|0\.0\.0\.0|example\.(com|org|net)|www\.apache\.org|pypi\.org|files\.pythonhosted\.org)([/:]|$)'
 
 echo "[hygiene] private-range IP addresses"
 deny "private-range IP address; internal network topology must not be published" \
