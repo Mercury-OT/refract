@@ -1,6 +1,8 @@
+import pytest
+
 from refracto import ports
-from refracto.declaration.loader import load_scenario
-from refracto.declaration.model import Assertion, Expect, Grid, RequestTemplate, Scenario, Step
+from refracto.declaration.loader import DeclarationError, load_scenario
+from refracto.declaration.model import Assertion, Expect, Grid, RequestTemplate, Scenario, Step, ValueRef
 from refracto.projection import frontend
 from refracto.report import DEGRADED
 from tests.fakes import FakeNormalizer, FakeUi
@@ -13,6 +15,62 @@ def test_build_mock_from_consumer_contract():
     assert key in mock
     assert mock[key]["success"] is True
     assert "taskId" in mock[key]["data"]
+
+
+def test_build_mock_synthesizes_declared_literal_and_input_values(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{rows: 3}]\n"
+        "expect:\n"
+        "  request:\n    - {check: request, method: GET, path: result}\n"
+        "  response:\n"
+        "    - {check: field_equals, field: state, value: ready}\n"
+        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        encoding="utf-8")
+
+    mock = frontend.build_mock(load_scenario(str(y)), FakeNormalizer())
+
+    assert mock[("GET", "result")]["data"] == {"state": "ready", "count": 3}
+
+
+def test_build_mock_keeps_one_argument_normalizer_compatibility():
+    class ExistingAdapterNormalizer(FakeNormalizer):
+        def synthesize(self, fields):
+            return super().synthesize(fields)
+
+    scenario = load_scenario("tests/fixtures/synthetic_scenario.yaml")
+
+    mock = frontend.build_mock(scenario, ExistingAdapterNormalizer())
+
+    assert "taskId" in mock[("POST", "resource/action")]["data"]
+
+
+def test_build_mock_rejects_unresolvable_value_reference_as_declaration_error():
+    """Direct model construction can bypass loader validation; mock synthesis
+    must still classify an unresolved reference as a declaration problem."""
+    scenario = Scenario(
+        id="invalid_frontend_reference",
+        grid=Grid("smoke", "generic"),
+        actor="actor1",
+        precondition=[],
+        inputs=[],
+        intent="",
+        steps=[Step(
+            id="main",
+            request=RequestTemplate(method="GET", path="resource"),
+            expect=Expect(response=[Assertion(
+                check="field_equals",
+                params={
+                    "field": "itemId",
+                    "value": ValueRef(source="bind", key="itemId"),
+                },
+            )]),
+        )],
+    )
+
+    with pytest.raises(DeclarationError, match="from_bind:itemId"):
+        frontend.build_mock(scenario, FakeNormalizer())
 
 
 def test_frontend_all_green():

@@ -43,12 +43,15 @@ def run(scenario, *, auth, ui, state, recorder, normalizer, resolve_precondition
                 detail="declared response expectations but the UI produced no matching recorded response"))
         else:
             norm = normalizer.normalize(resp)
-            checks += [backend_proj._eval_response(a, norm) for a in step.expect.response]
+            checks += [
+                backend_proj._eval_response(a, norm, inputs=scenario.inputs)
+                for a in step.expect.response
+            ]
 
     trace_id = resp.trace_id if resp else None
     # Business polling and backend-state polling use independent timing budgets.
     state_checks, skipped = backend_proj.assert_backend_state_for(
-        step, state, trace_id, now=now, sleep=sleep)
+        step, state, trace_id, now=now, sleep=sleep, inputs=scenario.inputs)
     checks += state_checks
 
     for c in checks:

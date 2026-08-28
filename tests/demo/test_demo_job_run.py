@@ -35,6 +35,9 @@ def test_demo_job_run_backend_and_contract_projections_green(demo_server):
     assert any(c.check == "span_exists" and c.ok and c.step == "fetch_result" for c in backend.checks)
     assert any(c.check == "span_attr" and c.ok and c.step == "create_job" for c in backend.checks)
     assert any(c.check == "span_attr" and c.ok and c.step == "fetch_result" for c in backend.checks)
+    assert any(c.check == "field_equals" and c.ok and c.step == "wait_done" for c in backend.checks)
+    assert any(c.check == "field_equals" and c.ok and c.step == "fetch_result" for c in backend.checks)
+    assert any(c.check == "field_equals" and c.ok and c.step == "archive_job" for c in backend.checks)
 
     assert contract.status == "PASSED"
     assert contract.skipped == []

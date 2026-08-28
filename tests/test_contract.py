@@ -1,7 +1,7 @@
 from refracto import ports
 from refracto.contract import store
 from refracto.declaration.loader import load_scenario
-from refracto.declaration.model import Assertion, Expect, Grid, RequestTemplate, Scenario, Step
+from refracto.declaration.model import Assertion, Expect, Grid, RequestTemplate, Scenario, Step, ValueRef
 from refracto.projection import contract as contract_proj
 from refracto.report import FAILED, PASSED
 from tests.fakes import FakeNormalizer
@@ -244,3 +244,90 @@ def test_provider_ignores_non_final_recordings():
     assert len(provider.entries) == 1
     key = ("poll_step", "GET", "poll")
     assert provider.entries[key].response_fields == frozenset({"result"})
+
+
+def _value_resp(method, path, values, *, step_id, template_path):
+    spec = ports.RequestSpec(method=method, path=path)
+    return ports.RecordedResponse(
+        status=200,
+        headers={},
+        text="",
+        json={"success": True, "data": dict(values)},
+        trace_id=None,
+        request=spec,
+        step_id=step_id,
+        template_path=template_path,
+    )
+
+
+def test_contract_preserves_field_equals_values_on_both_sides(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{rows: 3}]\n"
+        "expect:\n"
+        "  request:\n    - {check: request, method: GET, path: result}\n"
+        "  response:\n"
+        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        encoding="utf-8")
+    scenario = load_scenario(str(y))
+    consumer = store.consumer_contract(scenario)
+    provider = store.provider_contract(
+        [_value_resp("GET", "result", {"count": 4}, step_id="main", template_path="result")],
+        FakeNormalizer(),
+    )
+    key = ("main", "GET", "result")
+
+    assert consumer.entries[key].response_fields == frozenset({"count"})
+    assert consumer.entries[key].response_values == {
+        "count": ValueRef(source="input", key="rows"),
+    }
+    assert provider.entries[key].response_values == {"count": 4}
+
+
+def test_contract_projection_detects_from_input_value_drift(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{rows: 3}]\n"
+        "expect:\n"
+        "  request:\n    - {check: request, method: GET, path: result}\n"
+        "  response:\n"
+        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        encoding="utf-8")
+    scenario = load_scenario(str(y))
+    recording = _value_resp(
+        "GET", "result", {"count": 4}, step_id="main", template_path="result")
+
+    result = contract_proj.run(scenario, [recording], FakeNormalizer())
+
+    assert result.status == FAILED
+    assert "field='count' expected=3 observed=4" in result.checks[0].detail
+
+
+def test_contract_projection_resolves_from_bind_against_source_recording(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n"
+        "        - {check: has, field: itemId}\n"
+        "  - id: archive\n"
+        "    request: {method: POST, path: archives}\n"
+        "    bind: {itemId: {from: create, field: itemId}}\n"
+        "    expect:\n      response:\n"
+        "        - {check: field_equals, field: archived, value: {from_bind: itemId}}\n",
+        encoding="utf-8")
+    scenario = load_scenario(str(y))
+    recordings = [
+        _value_resp("POST", "items", {"itemId": 42}, step_id="create", template_path="items"),
+        _value_resp("POST", "archives", {"archived": 41}, step_id="archive", template_path="archives"),
+    ]
+
+    result = contract_proj.run(scenario, recordings, FakeNormalizer())
+
+    assert result.status == FAILED
+    assert result.checks[0].step == "archive"
+    assert "field='archived' expected=42 observed=41" in result.checks[0].detail

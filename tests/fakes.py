@@ -95,9 +95,10 @@ class FakeNormalizer(ports.ResponseNormalizer):
             raw=resp,
         )
 
-    def synthesize(self, fields) -> dict:
+    def synthesize(self, fields, values=None) -> dict:
+        values = values or {}
         return {
             "success": True,
             "error": None,
-            "data": {f: f"<stub:{f}>" for f in fields},
+            "data": {f: values.get(f, f"<stub:{f}>") for f in fields},
         }

@@ -16,7 +16,7 @@ steps:
         - {check: has, field: jobId}
       backend_state:
         - {check: span_exists, span: job.create}
-        - {check: span_attr, span: job.create, attr: row_count, op: "==", value: 3}
+        - {check: span_attr, span: job.create, attr: row_count, op: "==", value: {from_input: rows}}
   - id: wait_done
     request:
       method: GET
@@ -29,7 +29,7 @@ steps:
       on_timeout: FAIL
     expect:
       response:
-        - {check: has, field: result}
+        - {check: field_equals, field: result, value: ready}
   - id: fetch_result
     request:
       method: GET
@@ -42,9 +42,10 @@ steps:
       response:
         - {check: success}
         - {check: has, field: result}
+        - {check: field_equals, field: count, value: {from_input: rows}}
       backend_state:
         - {check: span_exists, span: job.result.read}
-        - {check: span_attr, span: job.result.read, attr: row_count, op: "==", value: 3}
+        - {check: span_attr, span: job.result.read, attr: row_count, op: "==", value: {from_input: rows}}
   - id: archive_job
     request:
       method: POST
@@ -59,3 +60,4 @@ steps:
     expect:
       response:
         - {check: success}
+        - {check: field_equals, field: archived, value: {from_bind: jobId}}

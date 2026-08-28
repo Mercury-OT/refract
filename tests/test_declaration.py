@@ -927,3 +927,107 @@ def test_span_attr_from_bind_empty_key_rejected(tmp_path):
     with pytest.raises(DeclarationError) as e:
         load_scenario(str(bad))
     assert "non-empty key" in str(e.value)
+
+
+# --- Response value assertions ---------------------------------------------
+
+def test_field_equals_literal_and_from_input_parse(tmp_path):
+    good = tmp_path / "good.yaml"
+    good.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{rows: 3}]\n"
+        "expect:\n  response:\n"
+        "    - {check: field_equals, field: state, value: ready}\n"
+        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        encoding="utf-8")
+
+    scenario = load_scenario(str(good))
+
+    state, count = scenario.steps[0].expect.response
+    assert state.params == {"field": "state", "value": "ready"}
+    assert count.params == {
+        "field": "count",
+        "value": model.ValueRef(source="input", key="rows"),
+    }
+
+
+def test_field_equals_from_bind_is_a_valid_bind_use_and_guarantees_source_field(tmp_path):
+    """`field_equals` both proves presence for a later bind and may be the only
+    use of that binding in its consuming step."""
+    good = tmp_path / "good.yaml"
+    good.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n"
+        "        - {check: field_equals, field: itemId, value: 42}\n"
+        "  - id: archive\n"
+        "    request: {method: POST, path: archives}\n"
+        "    bind: {itemId: {from: create, field: itemId}}\n"
+        "    expect:\n      response:\n"
+        "        - {check: field_equals, field: archived, value: {from_bind: itemId}}\n",
+        encoding="utf-8")
+
+    scenario = load_scenario(str(good))
+
+    assertion = scenario.steps[1].expect.response[0]
+    assert assertion.params["value"] == model.ValueRef(source="bind", key="itemId")
+
+
+@pytest.mark.parametrize("value_yaml", ["{unexpected: value}", "[one, two]"])
+def test_field_equals_rejects_non_scalar_literal(tmp_path, value_yaml):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "expect:\n  response:\n"
+        f"    - {{check: field_equals, field: state, value: {value_yaml}}}\n",
+        encoding="utf-8")
+
+    with pytest.raises(DeclarationError) as exc_info:
+        load_scenario(str(bad))
+    assert "scalar or a value reference" in str(exc_info.value)
+
+
+def test_field_equals_from_input_must_name_one_declared_input(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{rows: 3}]\n"
+        "expect:\n  response:\n"
+        "    - {check: field_equals, field: count, value: {from_input: missing}}\n",
+        encoding="utf-8")
+
+    with pytest.raises(DeclarationError) as exc_info:
+        load_scenario(str(bad))
+    assert "must name exactly one declared scenario input" in str(exc_info.value)
+
+
+def test_field_equals_from_bind_must_name_current_step_binding(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: get\n"
+        "    request: {method: GET, path: items}\n"
+        "    expect:\n      response:\n"
+        "        - {check: field_equals, field: itemId, value: {from_bind: itemId}}\n",
+        encoding="utf-8")
+
+    with pytest.raises(DeclarationError) as exc_info:
+        load_scenario(str(bad))
+    assert "must reference a placeholder declared" in str(exc_info.value)
+
+
+def test_field_equals_duplicate_constraint_for_field_rejected(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "expect:\n  response:\n"
+        "    - {check: field_equals, field: state, value: ready}\n"
+        "    - {check: field_equals, field: state, value: done}\n",
+        encoding="utf-8")
+
+    with pytest.raises(DeclarationError) as exc_info:
+        load_scenario(str(bad))
+    assert "duplicate field_equals" in str(exc_info.value)

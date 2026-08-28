@@ -39,6 +39,33 @@ def test_e2e_response_fails_loudly_without_matching_ui_traffic():
     assert not res.passed
     assert any(c.check == "_no_ui_traffic" and not c.ok for c in res.checks)
 
+
+def test_e2e_field_equals_resolves_scenario_input_and_reports_drift(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{rows: 3}]\n"
+        "expect:\n"
+        "  request:\n    - {check: request, method: GET, path: result}\n"
+        "  response:\n"
+        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        encoding="utf-8")
+    scenario = load_scenario(str(y))
+    spec = ports.RequestSpec(method="GET", path="result")
+    recorded = ports.RecordedResponse(
+        status=200, headers={}, text="", trace_id=None, request=spec,
+        json={"success": True, "data": {"count": 4}},
+    )
+    ui = FakeUi(outgoing=[spec], recorded=[recorded])
+
+    result = e2e.run(
+        scenario, auth=FakeAuth(), ui=ui, state=None,
+        recorder=FakeRecorder(), normalizer=FakeNormalizer())
+
+    check = next(c for c in result.checks if c.check == "field_equals")
+    assert not check.ok
+    assert "field='count' expected=3 observed=4" in check.detail
+
 def test_e2e_backend_state_from_ui_trace_id():
     """the trace id asserted against Tempo must be the one captured from UI traffic."""
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")

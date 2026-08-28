@@ -17,6 +17,7 @@ Each sentinel fails loudly if the corresponding scenario's strongest assertion i
 removed or weakened back to a near-uninformative bound.
 """
 from refracto.declaration.loader import load_scenario
+from refracto.declaration.model import ValueRef
 
 CREATE_PATH = "scenarios/demo_item_create.yaml"
 DELETE_PATH = "scenarios/demo_item_delete.yaml"
@@ -97,8 +98,6 @@ def test_frozen_job_run_scenario_pins_the_exact_row_count_it_declares():
     time.
     """
     scenario = load_scenario(JOB_RUN_PATH)
-    declared_rows = next(i.value for i in scenario.inputs if i.kind == "rows")
-
     by_span = {
         a.params["span"]: a
         for step in scenario.steps for a in step.expect.backend_state
@@ -114,7 +113,29 @@ def test_frozen_job_run_scenario_pins_the_exact_row_count_it_declares():
             f"{span_name}: expected an exact-value comparison, got op "
             f"{assertion.params['op']!r}"
         )
-        assert assertion.params["value"] == declared_rows, (
-            f"{span_name}: asserted row_count {assertion.params['value']!r} does not "
-            f"match the {declared_rows!r} rows this scenario declares in its own inputs"
+        assert assertion.params["value"] == ValueRef(source="input", key="rows"), (
+            f"{span_name}: row_count must reference the scenario's 'rows' input, got "
+            f"{assertion.params['value']!r}"
         )
+
+
+def test_frozen_job_run_scenario_pins_response_values_to_literal_input_and_binding():
+    scenario = load_scenario(JOB_RUN_PATH)
+    steps = {step.id: step for step in scenario.steps}
+
+    wait_value = next(
+        a.params["value"] for a in steps["wait_done"].expect.response
+        if a.check == "field_equals" and a.params["field"] == "result"
+    )
+    count_value = next(
+        a.params["value"] for a in steps["fetch_result"].expect.response
+        if a.check == "field_equals" and a.params["field"] == "count"
+    )
+    archived_value = next(
+        a.params["value"] for a in steps["archive_job"].expect.response
+        if a.check == "field_equals" and a.params["field"] == "archived"
+    )
+
+    assert wait_value == "ready"
+    assert count_value == ValueRef(source="input", key="rows")
+    assert archived_value == ValueRef(source="bind", key="jobId")

@@ -613,3 +613,113 @@ def test_span_attr_from_bind_still_passes_via_reference_after_literal_regression
                       resolve_request=_resolver, normalizer=FakeNormalizer())
     assert any(c.check == "span_attr" and c.ok for c in res.checks)
 
+
+# --- Response field equality -----------------------------------------------
+
+def test_backend_field_equals_literal_reports_expected_and_observed(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "expect:\n"
+        "  request:\n    - {check: request, method: GET, path: status}\n"
+        "  response:\n    - {check: field_equals, field: state, value: ready}\n",
+        encoding="utf-8")
+    scenario = load_scenario(str(y))
+    api = FakeApi(responses={
+        ("GET", "status"): {"status": 200, "json": {"success": True, "data": {"state": "done"}}},
+    })
+
+    result = backend.run(
+        scenario, auth=FakeAuth(), api=api, state=None, recorder=FakeRecorder(),
+        resolve_request=_resolver, normalizer=FakeNormalizer())
+
+    check = next(c for c in result.checks if c.check == "field_equals")
+    assert not check.ok
+    assert "field='state'" in check.detail
+    assert "expected='ready'" in check.detail
+    assert "observed='done'" in check.detail
+
+
+def test_backend_field_equals_resolves_input_and_is_type_strict(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{rows: 3}]\n"
+        "expect:\n"
+        "  request:\n    - {check: request, method: GET, path: result}\n"
+        "  response:\n"
+        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        encoding="utf-8")
+    scenario = load_scenario(str(y))
+    api = FakeApi(responses={
+        ("GET", "result"): {"status": 200, "json": {"success": True, "data": {"count": "3"}}},
+    })
+
+    result = backend.run(
+        scenario, auth=FakeAuth(), api=api, state=None, recorder=FakeRecorder(),
+        resolve_request=_resolver, normalizer=FakeNormalizer())
+
+    check = next(c for c in result.checks if c.check == "field_equals")
+    assert not check.ok
+    assert "expected=3" in check.detail
+    assert "observed='3'" in check.detail
+
+
+def test_backend_field_equals_resolves_current_step_binding(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n"
+        "        - {check: has, field: itemId}\n"
+        "  - id: archive\n"
+        "    request: {method: POST, path: archives}\n"
+        "    bind: {itemId: {from: create, field: itemId}}\n"
+        "    expect:\n      response:\n"
+        "        - {check: field_equals, field: archived, value: {from_bind: itemId}}\n",
+        encoding="utf-8")
+    scenario = load_scenario(str(y))
+    api = FakeApi(responses={
+        ("POST", "items"): {"status": 200, "json": {"success": True, "data": {"itemId": 42}}},
+        ("POST", "archives"): {"status": 200, "json": {"success": True, "data": {"archived": 42}}},
+    })
+
+    result = backend.run(
+        scenario, auth=FakeAuth(), api=api, state=None, recorder=FakeRecorder(),
+        resolve_request=_resolver, normalizer=FakeNormalizer())
+
+    assert result.passed
+    assert any(c.step == "archive" and c.check == "field_equals" and c.ok for c in result.checks)
+
+
+def test_poll_waits_for_field_equals_value_not_just_field_presence(tmp_path):
+    y = tmp_path / "s.yaml"
+    y.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: poll\n"
+        "    request: {method: GET, path: jobs/1/status}\n"
+        "    poll: {on_timeout: FAIL}\n"
+        "    expect:\n      response:\n"
+        "        - {check: field_equals, field: state, value: done}\n",
+        encoding="utf-8")
+    scenario = load_scenario(str(y))
+    api = CountingApi({
+        ("GET", "jobs/1/status"): [
+            {"status": 200, "json": {"success": True, "data": {"state": "running"}}},
+            {"status": 200, "json": {"success": True, "data": {"state": "done"}}},
+        ],
+    })
+    clock = FakeClock()
+
+    result = backend.run(
+        scenario, auth=FakeAuth(), api=api, state=None, recorder=FakeRecorder(),
+        resolve_request=_resolver, normalizer=FakeNormalizer(),
+        poll_config=types.SimpleNamespace(timeout=10, interval=1),
+        now=clock.now, sleep=clock.sleep)
+
+    assert result.passed
+    assert result.steps[0].attempts == 2
+    assert any(c.check == "field_equals" and c.ok for c in result.checks)
