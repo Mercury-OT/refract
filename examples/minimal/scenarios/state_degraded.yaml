@@ -1,0 +1,19 @@
+version: 2
+scenario: minimal.state_degraded
+grid: {level: smoke, module: minimal}
+actor: reader
+precondition: []
+inputs: []
+intent: Show that an unavailable state capability is reported as a degradation.
+steps:
+  - id: create_with_state_expectation
+    request:
+      method: POST
+      path: records
+      body: {name: sample-item}
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: id}
+      backend_state:
+        - {check: span_exists, span: record.created}
