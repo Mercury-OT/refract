@@ -105,3 +105,23 @@ def test_localize_returns_projection_step_point_check_detail_5tuple():
     step = StepResult("create_item", FAILED, checks=[bad])
     r = RunReport("x", domains=[DomainResult("backend", steps=[step])])
     assert r.localize() == [("backend", "create_item", "resp", "status_eq", "expected 200 got 500")]
+
+
+def test_degradations_flattens_domain_and_step_skipped_reasons():
+    step = StepResult(
+        "create_item",
+        PASSED,
+        checks=[_ok("create_item")],
+        skipped=["span_exists — no StateProbe"],
+    )
+    domain = DomainResult(
+        "backend",
+        steps=[step],
+        skipped=["projection capability unavailable"],
+    )
+    report = RunReport("x", domains=[domain])
+
+    assert report.degradations() == [
+        ("backend", None, "projection capability unavailable"),
+        ("backend", "create_item", "span_exists — no StateProbe"),
+    ]

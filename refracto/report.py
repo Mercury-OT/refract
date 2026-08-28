@@ -94,6 +94,25 @@ class RunReport:
     def passed(self):
         return self.status in (PASSED, DEGRADED)
 
+    def degradations(self):
+        """Return ``(projection, step_id, reason)`` for every skipped item.
+
+        Domain-level reasons have no owning step and therefore use ``None`` as
+        their step id.
+        """
+        out = []
+        for domain in self.domains:
+            out.extend(
+                (domain.projection, None, reason)
+                for reason in domain.skipped
+            )
+            for step in domain.steps:
+                out.extend(
+                    (domain.projection, step.step_id, reason)
+                    for reason in step.skipped
+                )
+        return out
+
     def localize(self):
         out = []
         for d in self.domains:

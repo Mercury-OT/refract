@@ -1,5 +1,7 @@
+import pytest
+
 from refracto import ports, runner
-from refracto.report import EMPTY, NOT_SELECTED
+from refracto.report import DEGRADED, EMPTY, NOT_SELECTED, PASSED
 from tests.fakes import FakeApi, FakeAuth, FakeNormalizer, FakeRecorder, FakeStateProbe, FakeUi
 
 
@@ -50,6 +52,7 @@ def _adapters():
 def test_run_all_projections_green():
     rep = runner.run_scenario("tests/fixtures/synthetic_scenario.yaml", _adapters())
     assert rep.passed
+    assert rep.degradations() == []
     assert {d.projection for d in rep.domains} == {"backend", "frontend", "e2e", "contract"}
 
 
@@ -135,3 +138,67 @@ def test_missing_normalizer_raises():
         assert False, "expected ValueError for missing normalizer"
     except ValueError as e:
         assert "normalizer" in str(e)
+
+
+@pytest.mark.parametrize("projections", [("frontend",), ("e2e",)])
+def test_ui_projection_without_ui_driver_is_refused_before_any_request(projections):
+    ad = _adapters()
+    ad.ui = None
+
+    with pytest.raises(ValueError, match="UiDriver"):
+        runner.run_scenario(
+            "tests/fixtures/synthetic_scenario.yaml",
+            ad,
+            projections=projections,
+        )
+
+    assert ad.api.sent == []
+
+
+def test_missing_ui_is_refused_before_a_preceding_backend_projection_can_run():
+    ad = _adapters()
+    ad.ui = None
+
+    with pytest.raises(ValueError, match="UiDriver"):
+        runner.run_scenario(
+            "tests/fixtures/synthetic_scenario.yaml",
+            ad,
+            projections=("backend", "frontend"),
+        )
+
+    assert ad.api.sent == []
+
+
+def test_backend_only_run_does_not_require_ui_driver():
+    ad = _adapters()
+    ad.ui = None
+
+    rep = runner.run_scenario(
+        "tests/fixtures/synthetic_scenario.yaml",
+        ad,
+        projections=("backend",),
+    )
+
+    assert rep.status == PASSED
+    assert len(ad.api.sent) == 1
+
+
+def test_missing_state_probe_is_discoverable_from_the_run_report():
+    ad = _adapters()
+    ad.state = None
+
+    rep = runner.run_scenario(
+        "tests/fixtures/synthetic_scenario.yaml",
+        ad,
+        projections=("backend",),
+    )
+
+    assert rep.status == DEGRADED
+    assert rep.passed
+    assert rep.degradations()
+    assert any(
+        projection == "backend"
+        and step_id == "main"
+        and "no StateProbe" in reason
+        for projection, step_id, reason in rep.degradations()
+    )

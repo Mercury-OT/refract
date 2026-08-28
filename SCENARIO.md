@@ -166,6 +166,28 @@ Possible step outcomes include:
 * `BLOCKED`
 * `ERROR`
 
+### Strict Quality Gates
+
+`rep.passed` being true does not guarantee that every declared assertion ran.
+When an optional port such as `StateProbe` is unavailable, the affected
+assertions are recorded as skipped, the report status is `DEGRADED`, and
+`rep.passed` may remain true.
+
+A strict quality gate should require either:
+
+```python
+assert rep.status == "PASSED"
+```
+
+or explicitly reject every reported degradation:
+
+```python
+assert rep.degradations() == []
+```
+
+This is the current integration rule; it does not replace a future, clearer
+core-level quality-gate API.
+
 ## UiDriver Rendered-Object Contract
 
 `UiResult.rendered` is a partial mapping from anchors to business objects. Each

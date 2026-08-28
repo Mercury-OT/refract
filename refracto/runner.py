@@ -57,6 +57,9 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         raise ValueError(f"unknown projection(s): {sorted(unknown)}; valid: {sorted(_VALID_PROJECTIONS)}")
     if adapters.normalizer is None:
         raise ValueError("adapters.normalizer is required (a ResponseNormalizer)")
+    if adapters.ui is None and any(p in projections for p in ("frontend", "e2e")):
+        raise ValueError(
+            "frontend/e2e projection requested but no UiDriver was provided")
     # The contract projection diffs the declaration against recordings the backend
     # projection produces. Refuse the combination up front rather than quietly
     # running a real backend to manufacture them: a caller who asked for contract
