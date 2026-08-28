@@ -33,17 +33,64 @@ def build_mock(scenario, normalizer) -> dict:
     return mocks
 
 
-def _eval_frontend(assertion, rendered):
+def _objects_at(rendered, anchor):
+    anchor_result = rendered.get(anchor, {})
+    identified = anchor_result.get("identified", [])
+    anonymous = anchor_result.get("anonymous", [])
+    return identified, anonymous
+
+
+def _eval_frontend(assertion, rendered, bound_values=None, inputs=None):
     anchor = assertion.params["anchor"]
-    r = rendered.get(anchor, {})
+    identified, anonymous = _objects_at(rendered, anchor)
+    count = len(identified) + len(anonymous)
     if assertion.check == "visible":
-        ok = bool(r.get("visible"))
+        ok = count > 0
         return CheckResult("frontend", "visible", ok, "" if ok else f"{anchor} not visible")
     if assertion.check == "count_gt":
         n = assertion.params["n"]
-        ok = r.get("count", 0) > n
+        ok = count > n
         return CheckResult("frontend", "count_gt", ok,
-                           "" if ok else f"{anchor} count {r.get('count',0)} !> {n}")
+                           "" if ok else f"{anchor} count {count} !> {n}")
+    if assertion.check == "object_field_equals":
+        object_id, id_error = values.resolve(
+            assertion.params["id"], bound_values=bound_values, inputs=inputs)
+        if id_error is not None:
+            return CheckResult("frontend", "object_field_equals", False, id_error)
+        target = next((
+            obj for obj in identified
+            if values.equal(obj.get("id"), object_id)
+        ), None)
+        if target is None:
+            return CheckResult(
+                "frontend", "object_field_equals", False,
+                f"no identified object id={object_id!r} at anchor {anchor!r}")
+        expected, value_error = values.resolve(
+            assertion.params["value"], bound_values=bound_values, inputs=inputs)
+        if value_error is not None:
+            return CheckResult("frontend", "object_field_equals", False, value_error)
+        fields = target["fields"]
+        present = assertion.params["field"] in fields
+        observed = fields.get(assertion.params["field"])
+        ok = present and values.equal(observed, expected)
+        if ok:
+            detail = ""
+        elif present:
+            detail = (
+                f"id={object_id!r} field={assertion.params['field']!r} "
+                f"expected={expected!r} observed={observed!r}"
+            )
+        else:
+            detail = (
+                f"id={object_id!r} field={assertion.params['field']!r} "
+                f"expected={expected!r} observed=<missing>"
+            )
+        return CheckResult("frontend", "object_field_equals", ok, detail)
+    if assertion.check == "no_anonymous":
+        ok = not anonymous
+        return CheckResult(
+            "frontend", "no_anonymous", ok,
+            "" if ok else f"anchor {anchor!r} has {len(anonymous)} anonymous object(s)")
     return CheckResult("frontend", assertion.check, False, "unknown frontend check")
 
 
@@ -61,7 +108,10 @@ def run(scenario, *, ui, normalizer, auth=None):
     session = auth.session(scenario.actor) if auth else None
     mock = build_mock(scenario, normalizer)
     result = ui.run_intent(scenario, session, mock)
-    checks = [_eval_frontend(a, result.rendered) for a in step.expect.frontend]
+    checks = [
+        _eval_frontend(a, result.rendered, inputs=scenario.inputs)
+        for a in step.expect.frontend
+    ]
     if step.request is not None:
         checks.append(_eval_request_shape(step.request, result.outgoing))
     for c in checks:

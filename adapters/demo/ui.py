@@ -7,6 +7,7 @@ single list refresh cycle. It supports two modes:
 * live mode: drive the real app once, inject `traceparent`, and record the
   correlated network responses for e2e evaluation
 """
+import json
 import os
 
 from playwright.sync_api import sync_playwright
@@ -38,6 +39,11 @@ class DemoUiDriver(ports.UiDriver):
 
     def run_intent(self, scenario, session, mock) -> ports.UiResult:
         step = scenario.steps[0]
+        object_id = next(
+            (item.value for item in scenario.inputs if item.kind == "item_id"),
+            _ITEM_NAME,
+        )
+        object_id = str(object_id)
         declared = [(step.request.method, step.request.path)] if step.request is not None else []
         outgoing, recorded, injected = [], [], {}
         pending_responses = []
@@ -47,13 +53,15 @@ class DemoUiDriver(ports.UiDriver):
             try:
                 context = browser.new_context()
                 page = context.new_page()
-                self._install_routes(page, declared, mock, outgoing, injected)
+                self._install_routes(
+                    page, declared, mock, outgoing, injected, object_id
+                )
                 if mock is None:
                     page.on(
                         "response",
                         lambda r: pending_responses.append(r) if id(r.request) in injected else None,
                     )
-                self._run_flow(page)
+                self._run_flow(page, object_id)
                 rendered = self._read_rendered(page)
                 for resp in pending_responses:
                     recorded.append(self._to_recorded(resp, injected))
@@ -63,10 +71,17 @@ class DemoUiDriver(ports.UiDriver):
                 browser.close()
         return ports.UiResult(rendered=rendered, outgoing=outgoing, recorded=recorded)
 
-    def _run_flow(self, page):
+    def _run_flow(self, page, object_id):
         page.goto(f"{self._config.base_url}/", wait_until="networkidle", timeout=30000)
-        _testid(page, "item-name").fill(_ITEM_NAME)
+        _testid(page, "item-name").fill(object_id)
         _testid(page, "create-btn").click()
+        page.wait_for_function(
+            """objectId => Array.from(
+                document.querySelectorAll('[data-testid="item-row"]')
+            ).some(row => row.getAttribute('data-object-id') === objectId)""",
+            arg=object_id,
+            timeout=30000,
+        )
 
     def _read_rendered(self, page):
         loc = _testid(page, "item-row")
@@ -74,11 +89,30 @@ class DemoUiDriver(ports.UiDriver):
             loc.first.wait_for(state="visible", timeout=30000)
         except Exception:
             pass
-        count = loc.count()
-        visible = count > 0 and loc.first.is_visible()
-        return {"item_row": {"visible": visible, "count": count}}
+        identified, anonymous = [], []
+        for index in range(loc.count()):
+            row = loc.nth(index)
+            raw_fields = row.get_attribute("data-object-fields")
+            try:
+                fields = json.loads(raw_fields) if raw_fields is not None else {}
+            except (TypeError, json.JSONDecodeError):
+                fields = {}
+            if not isinstance(fields, dict):
+                fields = {}
+            object_id = row.get_attribute("data-object-id")
+            rendered_object = {"fields": fields}
+            if isinstance(object_id, str) and object_id:
+                identified.append({"id": object_id, **rendered_object})
+            else:
+                anonymous.append(rendered_object)
+        return {
+            "item_row": {
+                "identified": identified,
+                "anonymous": anonymous,
+            },
+        }
 
-    def _install_routes(self, page, declared, mock, outgoing, injected):
+    def _install_routes(self, page, declared, mock, outgoing, injected, object_id):
         base = self._config.base_url
         if mock is not None:
             def handle(route):
@@ -90,7 +124,7 @@ class DemoUiDriver(ports.UiDriver):
                     outgoing.append(ports.RequestSpec(method=method, path=path, body=_safe_json(req)))
                     route.fulfill(json=mock[key])
                     return
-                overlay = self._mock_overlay(method, path)
+                overlay = self._mock_overlay(method, path, object_id)
                 if overlay is not None:
                     route.fulfill(json=overlay)
                     return
@@ -136,11 +170,11 @@ class DemoUiDriver(ports.UiDriver):
             request=spec,
         )
 
-    def _mock_overlay(self, method, path):
+    def _mock_overlay(self, method, path, object_id):
         if method == "GET" and path == "items":
             return {
                 "success": True,
                 "error": None,
-                "data": {"items": [{"id": 1, "name": _ITEM_NAME, "count": 3}]},
+                "data": {"items": [{"id": 1, "name": object_id, "count": 3}]},
             }
         return None

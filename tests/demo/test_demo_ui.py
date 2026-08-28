@@ -29,7 +29,7 @@ pytest.importorskip("playwright")  # skip cleanly (not abort collection) without
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 from refracto.declaration.model import (  # noqa: E402
-    Assertion, Expect, Grid, Input, RequestTemplate, Scenario, Step,
+    Assertion, Expect, Grid, Input, RequestTemplate, Scenario, Step, ValueRef,
 )
 from refracto.projection import e2e as e2e_proj  # noqa: E402
 from refracto.projection import frontend as frontend_proj  # noqa: E402
@@ -58,7 +58,7 @@ def _frontend_scenario() -> Scenario:
         grid=Grid(level="smoke", module="demo"),
         actor="tester",
         precondition=[],
-        inputs=[],
+        inputs=[Input(kind="item_id", value="ui-target")],
         intent="create an item via the UI and see it rendered",
         steps=[Step(
             id="main",
@@ -67,6 +67,13 @@ def _frontend_scenario() -> Scenario:
                 frontend=[
                     Assertion(check="visible", params={"anchor": "item_row"}),
                     Assertion(check="count_gt", params={"anchor": "item_row", "n": 0}),
+                    Assertion(check="object_field_equals", params={
+                        "anchor": "item_row",
+                        "id": ValueRef(source="input", key="item_id"),
+                        "field": "name",
+                        "value": ValueRef(source="input", key="item_id"),
+                    }),
+                    Assertion(check="no_anonymous", params={"anchor": "item_row"}),
                 ],
             ),
         )],
@@ -79,7 +86,10 @@ def _e2e_scenario() -> Scenario:
         grid=Grid(level="smoke", module="demo"),
         actor="tester",
         precondition=[],
-        inputs=[Input(kind="rows", value=3)],
+        inputs=[
+            Input(kind="rows", value=3),
+            Input(kind="item_id", value="ui-target"),
+        ],
         intent="create an item via the UI and observe its item.create span, single drive",
         steps=[Step(
             id="main",
@@ -88,6 +98,13 @@ def _e2e_scenario() -> Scenario:
                 frontend=[
                     Assertion(check="visible", params={"anchor": "item_row"}),
                     Assertion(check="count_gt", params={"anchor": "item_row", "n": 0}),
+                    Assertion(check="object_field_equals", params={
+                        "anchor": "item_row",
+                        "id": ValueRef(source="input", key="item_id"),
+                        "field": "count",
+                        "value": ValueRef(source="input", key="rows"),
+                    }),
+                    Assertion(check="no_anonymous", params={"anchor": "item_row"}),
                 ],
                 response=[Assertion(check="success")],
                 backend_state=[
@@ -111,6 +128,8 @@ def test_frontend_projection_green_mock_mode(_chromium_available, demo_server):
     assert res.passed, failures
     assert any(c.check == "visible" and c.ok for c in res.checks)
     assert any(c.check == "count_gt" and c.ok for c in res.checks)
+    assert any(c.check == "object_field_equals" and c.ok for c in res.checks)
+    assert any(c.check == "no_anonymous" and c.ok for c in res.checks)
     assert any(c.check == "request" and c.ok for c in res.checks)
 
 
@@ -132,6 +151,8 @@ def test_e2e_projection_green_single_drive(_chromium_available, demo_server):
     assert res.passed, failures
     # all four observation points present and green, from ONE ui.run_intent call
     assert any(c.point == "frontend" and c.ok for c in res.checks)
+    assert any(c.check == "object_field_equals" and c.ok for c in res.checks)
+    assert any(c.check == "no_anonymous" and c.ok for c in res.checks)
     assert any(c.point == "request" and c.ok for c in res.checks)
     assert any(c.point == "response" and c.ok for c in res.checks)
     assert any(c.point == "backend_state" and c.check == "span_exists" and c.ok for c in res.checks)

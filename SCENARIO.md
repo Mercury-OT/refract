@@ -67,6 +67,25 @@ For v1, `request` also appears under `expect`. For v2, request ownership is carr
 |---|---|
 | `visible` | `anchor` |
 | `count_gt` | `anchor`, `n` |
+| `object_field_equals` | `anchor`, `id`, `field`, `value` |
+| `no_anonymous` | `anchor` |
+
+`object_field_equals` selects one identified business object at `anchor` and
+compares one of its fields with exact type and value equality. Its `id` must be
+one of these data-only references; a literal id is rejected during scenario
+loading:
+
+* `{from_input: key}` — exactly one top-level input with that key
+* `{from_bind: key}` — a binding declared by the current step
+
+Its `value` may be a YAML/JSON scalar literal or either reference form above.
+`no_anonymous` requires the anchor to contain no rendered objects whose business
+identity could not be determined.
+
+`visible` and `count_gt` retain their existing meanings. Their count is the
+total number of identified and anonymous objects at the anchor, and `visible`
+is true when that total is greater than zero. The e2e projection uses the same
+frontend evaluation rules.
 
 ### request
 
@@ -135,6 +154,10 @@ soon as the field appears.
 * blocked later steps become `BLOCKED`
 * step status is first-class
 
+The frontend and e2e projections currently support single-step scenarios only.
+A multi-step frontend or e2e scenario is reported as unsupported rather than
+partially executed.
+
 Possible step outcomes include:
 
 * `PASSED`
@@ -142,6 +165,39 @@ Possible step outcomes include:
 * `SKIPPED`
 * `BLOCKED`
 * `ERROR`
+
+## UiDriver Rendered-Object Contract
+
+`UiResult.rendered` is a partial mapping from anchors to business objects. Each
+anchor has this shape:
+
+```python
+{
+    "identified": [
+        {"id": "business-id", "fields": {"name": "example", "count": 3}},
+    ],
+    "anonymous": [
+        {"fields": {"name": "unidentified"}},
+    ],
+}
+```
+
+The rules are:
+
+* every `identified` entry has a non-empty string `id` and a `fields` mapping;
+* every `anonymous` entry has only a `fields` mapping and no `id` key;
+* both lists may be empty;
+* field names are opaque to the core and field values are JSON scalars;
+* adapters must retain unidentified objects in `anonymous` rather than dropping
+  them.
+
+The adapter owns translation from the product surface to business ids and
+scalar fields. Refract's core neither interprets field-name semantics nor
+receives product-specific location concepts.
+
+This structure replaces the earlier per-anchor `{visible, count, text}` shape
+and is a breaking `UiDriver` port-contract change. Third-party UI adapters must
+be updated before using this version.
 
 ## Contract Projection Identity
 

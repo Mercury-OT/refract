@@ -166,6 +166,8 @@ _INDEX_HTML = """<!doctype html>
       for (const item of body.data.items) {
         const li = document.createElement('li');
         li.setAttribute('data-testid', 'item-row');
+        li.setAttribute('data-object-id', item.name);
+        li.setAttribute('data-object-fields', JSON.stringify({name: item.name, count: item.count}));
         li.textContent = item.name + ' (' + item.count + ')';
         ul.appendChild(li);
       }

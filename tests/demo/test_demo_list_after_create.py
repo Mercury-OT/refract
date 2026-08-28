@@ -33,10 +33,14 @@ def test_demo_item_list_after_create_frontend_domain_green(_chromium_available, 
     fe = by_projection["frontend"]
     assert any(c.check == "visible" and c.ok for c in fe.checks)
     assert any(c.check == "count_gt" and c.ok for c in fe.checks)
+    assert any(c.check == "object_field_equals" and c.ok for c in fe.checks)
+    assert any(c.check == "no_anonymous" and c.ok for c in fe.checks)
     assert any(c.point == "request" and c.ok for c in fe.checks)
 
     e2e = by_projection["e2e"]
     assert any(c.point == "frontend" and c.ok for c in e2e.checks)
+    assert any(c.check == "object_field_equals" and c.ok for c in e2e.checks)
+    assert any(c.check == "no_anonymous" and c.ok for c in e2e.checks)
     assert any(c.point == "request" and c.ok for c in e2e.checks)
     # Frontend-only scenario: no backend_state is declared, so nothing should be skipped
     assert e2e.skipped == []

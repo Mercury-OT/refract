@@ -12,6 +12,8 @@ _TERMS = {
     "frontend": {
         "visible": ("anchor",),
         "count_gt": ("anchor", "n"),
+        "object_field_equals": ("anchor", "id", "field", "value"),
+        "no_anonymous": ("anchor",),
     },
     "request": {
         # Optional key `async` names a response field carrying an async handle.

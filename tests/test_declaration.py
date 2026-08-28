@@ -1031,3 +1031,93 @@ def test_field_equals_duplicate_constraint_for_field_rejected(tmp_path):
     with pytest.raises(DeclarationError) as exc_info:
         load_scenario(str(bad))
     assert "duplicate field_equals" in str(exc_info.value)
+
+
+# --- Frontend object identity assertions -----------------------------------
+
+def test_object_field_equals_from_input_references_parse(tmp_path):
+    good = tmp_path / "good.yaml"
+    good.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{item_id: '42'}, {expected_name: target}]\n"
+        "expect:\n  frontend:\n"
+        "    - {check: object_field_equals, anchor: item_row, "
+        "id: {from_input: item_id}, field: name, "
+        "value: {from_input: expected_name}}\n",
+        encoding="utf-8")
+
+    scenario = load_scenario(str(good))
+
+    assertion = scenario.steps[0].expect.frontend[0]
+    assert assertion.params["id"] == model.ValueRef(source="input", key="item_id")
+    assert assertion.params["value"] == model.ValueRef(source="input", key="expected_name")
+
+
+def test_object_field_equals_from_bind_parses_and_counts_as_bind_use(tmp_path):
+    good = tmp_path / "good.yaml"
+    good.write_text(
+        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "steps:\n"
+        "  - id: create\n"
+        "    request: {method: POST, path: items}\n"
+        "    expect:\n      response:\n        - {check: has, field: itemId}\n"
+        "  - id: inspect\n"
+        "    request: {method: GET, path: items}\n"
+        "    bind: {itemId: {from: create, field: itemId}}\n"
+        "    expect:\n      frontend:\n"
+        "        - {check: object_field_equals, anchor: item_row, "
+        "id: {from_bind: itemId}, field: state, value: ready}\n",
+        encoding="utf-8")
+
+    scenario = load_scenario(str(good))
+
+    assertion = scenario.steps[1].expect.frontend[0]
+    assert assertion.params["id"] == model.ValueRef(source="bind", key="itemId")
+
+
+def test_object_field_equals_literal_id_rejected_at_load(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "expect:\n  frontend:\n"
+        "    - {check: object_field_equals, anchor: item_row, "
+        "id: '42', field: name, value: target}\n",
+        encoding="utf-8")
+
+    with pytest.raises(DeclarationError) as exc_info:
+        load_scenario(str(bad))
+    assert "'id' must be a value reference" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("param", ["anchor", "field"])
+def test_object_field_equals_requires_nonempty_names(tmp_path, param):
+    values = {"anchor": "item_row", "field": "name"}
+    values[param] = ""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{item_id: '42'}]\n"
+        "expect:\n  frontend:\n"
+        "    - {check: object_field_equals, "
+        f"anchor: '{values['anchor']}', id: {{from_input: item_id}}, "
+        f"field: '{values['field']}', value: target}}\n",
+        encoding="utf-8")
+
+    with pytest.raises(DeclarationError) as exc_info:
+        load_scenario(str(bad))
+    assert f"'{param}' must be a non-empty string" in str(exc_info.value)
+
+
+def test_object_field_equals_rejects_non_scalar_value(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "inputs: [{item_id: '42'}]\n"
+        "expect:\n  frontend:\n"
+        "    - {check: object_field_equals, anchor: item_row, "
+        "id: {from_input: item_id}, field: name, value: [target]}\n",
+        encoding="utf-8")
+
+    with pytest.raises(DeclarationError) as exc_info:
+        load_scenario(str(bad))
+    assert "scalar or a value reference" in str(exc_info.value)

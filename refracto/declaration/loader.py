@@ -121,6 +121,10 @@ def _is_number(v) -> bool:
     return isinstance(v, numbers.Real) and not isinstance(v, bool)
 
 
+def _is_json_scalar(value) -> bool:
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
 def _parse_value_ref(raw, where: str):
     """Recognize a data-only value reference `{<source_tag>: <key>}`.
 
@@ -168,6 +172,33 @@ def _validate_param_values(point: str, check: str, params: dict) -> None:
         if op in vocab.ORDERING_OPS and not _is_number(params.get("value")):
             raise DeclarationError(
                 f"{point}.span_attr: 'value' must be a number for op {op!r}, got {params.get('value')!r}")
+    if check == "object_field_equals":
+        for name in ("anchor", "field"):
+            value = params.get(name)
+            if not isinstance(value, str) or not value.strip():
+                raise DeclarationError(
+                    f"{point}.object_field_equals: {name!r} must be a non-empty string, "
+                    f"got {value!r}")
+        identity = _parse_value_ref(
+            params.get("id"), f"{point}.object_field_equals.id")
+        if identity is None:
+            raise DeclarationError(
+                f"{point}.object_field_equals: 'id' must be a value reference, "
+                f"got {params.get('id')!r}")
+        params["id"] = identity
+        expected = _parse_value_ref(
+            params.get("value"), f"{point}.object_field_equals.value")
+        if expected is not None:
+            params["value"] = expected
+        elif not _is_json_scalar(params.get("value")):
+            raise DeclarationError(
+                f"{point}.object_field_equals: 'value' must be a JSON scalar or a "
+                f"value reference, got {params.get('value')!r}")
+    if check == "no_anonymous":
+        anchor = params.get("anchor")
+        if not isinstance(anchor, str) or not anchor.strip():
+            raise DeclarationError(
+                f"{point}.no_anonymous: 'anchor' must be a non-empty string, got {anchor!r}")
     if check == "field_equals":
         field = params.get("field")
         if not isinstance(field, str) or not field.strip():
@@ -178,7 +209,7 @@ def _validate_param_values(point: str, check: str, params: dict) -> None:
             params["value"] = ref
             return
         value = params.get("value")
-        if value is not None and not isinstance(value, (str, int, float, bool)):
+        if not _is_json_scalar(value):
             raise DeclarationError(
                 f"{point}.field_equals: 'value' must be a JSON scalar or a value reference, "
                 f"got {value!r}")
@@ -304,6 +335,18 @@ def _build_expect(raw_expect, allowed_points, where: str) -> Expect:
 def _validate_value_refs(expect, bound_placeholders, input_counts, where: str) -> set:
     """Validate reference scope and return bindings consumed by assertions."""
     references = []
+    for assertion in expect.frontend:
+        if assertion.check == "object_field_equals":
+            references.extend((
+                (
+                    f"{where}.expect.frontend.object_field_equals.id",
+                    assertion.params.get("id"),
+                ),
+                (
+                    f"{where}.expect.frontend.object_field_equals.value",
+                    assertion.params.get("value"),
+                ),
+            ))
     for assertion in expect.response:
         if assertion.check == "field_equals":
             references.append((

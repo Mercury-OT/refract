@@ -30,7 +30,10 @@ def run(scenario, *, auth, ui, state, recorder, normalizer, resolve_precondition
     for r in result.recorded:
         recorder.record(r)
 
-    checks = [_eval_frontend(a, result.rendered) for a in step.expect.frontend]
+    checks = [
+        _eval_frontend(a, result.rendered, inputs=scenario.inputs)
+        for a in step.expect.frontend
+    ]
     if step.request is not None:
         checks.append(_eval_request_shape(step.request, result.outgoing))
 

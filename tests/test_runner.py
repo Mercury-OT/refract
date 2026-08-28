@@ -25,7 +25,15 @@ def _adapters():
         trace_id="abc",
         request=rec_spec,
     )
-    ui = FakeUi(rendered={"result_row": {"visible": True, "count": 2}},
+    ui = FakeUi(rendered={
+                    "result_row": {
+                        "identified": [
+                            {"id": "1", "fields": {}},
+                            {"id": "2", "fields": {}},
+                        ],
+                        "anonymous": [],
+                    },
+                },
                 outgoing=[rec_spec], recorded=[rec_resp])
     return runner.Adapters(
         auth=FakeAuth(),

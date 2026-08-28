@@ -1,10 +1,22 @@
 from refracto.projection import e2e, contract as contract_proj
 from refracto.declaration.loader import load_scenario
-from refracto.declaration.model import Scenario, Grid, Expect, Assertion, Step, RequestTemplate
+from refracto.declaration.model import Scenario, Grid, Input, Expect, Assertion, Step, RequestTemplate, ValueRef
 from refracto.runner import PollConfig
 from refracto import ports
 from refracto.report import DEGRADED
 from tests.fakes import FakeAuth, FakeStateProbe, FakeRecorder, FakeUi, FakeNormalizer
+
+
+def _rendered_rows(count=2):
+    return {
+        "result_row": {
+            "identified": [
+                {"id": str(index), "fields": {}}
+                for index in range(1, count + 1)
+            ],
+            "anonymous": [],
+        },
+    }
 
 class FakeClock:
     def __init__(self): self.t = 0.0
@@ -20,7 +32,7 @@ def _recorded_import(trace_id="abc"):
 def test_e2e_single_drive_four_points_green():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
     rec = _recorded_import()
-    ui = FakeUi(rendered={"result_row": {"visible": True, "count": 2}},
+    ui = FakeUi(rendered=_rendered_rows(),
                 outgoing=[rec.request], recorded=[rec])
     state = FakeStateProbe(spans_by_trace={"abc": [
         ports.Span("POST /resource/action"),
@@ -33,7 +45,7 @@ def test_e2e_single_drive_four_points_green():
 
 def test_e2e_response_fails_loudly_without_matching_ui_traffic():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
-    ui = FakeUi(rendered={"result_row": {"visible": True, "count": 2}},
+    ui = FakeUi(rendered=_rendered_rows(),
                 outgoing=[], recorded=[])
     res = e2e.run(s, auth=FakeAuth(), ui=ui, state=None, recorder=FakeRecorder(), normalizer=FakeNormalizer())
     assert not res.passed
@@ -66,11 +78,80 @@ def test_e2e_field_equals_resolves_scenario_input_and_reports_drift(tmp_path):
     assert not check.ok
     assert "field='count' expected=3 observed=4" in check.detail
 
+
+def test_e2e_reuses_frontend_object_identity_and_anonymous_assertions():
+    spec = ports.RequestSpec(method="GET", path="items")
+    scenario = Scenario(
+        id="e2e_object_identity",
+        grid=Grid("smoke", "generic"),
+        actor="actor1",
+        precondition=[],
+        inputs=[Input(kind="item_id", value="42")],
+        intent="",
+        steps=[Step(
+            id="main",
+            request=RequestTemplate(method="GET", path="items"),
+            expect=Expect(frontend=[
+                Assertion(check="object_field_equals", params={
+                    "anchor": "item_row",
+                    "id": ValueRef(source="input", key="item_id"),
+                    "field": "state",
+                    "value": "ready",
+                }),
+                Assertion(check="no_anonymous", params={"anchor": "item_row"}),
+            ]),
+        )],
+    )
+    ui = FakeUi(
+        rendered={
+            "item_row": {
+                "identified": [{"id": "42", "fields": {"state": "ready"}}],
+                "anonymous": [],
+            },
+        },
+        outgoing=[spec],
+    )
+
+    result = e2e.run(
+        scenario,
+        auth=FakeAuth(),
+        ui=ui,
+        state=None,
+        recorder=FakeRecorder(),
+        normalizer=FakeNormalizer(),
+    )
+
+    assert result.passed
+    assert any(c.check == "object_field_equals" and c.ok for c in result.checks)
+    assert any(c.check == "no_anonymous" and c.ok for c in result.checks)
+
+    drifted_ui = FakeUi(
+        rendered={
+            "item_row": {
+                "identified": [{"id": "42", "fields": {"state": "running"}}],
+                "anonymous": [{"fields": {"state": "ghost"}}],
+            },
+        },
+        outgoing=[spec],
+    )
+    drifted = e2e.run(
+        scenario,
+        auth=FakeAuth(),
+        ui=drifted_ui,
+        state=None,
+        recorder=FakeRecorder(),
+        normalizer=FakeNormalizer(),
+    )
+
+    assert not drifted.passed
+    assert any(c.check == "object_field_equals" and not c.ok for c in drifted.checks)
+    assert any(c.check == "no_anonymous" and not c.ok for c in drifted.checks)
+
 def test_e2e_backend_state_from_ui_trace_id():
     """the trace id asserted against Tempo must be the one captured from UI traffic."""
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
     rec = _recorded_import(trace_id="feed")
-    ui = FakeUi(rendered={"result_row": {"visible": True, "count": 2}},
+    ui = FakeUi(rendered=_rendered_rows(),
                 outgoing=[rec.request], recorded=[rec])
     observed = []
     state = FakeStateProbe(spans_by_trace={"feed": [
@@ -90,7 +171,7 @@ def test_e2e_backend_state_no_trace_id_when_recorded_lacks_one():
                              traceparent="00-abc-def-01")
     rec = ports.RecordedResponse(status=200, headers={}, text="",
         json={"success": True, "data": {"taskId": "T1"}}, trace_id=None, request=spec)
-    ui = FakeUi(rendered={"result_row": {"visible": True, "count": 2}},
+    ui = FakeUi(rendered=_rendered_rows(),
                 outgoing=[rec.request], recorded=[rec])
     state = FakeStateProbe(spans_by_trace={"abc": [
         ports.Span("POST /resource/action"),
@@ -127,7 +208,7 @@ def test_e2e_state_poll_uses_own_default_timeout_not_poll_config():
     """The e2e state wait uses its own default observation window rather than the business poll configuration. A small business poll timeout must not shorten backend-state observation."""
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
     rec = _recorded_import()
-    ui = FakeUi(rendered={"result_row": {"visible": True, "count": 2}},
+    ui = FakeUi(rendered=_rendered_rows(),
                 outgoing=[rec.request], recorded=[rec])
     clock = FakeClock()
     calls = {"n": 0}

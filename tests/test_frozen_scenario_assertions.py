@@ -53,6 +53,22 @@ def test_frozen_create_scenario_pins_the_exact_row_count_it_declares():
     )
 
 
+def test_frozen_create_scenario_anchors_frontend_assertion_to_declared_identity():
+    scenario = load_scenario(CREATE_PATH)
+    identity_assertions = [
+        assertion
+        for step in scenario.steps
+        for assertion in step.expect.frontend
+        if assertion.check == "object_field_equals"
+    ]
+
+    assert identity_assertions
+    assert any(
+        isinstance(assertion.params["id"], ValueRef)
+        for assertion in identity_assertions
+    )
+
+
 def test_frozen_delete_scenario_pins_the_remaining_count_derived_from_its_inputs():
     """demo_item_delete's item.delete span must pin the exact remaining count, and that
     count must be derivable from the scenario's own declaration.

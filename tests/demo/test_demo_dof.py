@@ -62,6 +62,8 @@ def test_demo_item_create_all_four_projections_green(_chromium_available, demo_s
     frontend = by_projection["frontend"]
     assert any(c.check == "visible" and c.ok for c in frontend.checks)
     assert any(c.check == "count_gt" and c.ok for c in frontend.checks)
+    assert any(c.check == "object_field_equals" and c.ok for c in frontend.checks)
+    assert any(c.check == "no_anonymous" and c.ok for c in frontend.checks)
 
     e2e = by_projection["e2e"]
     assert any(c.point == "frontend" and c.ok for c in e2e.checks)

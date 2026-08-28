@@ -6,6 +6,24 @@ these neutral structures.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TypeAlias, TypedDict
+
+
+JsonScalar: TypeAlias = str | int | float | bool | None
+
+
+class IdentifiedUiObject(TypedDict):
+    id: str
+    fields: dict[str, JsonScalar]
+
+
+class AnonymousUiObject(TypedDict):
+    fields: dict[str, JsonScalar]
+
+
+class RenderedAnchor(TypedDict):
+    identified: list[IdentifiedUiObject]
+    anonymous: list[AnonymousUiObject]
 
 
 @dataclass
@@ -55,7 +73,8 @@ class NormalizedResponse:
 
 @dataclass
 class UiResult:
-    rendered: dict = field(default_factory=dict)    # anchor -> {visible, count, text}
+    # anchor -> a partial mapping of identified and anonymous rendered objects
+    rendered: dict[str, RenderedAnchor] = field(default_factory=dict)
     outgoing: list = field(default_factory=list)    # list[RequestSpec] sent by the UI
     recorded: list = field(default_factory=list)    # list[RecordedResponse] captured from UI traffic
 
