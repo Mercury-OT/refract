@@ -37,6 +37,8 @@ This repository contains:
 
 * the core package `refracto`
 * the public scenario contract in `SCENARIO.md`
+* the minimal integration guide in `docs/onboarding.md`
+* a dependency-free clean-room example in `examples/minimal/`
 * a reference demo adapter set in `adapters/demo/`
 * a self-contained demo application in `examples/demo-app/`
 * demo scenarios in `scenarios/`
@@ -96,6 +98,11 @@ MANIFESTO.md         project philosophy and beliefs
 ## Contract
 
 See [`SCENARIO.md`](SCENARIO.md) for the public scenario contract.
+
+## Onboarding
+
+See [`docs/onboarding.md`](docs/onboarding.md) for a CI-tested minimal
+request/response integration.
 
 ## Philosophy
 

@@ -1,0 +1,28 @@
+version: 2
+scenario: minimal.create_and_delete
+grid: {level: smoke, module: minimal}
+actor: reader
+precondition: []
+inputs:
+  - {item_name: sample-item}
+intent: Create a generic record and then delete it through an empty 204 response.
+steps:
+  - id: create
+    request:
+      method: POST
+      path: records
+      body: {name: sample-item}
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: id}
+        - {check: field_equals, field: name, value: {from_input: item_name}}
+  - id: delete
+    request:
+      method: DELETE
+      path: records/{item_id}
+    bind:
+      item_id: {from: create, field: id}
+    expect:
+      response:
+        - {check: success}
