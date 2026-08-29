@@ -70,8 +70,10 @@ part of the scenario first.
 ## Strict quality gates
 
 Do not use `assert rep.passed` as a strict gate: `passed` deliberately includes
-`DEGRADED`. Use `status == "PASSED"`, or additionally require an empty degradation
-list. This runnable gate is copied directly from
+`DEGRADED`. The only strict gate is `rep.status == "PASSED"`. An empty
+`rep.degradations()` is a useful supplementary observation, but it must not be
+used as a gate on its own: `EMPTY` and `NOT_SELECTED` reports also have no
+degradations. This runnable check is copied directly from
 [`examples/minimal/run_example.py`](../examples/minimal/run_example.py):
 
 ```python
@@ -87,6 +89,9 @@ def run():
     assert rep.degradations() == []
     return rep
 ```
+
+In that example, the status assertion is the gate. The degradation assertion is
+an additional confirmation that no skipped capability is hidden in the report.
 
 ## Honest boundary
 

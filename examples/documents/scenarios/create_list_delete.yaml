@@ -1,0 +1,44 @@
+version: 2
+scenario: documents.create_list_delete
+grid: {level: regression, module: documents}
+actor: editor
+precondition: []
+inputs:
+  - {document_title: field-notes}
+  - {filter_category: guide}
+  - {cursor: 0}
+  - {page_size: 1}
+intent: Create a server-identified document, find that exact document through a filtered page, and delete it.
+steps:
+  - id: create
+    request:
+      method: POST
+      path: documents
+      body: {title: field-notes, category: guide}
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: document_id}
+        - {check: field_equals, field: title, value: {from_input: document_title}}
+        - {check: field_equals, field: category, value: {from_input: filter_category}}
+  - id: list_filtered
+    request:
+      method: GET
+      path: documents/search
+    bind:
+      created_id: {from: create, field: document_id}
+    expect:
+      response:
+        - {check: success}
+        - {check: field_equals, field: returned, value: 1}
+        - {check: field_equals, field: document_id, value: {from_bind: created_id}}
+        - {check: field_equals, field: category, value: {from_input: filter_category}}
+  - id: delete
+    request:
+      method: DELETE
+      path: documents/{created_id}
+    bind:
+      created_id: {from: create, field: document_id}
+    expect:
+      response:
+        - {check: success}

@@ -183,6 +183,9 @@ def test_onboarding_states_strict_gate_and_request_response_boundary():
     guide = ONBOARDING_PATH.read_text(encoding="utf-8")
 
     assert "Do not use `assert rep.passed` as a strict gate" in guide
+    assert 'The only strict gate is `rep.status == "PASSED"`' in guide
+    assert "must not be\nused as a gate on its own" in guide
+    assert "`EMPTY` and `NOT_SELECTED`" in guide
     assert 'assert rep.status == "PASSED"' in guide
     assert "assert rep.degradations() == []" in guide
     assert "request/response-only integration" in guide
