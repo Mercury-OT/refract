@@ -13,4 +13,5 @@ steps:
       body: {title: blocked-note, category: restricted}
     expect:
       response:
+        - {check: failure}
         - {check: field_equals, field: error_code, value: category_not_allowed}

@@ -21,6 +21,14 @@ def _eval_response(assertion, norm, bound_values=None, inputs=None):
     if assertion.check == "success":
         ok = norm.succeeded
         return CheckResult("response", "success", ok, "" if ok else f"not succeeded (status {norm.status})")
+    if assertion.check == "failure":
+        ok = not norm.succeeded
+        return CheckResult(
+            "response",
+            "failure",
+            ok,
+            "" if ok else f"expected failure but succeeded (status {norm.status})",
+        )
     if assertion.check == "has":
         field = assertion.params["field"]
         present = field in norm.fields

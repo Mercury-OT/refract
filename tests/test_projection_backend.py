@@ -5,7 +5,7 @@ import pytest
 
 from refracto.projection import backend
 from refracto.declaration.loader import load_scenario
-from refracto.declaration.model import Scenario, Grid, Expect, Assertion, Step
+from refracto.declaration.model import Scenario, Grid, Expect, Assertion, RequestTemplate, Step
 from refracto.runner import PollConfig
 from refracto import ports
 from refracto.report import DomainResult, PASSED, FAILED, SKIPPED, ERROR, BLOCKED, DEGRADED
@@ -40,6 +40,68 @@ def test_backend_all_green():
     assert any(c.check == "success" and c.ok for c in res.checks)
     assert any(c.check == "has" and c.ok for c in res.checks)
     assert sum(1 for c in res.checks if c.check == "span_exists" and c.ok) == 2
+
+
+def _scenario_requiring_failure():
+    return Scenario(
+        id="test_failure",
+        grid=Grid("regression", "generic"),
+        actor="actor1",
+        precondition=[],
+        inputs=[],
+        intent="require rejection",
+        steps=[Step(
+            id="reject",
+            request=RequestTemplate(method="POST", path="operation"),
+            expect=Expect(response=[Assertion("failure", {})]),
+        )],
+    )
+
+
+def test_failure_assertion_passes_for_failed_response():
+    api = FakeApi(responses={
+        ("POST", "operation"): {
+            "status": 422,
+            "json": {"success": False, "error": "rejected"},
+        },
+    })
+
+    res = backend.run(
+        _scenario_requiring_failure(),
+        auth=FakeAuth(),
+        api=api,
+        state=None,
+        recorder=FakeRecorder(),
+        resolve_request=_resolver,
+        normalizer=FakeNormalizer(),
+    )
+
+    assert res.status == PASSED
+    assert any(c.check == "failure" and c.ok for c in res.checks)
+
+
+def test_failure_assertion_fails_for_successful_response_with_clear_detail():
+    api = FakeApi(responses={
+        ("POST", "operation"): {
+            "status": 200,
+            "json": {"success": True, "data": {}},
+        },
+    })
+
+    res = backend.run(
+        _scenario_requiring_failure(),
+        auth=FakeAuth(),
+        api=api,
+        state=None,
+        recorder=FakeRecorder(),
+        resolve_request=_resolver,
+        normalizer=FakeNormalizer(),
+    )
+
+    assert res.status == FAILED
+    failure = next(c for c in res.checks if c.check == "failure")
+    assert failure.ok is False
+    assert "expected failure" in failure.detail
 
 def test_backend_response_fail_when_missing_field():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")

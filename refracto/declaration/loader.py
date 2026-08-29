@@ -322,6 +322,10 @@ def _build_expect(raw_expect, allowed_points, where: str) -> Expect:
         response=_parse_assertions("response", raw_expect.get("response")),
         backend_state=_parse_assertions("backend_state", raw_expect.get("backend_state")),
     )
+    response_checks = {assertion.check for assertion in expect.response}
+    if {"success", "failure"} <= response_checks:
+        raise DeclarationError(
+            f"{where}.response: 'success' and 'failure' are mutually exclusive")
     equal_fields = [
         a.params["field"] for a in expect.response if a.check == "field_equals"
     ]

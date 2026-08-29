@@ -7,6 +7,7 @@ def test_observation_points():
 
 def test_valid_terms_per_point():
     assert v.is_valid("response", "success")
+    assert v.is_valid("response", "failure")
     assert v.is_valid("response", "has")
     assert v.is_valid("response", "field_equals")
     assert v.is_valid("request", "request")
@@ -33,6 +34,10 @@ def test_field_equals_has_a_bounded_shape():
         "from_bind": "bind",
         "from_input": "input",
     }
+
+
+def test_failure_has_no_params():
+    assert v.required_params("response", "failure") == ()
 
 
 def test_frontend_identity_terms_have_bounded_shapes():

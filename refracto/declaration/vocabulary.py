@@ -22,6 +22,7 @@ _TERMS = {
     },
     "response": {
         "success": (),
+        "failure": (),
         "has": ("field",),
         "field_equals": ("field", "value"),
     },

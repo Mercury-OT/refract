@@ -1,3 +1,5 @@
+import pytest
+
 from refracto import ports
 from refracto.contract import store
 from refracto.declaration.loader import load_scenario
@@ -7,13 +9,22 @@ from refracto.report import FAILED, PASSED
 from tests.fakes import FakeNormalizer
 
 
-def _resp(method, path, status, data_fields, step_id=None, template_path=None, is_final=True):
+def _resp(
+    method,
+    path,
+    status,
+    data_fields,
+    step_id=None,
+    template_path=None,
+    is_final=True,
+    succeeded=True,
+):
     spec = ports.RequestSpec(method=method, path=path)
     return ports.RecordedResponse(
         status=status,
         headers={},
         text="",
-        json={"success": True, "data": {k: 1 for k in data_fields}},
+        json={"success": succeeded, "data": {k: 1 for k in data_fields}},
         trace_id=None,
         request=spec,
         step_id=step_id,
@@ -39,7 +50,7 @@ def test_consumer_from_scenario():
     c = store.consumer_contract(s)
     key = ("main", "POST", "resource/action")
     assert key in c.entries
-    assert c.entries[key].status_ok is True
+    assert c.entries[key].status_expectation == store.REQUIRES_SUCCESS
     assert "taskId" in c.entries[key].response_fields
 
 
@@ -58,10 +69,10 @@ def test_consumer_contract_one_entry_per_step():
     c = store.consumer_contract(s)
     assert len(c.entries) == 2
     create = c.entries[("create", "POST", "resource/action")]
-    assert create.status_ok is True
+    assert create.status_expectation == store.REQUIRES_SUCCESS
     assert "taskId" in create.response_fields
     verify = c.entries[("verify", "GET", "resource/status")]
-    assert verify.status_ok is False
+    assert verify.status_expectation == store.DONT_CARE
     assert "state" in verify.response_fields
 
 
@@ -69,8 +80,75 @@ def test_provider_from_recordings():
     recs = [_resp("POST", "resource/action", 200, ["taskId", "other"])]
     p = store.provider_contract(recs, FakeNormalizer())
     key = (None, "POST", "resource/action")
-    assert p.entries[key].status_ok is True
+    assert p.entries[key].succeeded is True
     assert "taskId" in p.entries[key].response_fields
+
+
+def _status_scenario(check=None):
+    response = [] if check is None else [Assertion(check=check)]
+    step = Step(
+        id="operate",
+        request=RequestTemplate(method="POST", path="operation"),
+        expect=Expect(response=response),
+    )
+    return _scenario([step])
+
+
+def _status_provider(*, succeeded):
+    recording = _resp(
+        "POST",
+        "operation",
+        200 if succeeded else 422,
+        [],
+        step_id="operate",
+        template_path="operation",
+        succeeded=succeeded,
+    )
+    return store.provider_contract([recording], FakeNormalizer())
+
+
+def test_consumer_contract_maps_failure_to_requires_failure():
+    consumer = store.consumer_contract(_status_scenario("failure"))
+
+    shape = consumer.entries[("operate", "POST", "operation")]
+    assert shape.status_expectation == store.REQUIRES_FAILURE
+
+
+def test_contract_requires_failure_rejects_successful_provider():
+    consumer = store.consumer_contract(_status_scenario("failure"))
+    provider = _status_provider(succeeded=True)
+
+    mismatches = store.diff(consumer, provider)
+
+    assert len(mismatches) == 1
+    assert "expected failure" in mismatches[0].note
+
+
+def test_contract_requires_failure_accepts_failed_provider():
+    consumer = store.consumer_contract(_status_scenario("failure"))
+    provider = _status_provider(succeeded=False)
+
+    assert store.diff(consumer, provider) == []
+
+
+def test_contract_requires_success_preserves_existing_mismatch_behavior():
+    consumer = store.consumer_contract(_status_scenario("success"))
+    provider = _status_provider(succeeded=False)
+
+    mismatches = store.diff(consumer, provider)
+
+    assert len(mismatches) == 1
+    assert mismatches[0].note == "status mismatch"
+
+
+@pytest.mark.parametrize("succeeded", [True, False])
+def test_contract_dont_care_ignores_provider_success_state(succeeded):
+    consumer = store.consumer_contract(_status_scenario())
+    provider = _status_provider(succeeded=succeeded)
+
+    shape = consumer.entries[("operate", "POST", "operation")]
+    assert shape.status_expectation == store.DONT_CARE
+    assert store.diff(consumer, provider) == []
 
 
 def test_diff_flags_missing_field():
