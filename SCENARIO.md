@@ -102,8 +102,16 @@ Optional v1 param:
 | check | params |
 |---|---|
 | `success` | none |
+| `failure` | none |
 | `has` | `field` |
 | `field_equals` | `field`, `value` |
+
+`success` requires the normalized response's success indicator to be true;
+`failure` is its exact opposite and requires that indicator to be false. A
+response expectation may declare either one, but not both: declaring `success`
+and `failure` in the same step is rejected when the scenario is loaded. A
+`failure` assertion is complete on its own and can also be combined with
+`field_equals` to require both rejection and the expected reason.
 
 `field_equals` requires the normalized response to contain `field` and for its
 value to equal the declared expected value with exact type and value equality.

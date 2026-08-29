@@ -6,15 +6,23 @@
   satisfied by the provider.
 """
 from dataclasses import dataclass, field
+from typing import Literal
 
 from refracto.declaration import values
+
+StatusExpectation = Literal["requires_success", "requires_failure", "dont_care"]
+
+REQUIRES_SUCCESS: StatusExpectation = "requires_success"
+REQUIRES_FAILURE: StatusExpectation = "requires_failure"
+DONT_CARE: StatusExpectation = "dont_care"
 
 
 @dataclass(frozen=True)
 class EndpointShape:
-    status_ok: bool
     response_fields: frozenset[str]
     response_values: dict = field(default_factory=dict)
+    status_expectation: StatusExpectation = DONT_CARE
+    succeeded: bool | None = None
 
 
 @dataclass
@@ -37,7 +45,8 @@ def consumer_contract(scenario) -> Contract:
     Each step contributes one entry keyed by
     `(step.id, step.request.method, step.request.path)`.
 
-    * `status_ok` comes from a declared `success` response assertion.
+    * `status_expectation` is derived from a declared `success` or `failure`
+      response assertion; without either assertion, status is not constrained.
     * `response_fields` comes from declared `has` and `field_equals` assertions.
     * `response_values` retains the value side of `field_equals` assertions.
     * A v1-normalized step with no request contributes no entry.
@@ -46,7 +55,13 @@ def consumer_contract(scenario) -> Contract:
     for step in scenario.steps:
         if step.request is None:
             continue
-        wants_success = any(a.check == "success" for a in step.expect.response)
+        response_checks = {a.check for a in step.expect.response}
+        if "success" in response_checks:
+            status_expectation = REQUIRES_SUCCESS
+        elif "failure" in response_checks:
+            status_expectation = REQUIRES_FAILURE
+        else:
+            status_expectation = DONT_CARE
         fields = frozenset(
             a.params["field"] for a in step.expect.response
             if a.check in ("has", "field_equals")
@@ -56,9 +71,9 @@ def consumer_contract(scenario) -> Contract:
             for a in step.expect.response if a.check == "field_equals"
         }
         entries[(step.id, step.request.method, step.request.path)] = EndpointShape(
-            status_ok=wants_success,
             response_fields=fields,
             response_values=response_values,
+            status_expectation=status_expectation,
         )
     return Contract(entries=entries)
 
@@ -81,9 +96,9 @@ def provider_contract(recordings, normalizer) -> Contract:
         step_id = getattr(r, "step_id", None)
         template = getattr(r, "template_path", None) or r.request.path
         entries[(step_id, r.request.method, template)] = EndpointShape(
-            status_ok=norm.succeeded,
             response_fields=frozenset(norm.fields.keys()),
             response_values=dict(norm.fields),
+            succeeded=norm.succeeded,
         )
     return Contract(entries=entries)
 
@@ -142,12 +157,16 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
             observed = have.response_values[field_name]
             if not values.equal(observed, expected):
                 wrong_values[field_name] = (expected, observed)
-        status_mismatch = want.status_ok and not have.status_ok
-        if missing or status_mismatch or wrong_values or value_errors:
+        status_note = ""
+        if want.status_expectation == REQUIRES_SUCCESS and not have.succeeded:
+            status_note = "status mismatch"
+        elif want.status_expectation == REQUIRES_FAILURE and have.succeeded:
+            status_note = "expected failure, provider succeeded"
+        if missing or status_note or wrong_values or value_errors:
             out.append(ContractMismatch(
                 endpoint=key,
                 missing_fields=missing,
-                note="status mismatch" if status_mismatch else "",
+                note=status_note,
                 wrong_values=wrong_values,
                 value_errors=value_errors,
             ))

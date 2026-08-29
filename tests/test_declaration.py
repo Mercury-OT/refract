@@ -931,6 +931,24 @@ def test_span_attr_from_bind_empty_key_rejected(tmp_path):
 
 # --- Response value assertions ---------------------------------------------
 
+def test_success_and_failure_are_mutually_exclusive_at_load(tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
+        "expect:\n  response:\n"
+        "    - {check: success}\n"
+        "    - {check: failure}\n",
+        encoding="utf-8")
+
+    with pytest.raises(DeclarationError) as exc_info:
+        load_scenario(str(bad))
+
+    message = str(exc_info.value)
+    assert "success" in message
+    assert "failure" in message
+    assert "mutually exclusive" in message
+
+
 def test_field_equals_literal_and_from_input_parse(tmp_path):
     good = tmp_path / "good.yaml"
     good.write_text(

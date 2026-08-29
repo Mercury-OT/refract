@@ -2,7 +2,7 @@ import inspect
 from pathlib import Path
 
 from refracto import ports, runner
-from refracto.report import PASSED
+from refracto.report import FAILED, PASSED
 
 from adapters.documents import api, auth, normalizer
 from adapters.documents.wiring import build_adapters
@@ -16,7 +16,7 @@ REJECTION_SCENARIO = DOCUMENTS_ROOT / "scenarios" / "rejected_create.yaml"
 
 
 class AcceptedRejectionApp(DocumentRestApp):
-    """A deliberate mutant proving the rejection outcome is not expressible."""
+    """A deliberate mutant that turns a declared rejection into acceptance."""
 
     def handle(self, method, path, body=None, headers=None):
         response = super().handle(method, path, body, headers)
@@ -50,7 +50,7 @@ def test_second_adapter_runs_server_id_filter_page_and_204_through_backend_contr
     assert app.request_count == 3
 
 
-def test_rejection_scenario_asserts_available_details_but_cannot_require_failure():
+def test_failure_assertion_kills_accepted_rejection_mutant_in_both_projections():
     rejected_adapters = build_adapters(DocumentRestApp())
     rejected_report = runner.run_scenario(
         REJECTION_SCENARIO,
@@ -61,6 +61,10 @@ def test_rejection_scenario_asserts_available_details_but_cannot_require_failure
 
     assert rejected_report.status == PASSED
     assert rejected_adapters.normalizer.normalize(rejected_recording).succeeded is False
+    assert {domain.projection: domain.status for domain in rejected_report.domains} == {
+        "backend": PASSED,
+        "contract": PASSED,
+    }
 
     accepted_adapters = build_adapters(AcceptedRejectionApp())
     accepted_report = runner.run_scenario(
@@ -71,7 +75,19 @@ def test_rejection_scenario_asserts_available_details_but_cannot_require_failure
     accepted_recording = accepted_report.domains[0].provider_recordings[0]
 
     assert accepted_adapters.normalizer.normalize(accepted_recording).succeeded is True
-    assert accepted_report.status == PASSED
+    assert accepted_report.status == FAILED
+    assert {domain.projection: domain.status for domain in accepted_report.domains} == {
+        "backend": FAILED,
+        "contract": FAILED,
+    }
+    failures = [
+        check.detail
+        for domain in accepted_report.domains
+        for check in domain.checks
+        if not check.ok
+    ]
+    assert len(failures) == 2
+    assert all("expected failure" in detail for detail in failures)
 
 
 def test_document_normalizer_treats_an_empty_204_as_success_with_no_fields():
