@@ -1,0 +1,16 @@
+version: 2
+scenario: documents.rejected_create
+grid: {level: regression, module: documents}
+actor: editor
+precondition: []
+inputs: []
+intent: Observe the declared business rejection details for a disallowed category.
+steps:
+  - id: rejected_create
+    request:
+      method: POST
+      path: documents
+      body: {title: blocked-note, category: restricted}
+    expect:
+      response:
+        - {check: field_equals, field: error_code, value: category_not_allowed}
