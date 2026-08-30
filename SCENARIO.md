@@ -181,17 +181,23 @@ When an optional port such as `StateProbe` is unavailable, the affected
 assertions are recorded as skipped, the report status is `DEGRADED`, and
 `rep.passed` may remain true.
 
-A strict quality gate should require either:
+A strict quality gate has one complete condition:
 
 ```python
 assert rep.status == "PASSED"
 ```
 
-or explicitly reject every reported degradation:
+An empty degradation list is useful as a supplementary diagnostic or an
+additional assertion:
 
 ```python
 assert rep.degradations() == []
 ```
+
+It must not be used as a gate on its own. A `FAILED`, `EMPTY`, or
+`NOT_SELECTED` report can also have no degradations. The status assertion is
+the gate; the degradation assertion only adds confirmation that no declared
+capability was skipped.
 
 This is the current integration rule; it does not replace a future, clearer
 core-level quality-gate API.
