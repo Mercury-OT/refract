@@ -25,6 +25,7 @@ _TERMS = {
         "failure": (),
         "has": ("field",),
         "field_equals": ("field", "value"),
+        "field_absent": ("field",),
     },
     "backend_state": {
         "span_exists": ("span",),
