@@ -23,6 +23,10 @@ class EndpointShape:
     response_values: dict = field(default_factory=dict)
     status_expectation: StatusExpectation = DONT_CARE
     succeeded: bool | None = None
+    forbidden_fields: frozenset[str] = field(
+        default_factory=frozenset,
+        kw_only=True,
+    )
 
 
 @dataclass
@@ -37,6 +41,10 @@ class ContractMismatch:
     note: str = ""
     wrong_values: dict = field(default_factory=dict)
     value_errors: dict = field(default_factory=dict)
+    unexpected_fields: frozenset[str] = field(
+        default_factory=frozenset,
+        kw_only=True,
+    )
 
 
 def consumer_contract(scenario) -> Contract:
@@ -49,6 +57,7 @@ def consumer_contract(scenario) -> Contract:
       response assertion; without either assertion, status is not constrained.
     * `response_fields` comes from declared `has` and `field_equals` assertions.
     * `response_values` retains the value side of `field_equals` assertions.
+    * `forbidden_fields` comes from declared `field_absent` assertions.
     * A v1-normalized step with no request contributes no entry.
     """
     entries = {}
@@ -70,10 +79,15 @@ def consumer_contract(scenario) -> Contract:
             a.params["field"]: a.params["value"]
             for a in step.expect.response if a.check == "field_equals"
         }
+        forbidden_fields = frozenset(
+            a.params["field"] for a in step.expect.response
+            if a.check == "field_absent"
+        )
         entries[(step.id, step.request.method, step.request.path)] = EndpointShape(
             response_fields=fields,
             response_values=response_values,
             status_expectation=status_expectation,
+            forbidden_fields=forbidden_fields,
         )
     return Contract(entries=entries)
 
@@ -137,6 +151,7 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
                                         note="endpoint not observed in provider recordings"))
             continue
         missing = want.response_fields - have.response_fields
+        unexpected = want.forbidden_fields & have.response_fields
         wrong_values = {}
         value_errors = {}
         step_id = key[0]
@@ -162,12 +177,13 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
             status_note = "status mismatch"
         elif want.status_expectation == REQUIRES_FAILURE and have.succeeded:
             status_note = "expected failure, provider succeeded"
-        if missing or status_note or wrong_values or value_errors:
+        if missing or unexpected or status_note or wrong_values or value_errors:
             out.append(ContractMismatch(
                 endpoint=key,
                 missing_fields=missing,
                 note=status_note,
                 wrong_values=wrong_values,
                 value_errors=value_errors,
+                unexpected_fields=unexpected,
             ))
     return out

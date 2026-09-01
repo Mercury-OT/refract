@@ -105,6 +105,7 @@ Optional v1 param:
 | `failure` | none |
 | `has` | `field` |
 | `field_equals` | `field`, `value` |
+| `field_absent` | `field` |
 
 `success` requires the normalized response's success indicator to be true;
 `failure` is its exact opposite and requires that indicator to be false. A
@@ -123,6 +124,25 @@ Its `value` is one of:
 
 References are data-only. They do not support expressions, JSONPath,
 arithmetic, concatenation, or coercion.
+
+`field_absent` requires `field not in normalized_response.fields`. A present
+field fails the assertion regardless of whether its value is `null`, `0`,
+`false`, an empty string, an empty list, or an empty mapping. Failure details
+name only the unexpected field and never include its value. Within one response
+expectation, duplicate `field_absent` declarations for the same field are
+invalid, as are `field_absent` combined with `has` or `field_equals` for that
+field. A negative assertion does not guarantee field presence and therefore
+cannot provide a later step's binding source.
+
+The evidence boundary is intentionally narrow: `field_absent` observes
+`NormalizedResponse.fields`, not the raw HTTP JSON. It proves only that the
+field is absent from the normalized response surface exposed by the adapter. A
+`ResponseNormalizer` may filter a field that was present in the raw response,
+so this assertion alone cannot prove that a production HTTP response contains
+no leaked data. It does not close the need for trusted evidence, adapter
+conformance, E-7, or a security extension. Raw provider recordings retained in
+reports may also still contain sensitive data; this change does not expand the
+handling of that existing risk.
 
 ### backend_state
 

@@ -33,6 +33,15 @@ def _eval_response(assertion, norm, bound_values=None, inputs=None):
         field = assertion.params["field"]
         present = field in norm.fields
         return CheckResult("response", "has", present, "" if present else f"missing field {field!r}")
+    if assertion.check == "field_absent":
+        field = assertion.params["field"]
+        absent = field not in norm.fields
+        return CheckResult(
+            "response",
+            "field_absent",
+            absent,
+            "" if absent else f"unexpected field {field!r} present",
+        )
     if assertion.check == "field_equals":
         field = assertion.params["field"]
         expected, ref_error = values.resolve(

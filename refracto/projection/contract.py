@@ -36,6 +36,9 @@ def run(scenario, provider_recordings, normalizer) -> DomainResult:
             details = [f"{mismatch.endpoint}:"]
             if mismatch.missing_fields:
                 details.append(f"missing {set(mismatch.missing_fields)}")
+            if mismatch.unexpected_fields:
+                details.append(
+                    f"unexpected fields {sorted(mismatch.unexpected_fields)}")
             if mismatch.note:
                 details.append(mismatch.note)
             for field_name, (expected, observed) in mismatch.wrong_values.items():

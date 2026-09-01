@@ -213,6 +213,11 @@ def _validate_param_values(point: str, check: str, params: dict) -> None:
             raise DeclarationError(
                 f"{point}.field_equals: 'value' must be a JSON scalar or a value reference, "
                 f"got {value!r}")
+    if check == "field_absent":
+        field = params.get("field")
+        if not isinstance(field, str) or not field.strip():
+            raise DeclarationError(
+                f"{point}.field_absent: 'field' must be a non-empty string, got {field!r}")
 
 
 def _parse_assertions(point: str, raw_list) -> list:
@@ -307,6 +312,42 @@ def _parse_poll(raw_poll, method: str, where: str):
     return PollPolicy(on_timeout=on_timeout)
 
 
+def _validate_response_constraints(assertions, where: str) -> None:
+    """Validate relationships between assertions on one response surface."""
+    response_checks = {assertion.check for assertion in assertions}
+    if {"success", "failure"} <= response_checks:
+        raise DeclarationError(
+            f"{where}.response: 'success' and 'failure' are mutually exclusive")
+    equal_fields = [
+        a.params["field"] for a in assertions if a.check == "field_equals"
+    ]
+    duplicates = sorted({field for field in equal_fields if equal_fields.count(field) > 1})
+    if duplicates:
+        raise DeclarationError(
+            f"{where}.response: duplicate field_equals constraint(s) for {duplicates}")
+    absent_fields = [
+        a.params["field"] for a in assertions if a.check == "field_absent"
+    ]
+    absent_duplicates = sorted({
+        field for field in absent_fields if absent_fields.count(field) > 1
+    })
+    if absent_duplicates:
+        raise DeclarationError(
+            f"{where}.response: duplicate field_absent constraint(s) for "
+            f"{absent_duplicates}")
+    required_fields = [
+        a.params["field"] for a in assertions
+        if a.check in ("has", "field_equals")
+    ]
+    conflicts = sorted({
+        field for field in absent_fields if field in required_fields
+    })
+    if conflicts:
+        raise DeclarationError(
+            f"{where}.response: field_absent conflicts with has/field_equals "
+            f"for field(s) {conflicts}")
+
+
 def _build_expect(raw_expect, allowed_points, where: str) -> Expect:
     """Validate an `expect` block and build the corresponding Expect object."""
     if raw_expect is None:
@@ -322,17 +363,7 @@ def _build_expect(raw_expect, allowed_points, where: str) -> Expect:
         response=_parse_assertions("response", raw_expect.get("response")),
         backend_state=_parse_assertions("backend_state", raw_expect.get("backend_state")),
     )
-    response_checks = {assertion.check for assertion in expect.response}
-    if {"success", "failure"} <= response_checks:
-        raise DeclarationError(
-            f"{where}.response: 'success' and 'failure' are mutually exclusive")
-    equal_fields = [
-        a.params["field"] for a in expect.response if a.check == "field_equals"
-    ]
-    duplicates = sorted({field for field in equal_fields if equal_fields.count(field) > 1})
-    if duplicates:
-        raise DeclarationError(
-            f"{where}.response: duplicate field_equals constraint(s) for {duplicates}")
+    _validate_response_constraints(expect.response, where)
     return expect
 
 
@@ -460,6 +491,7 @@ def _load_v1_step(d: dict, input_counts: dict) -> Step:
         if async_field and not any(
                 a.check == "has" and a.params.get("field") == async_field for a in expect.response):
             expect.response.append(Assertion(check="has", params={"field": async_field}))
+    _validate_response_constraints(expect.response, "expect")
     _validate_value_refs(expect, set(), input_counts, "step 'main'")
     return Step(id="main", request=request, expect=expect)
 
