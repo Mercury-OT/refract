@@ -316,8 +316,11 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
                 detail="a prior step stopped the flow"))
             continue
         norm = None
+        bound_values = {}
+        resolved_bindings = {}
         try:
             bound_values = binding.resolve_bindings(step, prior_norms)
+            resolved_bindings = dict(bound_values)
             template = binding.substitute(step.request, bound_values)
             spec = resolve_request(scenario, step, template)
             _check_option_b(step, template, spec)
@@ -326,6 +329,7 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
                                   bound_values, scenario.inputs)
         except Exception as exc:
             sr = StepResult(step.id, ERROR, detail=str(exc))
+        sr.resolved_bindings = resolved_bindings
         step_results.append(sr)
         if norm is not None:
             prior_norms[step.id] = norm

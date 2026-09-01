@@ -110,6 +110,7 @@ def test_frontend_all_green():
     assert len(res.steps) == 1
     assert res.steps[0].step_id == s.steps[0].id
     assert res.steps[0].status == res.status
+    assert res.steps[0].resolved_bindings == {}
     assert any(c.check == "visible" and c.ok for c in res.checks)
     assert any(c.check == "count_gt" and c.ok for c in res.checks)
     assert any(c.point == "request" and c.ok for c in res.checks)

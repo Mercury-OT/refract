@@ -40,6 +40,7 @@ def test_e2e_single_drive_four_points_green():
     res = e2e.run(s, auth=FakeAuth(), ui=ui, state=state, recorder=FakeRecorder(), normalizer=FakeNormalizer())
     assert res.passed
     assert len(res.steps) == 1 and res.steps[0].step_id == s.steps[0].id
+    assert res.steps[0].resolved_bindings == {}
     points = {c.point for c in res.checks}
     assert {"frontend", "request", "response", "backend_state"} <= points
 
@@ -240,6 +241,7 @@ def test_contract_projection_clean():
     res = contract_proj.run(s, [rec], FakeNormalizer())
     assert res.passed
     assert len(res.steps) == 1 and res.steps[0].step_id == "contract"
+    assert res.steps[0].resolved_bindings == {}
 
 def test_contract_projection_flags_drift():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")

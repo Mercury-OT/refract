@@ -1,3 +1,5 @@
+import dataclasses
+
 from refracto.report import (
     BLOCKED,
     CheckResult,
@@ -124,4 +126,73 @@ def test_degradations_flattens_domain_and_step_skipped_reasons():
     assert report.degradations() == [
         ("backend", None, "projection capability unavailable"),
         ("backend", "create_item", "span_exists — no StateProbe"),
+    ]
+
+
+def test_resolved_bindings_default_is_private_per_step_and_positional_api_is_unchanged():
+    first = StepResult("first", PASSED)
+    second = StepResult("second", PASSED)
+    first.resolved_bindings["item_id"] = 7
+
+    assert second.resolved_bindings == {}
+
+    positional = StepResult("step", PASSED, [], [], 2, "trace", "detail")
+    assert positional.attempts == 2
+    assert positional.trace_id == "trace"
+    assert positional.detail == "detail"
+    assert positional.resolved_bindings == {}
+
+
+def test_resolved_bindings_is_sensitive_kw_only_non_comparing_and_hidden_from_repr():
+    sentinel = "sensitive-value-that-must-not-appear"
+    with_binding = StepResult(
+        "step",
+        PASSED,
+        resolved_bindings={"credential": sentinel},
+    )
+    without_binding = StepResult("step", PASSED)
+    report = RunReport(
+        "scenario",
+        domains=[DomainResult("backend", steps=[with_binding])],
+    )
+    resolved_field = next(
+        item for item in dataclasses.fields(StepResult)
+        if item.name == "resolved_bindings"
+    )
+
+    assert with_binding == without_binding
+    assert "resolved_bindings" not in StepResult.__match_args__
+    assert resolved_field.metadata["sensitive"] is True
+    assert sentinel not in repr(with_binding)
+    assert sentinel not in repr(report)
+    assert dataclasses.asdict(with_binding)["resolved_bindings"] == {
+        "credential": sentinel,
+    }
+
+
+def test_resolved_bindings_does_not_change_status_localization_or_degradations():
+    bad = CheckResult(
+        "response",
+        "field_equals",
+        False,
+        detail="wrong object",
+        step="update",
+    )
+    step = StepResult(
+        "update",
+        FAILED,
+        checks=[bad],
+        skipped=["span_exists — no StateProbe"],
+        resolved_bindings={"item_id": 42},
+    )
+    domain = DomainResult("backend", steps=[step])
+    report = RunReport("scenario", domains=[domain])
+
+    assert domain.status == FAILED
+    assert report.status == FAILED
+    assert report.localize() == [
+        ("backend", "update", "response", "field_equals", "wrong object"),
+    ]
+    assert report.degradations() == [
+        ("backend", "update", "span_exists — no StateProbe"),
     ]
