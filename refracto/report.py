@@ -40,6 +40,13 @@ class StepResult:
     attempts: int = 1
     trace_id: object = None
     detail: str = ""
+    resolved_bindings: dict[str, object] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+        kw_only=True,
+        metadata={"sensitive": True},
+    )
 
 
 @dataclass

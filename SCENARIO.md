@@ -174,6 +174,34 @@ Possible step outcomes include:
 * `BLOCKED`
 * `ERROR`
 
+### Binding Diagnostics and Sensitive Report Data
+
+Backend step results expose `StepResult.resolved_bindings` for diagnosing
+cross-step identity and correspondence problems. The field is diagnostic only:
+it does not participate in Oracle evaluation, status calculation, report
+equality, or quality gates.
+
+The backend fills the field only after every binding for that step resolves
+successfully. It remains `{}` for steps without bindings, binding-resolution
+errors, blocked steps, and results from other projections. If binding succeeds,
+the values remain available even when later request sending, normalization,
+state observation, response checks, or polling produce `ERROR`, `FAILED`, or
+`SKIPPED`.
+
+`resolved_bindings` is a **top-level-container-isolated diagnostic view**: the
+backend makes a shallow copy of the mapping used for execution. The mapping
+objects are distinct, but nested lists or dictionaries may still be shared. It
+is not an immutable snapshot.
+
+Binding values may contain sensitive data. Refract itself does not print or
+serialize this field, and neither `repr(StepResult)` nor the nested
+`repr(RunReport)` includes it. The dataclass field metadata contains
+`sensitive=True`, but that label is not a security mechanism. In particular,
+`dataclasses.asdict()` and general-purpose third-party serializers still collect
+the field. Consumers must treat every report object as potentially sensitive.
+The future C-13 machine-export path must use an explicit field allowlist or an
+explicit redaction policy; it must not call `asdict(report)` directly.
+
 ### Strict Quality Gates
 
 `rep.passed` being true does not guarantee that every declared assertion ran.
