@@ -79,6 +79,107 @@ class UiResult:
     recorded: list = field(default_factory=list)    # list[RecordedResponse] captured from UI traffic
 
 
+@dataclass(frozen=True, kw_only=True)
+class UiActionPermit:
+    """One-use core authorization for one semantic UI action."""
+
+    execution_id: str
+    action_id: str
+    request_id: str
+    step_id: str
+    attempt_index: int
+    mode: str
+    method: str
+    template_path: str
+    bound_logical_path: str = field(
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    traceparent: str
+    trace_id: str
+    token: str = field(
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    resolved_bindings: dict[str, object] = field(
+        repr=False,
+        compare=False,
+        metadata={"sensitive": True},
+    )
+    mock_response: dict = field(
+        repr=False,
+        compare=False,
+        metadata={"sensitive": True},
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class UiActionEvidence:
+    """Adapter evidence returned for one permitted semantic UI action."""
+
+    execution_id: str
+    action_id: str
+    request_id: str
+    step_id: str
+    attempt_index: int
+    mode: str
+    method: str
+    template_path: str
+    bound_logical_path: str = field(
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    permit_token: str = field(
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    actual_path: str = field(
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    is_final: bool
+    primary_request: RequestSpec = field(
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    primary_response: RecordedResponse = field(
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    rendered: dict[str, RenderedAnchor] = field(
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    diagnostic_outgoing: list[RequestSpec] = field(
+        default_factory=list,
+        repr=False,
+        metadata={"sensitive": True},
+    )
+    diagnostic_recorded: list[RecordedResponse] = field(
+        default_factory=list,
+        repr=False,
+        metadata={"sensitive": True},
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class UiActionResult:
+    """Exactly one of completed evidence or an explicit adapter skip."""
+
+    evidence: UiActionEvidence | None = None
+    skip_reason: str | None = None
+
+    def __post_init__(self):
+        if self.evidence is not None and self.skip_reason is not None:
+            raise ValueError(
+                "UiActionResult requires exactly one of evidence or a non-empty skip_reason")
+        if self.evidence is None and not (
+            isinstance(self.skip_reason, str) and self.skip_reason.strip()
+        ):
+            raise ValueError(
+                "UiActionResult requires exactly one of evidence or a non-empty skip_reason")
+
+
 class Authenticator(ABC):
     @abstractmethod
     def session(self, role: str) -> object: ...
@@ -111,6 +212,31 @@ class StateProbe(ABC):
 class UiDriver(ABC):
     @abstractmethod
     def run_intent(self, scenario, session: object | None, mock: dict | None) -> UiResult: ...
+
+
+class StepwiseUiDriver(ABC):
+    """Optional capability for core-authorized, stateful multi-step UI execution."""
+
+    @abstractmethod
+    def open_stepwise(
+        self,
+        scenario,
+        session: object | None,
+        *,
+        mode: str,
+    ) -> object: ...
+
+    @abstractmethod
+    def perform_step(
+        self,
+        scenario,
+        step,
+        context: object,
+        permit: UiActionPermit,
+    ) -> UiActionResult: ...
+
+    @abstractmethod
+    def close_stepwise(self, context: object) -> None: ...
 
 
 class Recorder(ABC):

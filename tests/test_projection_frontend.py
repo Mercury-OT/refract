@@ -256,5 +256,5 @@ def test_frontend_multi_step_unsupported_degrades():
     )
     res = frontend.run(s, ui=FakeUi(), normalizer=FakeNormalizer())
     assert res.steps == []
-    assert res.skipped == ["multi-step UI not supported"]
+    assert res.skipped == ["multi-step UI capability not supported"]
     assert res.status == DEGRADED

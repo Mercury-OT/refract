@@ -7,8 +7,12 @@ single list refresh cycle. It supports two modes:
 * live mode: drive the real app once, inject `traceparent`, and record the
   correlated network responses for e2e evaluation
 """
+import copy
+import dataclasses
 import json
 import os
+from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
 
@@ -16,6 +20,22 @@ from refracto import ports
 from refracto.projection.backend import gen_traceparent
 
 _ITEM_NAME = "demo-item"
+
+
+@dataclass
+class _StepwiseContext:
+    playwright: object
+    browser: object
+    browser_context: object
+    page: object
+    loaded: bool = False
+    active_permit: object = None
+    active_object_id: str = ""
+    primary_request: object = None
+    primary_response: object = None
+    diagnostic_outgoing: list = field(default_factory=list)
+    diagnostic_recorded: list = field(default_factory=list)
+    items: list = field(default_factory=list)
 
 
 def _testid(page_or_dialog, name: str):
@@ -33,7 +53,12 @@ def _safe_json(request):
         return None
 
 
-class DemoUiDriver(ports.UiDriver):
+class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
+    _STEPWISE_ACTIONS = {
+        ("demo.item_frontend_stepwise", "create_first"): ("input", "first_name"),
+        ("demo.item_frontend_stepwise", "create_bound"): ("bind", "itemId"),
+    }
+
     def __init__(self, config):
         self._config = config
 
@@ -70,6 +95,171 @@ class DemoUiDriver(ports.UiDriver):
                     context.close()
                 browser.close()
         return ports.UiResult(rendered=rendered, outgoing=outgoing, recorded=recorded)
+
+    def open_stepwise(self, scenario, session, *, mode):
+        if mode != "mock":
+            raise ValueError(f"DemoUiDriver stepwise mode {mode!r} is not supported")
+        playwright = sync_playwright().start()
+        browser = None
+        browser_context = None
+        try:
+            browser = playwright.chromium.launch(headless=os.environ.get("SAT_HEADED") != "1")
+            browser_context = browser.new_context()
+            page = browser_context.new_page()
+            context = _StepwiseContext(
+                playwright=playwright,
+                browser=browser,
+                browser_context=browser_context,
+                page=page,
+            )
+            page.route(
+                f"{self._config.base_url}/items*",
+                lambda route: self._handle_stepwise_route(context, route),
+            )
+            return context
+        except Exception:
+            if browser_context is not None:
+                browser_context.close()
+            if browser is not None:
+                browser.close()
+            playwright.stop()
+            raise
+
+    def perform_step(self, scenario, step, context, permit):
+        action = self._STEPWISE_ACTIONS.get((scenario.id, step.id))
+        if action is None:
+            raise ValueError(
+                f"no demo UI action registered for scenario={scenario.id!r}, step={step.id!r}")
+        source, name = action
+        if source == "input":
+            object_id = next(
+                item.value for item in scenario.inputs if item.kind == name
+            )
+        else:
+            object_id = permit.resolved_bindings[name]
+
+        context.active_permit = permit
+        context.active_object_id = str(object_id)
+        context.primary_request = None
+        context.primary_response = None
+        context.diagnostic_outgoing = []
+        context.diagnostic_recorded = []
+        try:
+            if not context.loaded:
+                context.page.goto(
+                    f"{self._config.base_url}/",
+                    wait_until="networkidle",
+                    timeout=30000,
+                )
+                context.loaded = True
+            _testid(context.page, "item-name").fill(context.active_object_id)
+            _testid(context.page, "create-btn").click()
+            context.page.wait_for_function(
+                """objectId => Array.from(
+                    document.querySelectorAll('[data-testid="item-row"]')
+                ).some(row => row.getAttribute('data-object-id') === objectId)""",
+                arg=context.active_object_id,
+                timeout=30000,
+            )
+            if context.primary_request is None or context.primary_response is None:
+                raise RuntimeError("registered demo action produced no primary request/response")
+            evidence = ports.UiActionEvidence(
+                execution_id=permit.execution_id,
+                action_id=permit.action_id,
+                request_id=permit.request_id,
+                step_id=permit.step_id,
+                attempt_index=permit.attempt_index,
+                mode=permit.mode,
+                method=permit.method,
+                template_path=permit.template_path,
+                bound_logical_path=permit.bound_logical_path,
+                permit_token=permit.token,
+                actual_path=context.primary_request.path,
+                is_final=True,
+                primary_request=context.primary_request,
+                primary_response=context.primary_response,
+                rendered=self._read_rendered(context.page),
+                diagnostic_outgoing=list(context.diagnostic_outgoing),
+                diagnostic_recorded=list(context.diagnostic_recorded),
+            )
+            return ports.UiActionResult(evidence=evidence)
+        finally:
+            context.active_permit = None
+            context.active_object_id = ""
+
+    def close_stepwise(self, context):
+        try:
+            context.browser_context.close()
+        finally:
+            try:
+                context.browser.close()
+            finally:
+                context.playwright.stop()
+
+    def _handle_stepwise_route(self, context, route):
+        permit = context.active_permit
+        if permit is None:
+            raise RuntimeError("demo UI traffic occurred without a core action permit")
+        request = route.request
+        path = urlparse(request.url).path.lstrip("/")
+        is_primary = (
+            context.primary_request is None
+            and request.method == permit.method
+            and path == permit.bound_logical_path
+        )
+        if is_primary:
+            spec = ports.RequestSpec(
+                method=request.method,
+                path=path,
+                body=_safe_json(request),
+                traceparent=permit.traceparent,
+            )
+            body = copy.deepcopy(permit.mock_response)
+            context.primary_request = spec
+            context.primary_response = ports.RecordedResponse(
+                status=200,
+                headers={},
+                json=copy.deepcopy(body),
+                text=json.dumps(body),
+                trace_id=permit.trace_id,
+                request=dataclasses.replace(spec),
+                step_id=permit.step_id,
+                attempt_index=permit.attempt_index,
+                is_final=True,
+                template_path=permit.template_path,
+                bound_logical_path=permit.bound_logical_path,
+                actual_path=path,
+            )
+            if request.method == "POST":
+                context.items.append({
+                    "id": len(context.items) + 1,
+                    "name": context.active_object_id,
+                    "count": 3,
+                })
+            route.fulfill(json=body)
+            return
+
+        spec = ports.RequestSpec(
+            method=request.method,
+            path=path,
+            body=_safe_json(request),
+        )
+        body = {
+            "success": True,
+            "error": None,
+            "data": {"items": list(context.items)},
+        }
+        diagnostic_response = ports.RecordedResponse(
+            status=200,
+            headers={},
+            json=copy.deepcopy(body),
+            text=json.dumps(body),
+            trace_id=None,
+            request=dataclasses.replace(spec),
+        )
+        context.diagnostic_outgoing.append(spec)
+        context.diagnostic_recorded.append(diagnostic_response)
+        route.fulfill(json=body)
 
     def _run_flow(self, page, object_id):
         page.goto(f"{self._config.base_url}/", wait_until="networkidle", timeout=30000)
