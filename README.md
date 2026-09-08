@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Refract logo" width="200"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/refract-v2-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/refract-v2-light.png">
+    <img src="assets/refract-v2-dark.png" alt="Refract logo" width="200">
+  </picture>
 </p>
 
 <h1 align="center">Refract</h1>
@@ -93,11 +97,17 @@ examples/demo-app/   self-contained example target
 scenarios/           public demo scenarios
 SCENARIO.md          scenario contract
 MANIFESTO.md         project philosophy and beliefs
+BRAND.md             logo usage and project identity guidance
 ```
 
 ## Contract
 
 See [`SCENARIO.md`](SCENARIO.md) for the public scenario contract.
+
+## Brand Assets
+
+See [`BRAND.md`](BRAND.md) for the intended use of the Refract name and logo
+variants.
 
 ## Onboarding
 
