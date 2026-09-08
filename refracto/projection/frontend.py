@@ -8,14 +8,15 @@ from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILE
 from refracto.contract import store
 from refracto.declaration import values
 from refracto.declaration.loader import DeclarationError
+from refracto.projection import ui_stepwise
 
 
 def build_mock(scenario, normalizer) -> dict:
     consumer = store.consumer_contract(scenario)
     # Consumer contract entries are keyed on (step_id, method, template_path).
-    # The mock presented to UI drivers is keyed on (method, path). Frontend and
-    # e2e projections only run single-step scenarios, so this key shape remains
-    # sufficient here.
+    # The aggregate mock presented to legacy UiDriver.run_intent() is keyed on
+    # (method, path). This function remains a single-step compatibility path;
+    # stepwise frontend builds and carries one mock body per action permit.
     mocks = {}
     for (_step_id, method, path), shape in consumer.entries.items():
         concrete = {}
@@ -102,8 +103,14 @@ def _eval_request_shape(request, outgoing):
 
 def run(scenario, *, ui, normalizer, auth=None):
     if len(scenario.steps) != 1:
-        return DomainResult(projection="frontend",
-                            skipped=["multi-step UI not supported"])
+        return ui_stepwise.run(
+            scenario,
+            ui=ui,
+            normalizer=normalizer,
+            auth=auth,
+            eval_frontend=_eval_frontend,
+            eval_request_shape=_eval_request_shape,
+        )
     step = scenario.steps[0]
     session = auth.session(scenario.actor) if auth else None
     mock = build_mock(scenario, normalizer)

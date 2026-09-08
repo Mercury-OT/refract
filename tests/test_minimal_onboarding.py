@@ -121,6 +121,7 @@ def test_minimal_module_implements_only_the_three_intended_ports():
             ports.ResponseNormalizer,
             ports.StateProbe,
             ports.UiDriver,
+            ports.StepwiseUiDriver,
         )
         if issubclass(adapter_class, port_type)
     }

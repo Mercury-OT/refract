@@ -1,0 +1,36 @@
+version: 2
+scenario: demo.item_frontend_stepwise
+grid: {level: smoke, module: demo}
+actor: user
+inputs:
+  - {first_name: first-ui-item}
+intent: Create two rendered items through one UI context, using the first mock response identity in the second action.
+steps:
+  - id: create_first
+    request:
+      method: POST
+      path: items
+    expect:
+      frontend:
+        - {check: object_field_equals, anchor: item_row, id: {from_input: first_name}, field: name, value: {from_input: first_name}}
+        - {check: no_anonymous, anchor: item_row}
+      response:
+        - {check: has, field: itemId}
+        - {check: field_equals, field: stage, value: first}
+  - id: create_bound
+    request:
+      method: POST
+      path: items
+      body:
+        source: "{itemId}"
+    bind:
+      itemId:
+        from: create_first
+        field: itemId
+    expect:
+      frontend:
+        - {check: object_field_equals, anchor: item_row, id: {from_bind: itemId}, field: name, value: {from_bind: itemId}}
+        - {check: no_anonymous, anchor: item_row}
+      response:
+        - {check: has, field: itemId}
+        - {check: field_equals, field: stage, value: second}
