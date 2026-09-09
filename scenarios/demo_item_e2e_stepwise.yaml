@@ -1,0 +1,43 @@
+version: 2
+scenario: demo.item_e2e_stepwise
+grid: {level: smoke, module: demo}
+actor: user
+inputs:
+  - {first_name: first-live-item}
+  - {rows: 3}
+intent: Create two items through one live UI context and correlate every step with its own trace.
+steps:
+  - id: create_first
+    request:
+      method: POST
+      path: items
+    expect:
+      frontend:
+        - {check: object_field_equals, anchor: item_row, id: {from_input: first_name}, field: count, value: {from_input: rows}}
+        - {check: no_anonymous, anchor: item_row}
+      response:
+        - {check: success}
+        - {check: has, field: itemKey}
+      backend_state:
+        - {check: span_exists, span: item.create}
+        - {check: span_attr, span: item.create, attr: row_count, op: "==", value: {from_input: rows}}
+  - id: create_bound
+    request:
+      method: POST
+      path: items
+      body:
+        source: "{itemKey}"
+    bind:
+      itemKey:
+        from: create_first
+        field: itemKey
+    expect:
+      frontend:
+        - {check: object_field_equals, anchor: item_row, id: {from_bind: itemKey}, field: count, value: {from_input: rows}}
+        - {check: no_anonymous, anchor: item_row}
+      response:
+        - {check: success}
+        - {check: has, field: itemKey}
+      backend_state:
+        - {check: span_exists, span: item.create}
+        - {check: span_attr, span: item.create, attr: row_count, op: "==", value: {from_input: rows}}

@@ -57,10 +57,15 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
     _STEPWISE_ACTIONS = {
         ("demo.item_frontend_stepwise", "create_first"): ("input", "first_name"),
         ("demo.item_frontend_stepwise", "create_bound"): ("bind", "itemId"),
+        ("demo.item_e2e_stepwise", "create_first"): ("input", "first_name"),
+        ("demo.item_e2e_stepwise", "create_bound"): ("bind", "itemKey"),
     }
 
     def __init__(self, config):
         self._config = config
+
+    def supports_stepwise_mode(self, mode: str) -> bool:
+        return mode in ("mock", "live")
 
     def run_intent(self, scenario, session, mock) -> ports.UiResult:
         step = scenario.steps[0]
@@ -97,7 +102,7 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
         return ports.UiResult(rendered=rendered, outgoing=outgoing, recorded=recorded)
 
     def open_stepwise(self, scenario, session, *, mode):
-        if mode != "mock":
+        if not self.supports_stepwise_mode(mode):
             raise ValueError(f"DemoUiDriver stepwise mode {mode!r} is not supported")
         playwright = sync_playwright().start()
         browser = None
@@ -174,7 +179,7 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
                 template_path=permit.template_path,
                 bound_logical_path=permit.bound_logical_path,
                 permit_token=permit.token,
-                actual_path=context.primary_request.path,
+                actual_path=context.primary_response.actual_path,
                 is_final=True,
                 primary_request=context.primary_request,
                 primary_response=context.primary_response,
@@ -201,7 +206,8 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
         if permit is None:
             raise RuntimeError("demo UI traffic occurred without a core action permit")
         request = route.request
-        path = urlparse(request.url).path.lstrip("/")
+        actual_path = urlparse(request.url).path
+        path = actual_path.lstrip("/")
         is_primary = (
             context.primary_request is None
             and request.method == permit.method
@@ -214,13 +220,40 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
                 body=_safe_json(request),
                 traceparent=permit.traceparent,
             )
-            body = copy.deepcopy(permit.mock_response)
+            if permit.mode == "mock":
+                body = copy.deepcopy(permit.mock_response)
+                status = 200
+                headers = {}
+                text = json.dumps(body)
+                if request.method == "POST":
+                    context.items.append({
+                        "id": len(context.items) + 1,
+                        "name": context.active_object_id,
+                        "count": 3,
+                    })
+                route.fulfill(json=body)
+            else:
+                live_response = route.fetch(headers={
+                    **request.headers,
+                    "traceparent": permit.traceparent,
+                })
+                status = live_response.status
+                headers = dict(live_response.headers)
+                try:
+                    body = live_response.json()
+                except Exception:
+                    body = None
+                try:
+                    text = live_response.text()
+                except Exception:
+                    text = ""
+                route.fulfill(response=live_response)
             context.primary_request = spec
             context.primary_response = ports.RecordedResponse(
-                status=200,
-                headers={},
+                status=status,
+                headers=headers,
                 json=copy.deepcopy(body),
-                text=json.dumps(body),
+                text=text,
                 trace_id=permit.trace_id,
                 request=dataclasses.replace(spec),
                 step_id=permit.step_id,
@@ -228,38 +261,50 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
                 is_final=True,
                 template_path=permit.template_path,
                 bound_logical_path=permit.bound_logical_path,
-                actual_path=path,
+                actual_path=actual_path,
             )
-            if request.method == "POST":
-                context.items.append({
-                    "id": len(context.items) + 1,
-                    "name": context.active_object_id,
-                    "count": 3,
-                })
-            route.fulfill(json=body)
             return
 
         spec = ports.RequestSpec(
             method=request.method,
             path=path,
             body=_safe_json(request),
+            traceparent=request.headers.get("traceparent"),
         )
-        body = {
-            "success": True,
-            "error": None,
-            "data": {"items": list(context.items)},
-        }
+        if permit.mode == "mock":
+            body = {
+                "success": True,
+                "error": None,
+                "data": {"items": list(context.items)},
+            }
+            status = 200
+            headers = {}
+            text = json.dumps(body)
+            route.fulfill(json=body)
+        else:
+            live_response = route.fetch()
+            status = live_response.status
+            headers = dict(live_response.headers)
+            try:
+                body = live_response.json()
+            except Exception:
+                body = None
+            try:
+                text = live_response.text()
+            except Exception:
+                text = ""
+            route.fulfill(response=live_response)
         diagnostic_response = ports.RecordedResponse(
-            status=200,
-            headers={},
+            status=status,
+            headers=headers,
             json=copy.deepcopy(body),
-            text=json.dumps(body),
+            text=text,
             trace_id=None,
             request=dataclasses.replace(spec),
+            actual_path=actual_path,
         )
         context.diagnostic_outgoing.append(spec)
         context.diagnostic_recorded.append(diagnostic_response)
-        route.fulfill(json=body)
 
     def _run_flow(self, page, object_id):
         page.goto(f"{self._config.base_url}/", wait_until="networkidle", timeout=30000)

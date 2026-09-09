@@ -182,7 +182,7 @@ def test_e2e_backend_state_no_trace_id_when_recorded_lacks_one():
     assert any(c.point == "backend_state" and c.check == "_no_trace_id" and not c.ok
                for c in res.checks)
 
-def test_e2e_multi_step_unsupported_degrades():
+def test_e2e_multi_step_legacy_driver_degrades():
     s = Scenario(
         id="test_multi_step_ui_e2e",
         grid=Grid("integration", "dataset"),
@@ -200,7 +200,7 @@ def test_e2e_multi_step_unsupported_degrades():
     res = e2e.run(s, auth=FakeAuth(), ui=FakeUi(), state=None, recorder=FakeRecorder(),
                   normalizer=FakeNormalizer())
     assert res.steps == []
-    assert res.skipped == ["multi-step UI not supported"]
+    assert res.skipped == ["multi-step e2e live capability not supported"]
     assert res.status == DEGRADED
 
 # --- e2e state polling remains independent from business poll timing ---

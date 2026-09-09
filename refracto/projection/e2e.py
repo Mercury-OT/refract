@@ -7,6 +7,7 @@ request, response, and backend-state assertions describe the same run.
 """
 from refracto.projection import backend as backend_proj
 from refracto.projection.frontend import _eval_frontend, _eval_request_shape
+from refracto.projection import ui_stepwise
 from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED
 
 
@@ -18,8 +19,23 @@ def _match_recorded(recorded, request):
 def run(scenario, *, auth, ui, state, recorder, normalizer, resolve_precondition=None,
         poll_config=None, now=None, sleep=None):
     if len(scenario.steps) != 1:
-        return DomainResult(projection="e2e",
-                            skipped=["multi-step UI not supported"])
+        return ui_stepwise.run(
+            scenario,
+            projection="e2e",
+            mode="live",
+            auth=auth,
+            ui=ui,
+            state=state,
+            recorder=recorder,
+            normalizer=normalizer,
+            resolve_precondition=resolve_precondition,
+            eval_frontend=_eval_frontend,
+            eval_request_shape=_eval_request_shape,
+            eval_response=backend_proj._eval_response,
+            poll_config=poll_config,
+            now=now,
+            sleep=sleep,
+        )
     step = scenario.steps[0]
     session = auth.session(scenario.actor)
     if resolve_precondition:
