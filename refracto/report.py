@@ -54,7 +54,11 @@ class DomainResult:
     projection: str
     steps: list = field(default_factory=list)
     skipped: list = field(default_factory=list)
-    provider_recordings: list = field(default_factory=list)
+    provider_recordings: list = field(
+        default_factory=list,
+        repr=False,
+        metadata={"sensitive": True},
+    )
 
     @property
     def checks(self):

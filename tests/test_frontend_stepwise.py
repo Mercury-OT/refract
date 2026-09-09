@@ -501,6 +501,25 @@ def test_equal_but_distinct_primary_request_instances_are_accepted():
         assert evidence.primary_request is not evidence.primary_response.request
 
 
+def test_frontend_mock_accepts_distinct_actual_and_bound_logical_paths():
+    def add_transport_prefix(result, permit, index):
+        evidence = result.evidence
+        actual_path = f"/public-base/{permit.bound_logical_path}"
+        response = dataclasses.replace(
+            evidence.primary_response,
+            actual_path=actual_path,
+        )
+        return ports.UiActionResult(evidence=dataclasses.replace(
+            evidence,
+            actual_path=actual_path,
+            primary_response=response,
+        ))
+
+    result = _run(_flow(), StepwiseFake(mutate=add_transport_prefix))
+
+    assert result.status == PASSED
+
+
 def _replace_response(evidence, **changes):
     return dataclasses.replace(
         evidence,
@@ -867,7 +886,7 @@ def test_stepwise_port_signatures_and_random_secret_size(monkeypatch):
     assert sizes.count(32) == 1
 
 
-def test_e2e_multistep_remains_unsupported_even_for_stepwise_driver():
+def test_mock_only_stepwise_driver_is_not_treated_as_live_capable():
     driver = StepwiseFake()
 
     result = e2e.run(
@@ -880,6 +899,6 @@ def test_e2e_multistep_remains_unsupported_even_for_stepwise_driver():
     )
 
     assert result.status == DEGRADED
-    assert result.skipped == ["multi-step UI not supported"]
+    assert result.skipped == ["multi-step e2e live capability not supported"]
     assert driver.open_calls == 0
     assert driver.actions == []

@@ -66,7 +66,11 @@ def create_item(body: CreateItemRequest):
     return {
         "success": True,
         "error": None,
-        "data": {"itemId": item_id, "count": len(body.rows)},
+        "data": {
+            "itemId": item_id,
+            "itemKey": str(item_id),
+            "count": len(body.rows),
+        },
     }
 
 

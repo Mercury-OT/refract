@@ -106,7 +106,7 @@ class UiActionPermit:
         compare=False,
         metadata={"sensitive": True},
     )
-    mock_response: dict = field(
+    mock_response: dict | None = field(
         repr=False,
         compare=False,
         metadata={"sensitive": True},
@@ -216,6 +216,15 @@ class UiDriver(ABC):
 
 class StepwiseUiDriver(ABC):
     """Optional capability for core-authorized, stateful multi-step UI execution."""
+
+    def supports_stepwise_mode(self, mode: str) -> bool:
+        """Report an explicitly supported stepwise execution mode.
+
+        The default preserves the D6.1 contract: existing stepwise adapters are
+        mock-capable without needing to implement another method. Adapters that
+        can drive live traffic must opt in explicitly.
+        """
+        return mode == "mock"
 
     @abstractmethod
     def open_stepwise(

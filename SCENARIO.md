@@ -182,8 +182,12 @@ soon as the field appears.
 * blocked later steps become `BLOCKED`
 * step status is first-class
 
-The e2e projection currently supports single-step scenarios only. Multi-step
-e2e remains explicitly unsupported.
+Single-step e2e continues to use exactly one legacy
+`UiDriver.run_intent(..., mock=None)` call, even when the adapter also offers
+stepwise execution. Multi-step e2e requires a `StepwiseUiDriver` that explicitly
+reports `supports_stepwise_mode("live")`. A legacy or mock-only adapter reports
+`multi-step e2e live capability not supported` before authentication,
+preconditions, context creation, or UI actions.
 
 The frontend projection keeps the existing single-step `UiDriver.run_intent()`
 path unchanged. A multi-step frontend scenario requires the optional
@@ -209,7 +213,7 @@ Possible step outcomes include:
 
 ### Binding Diagnostics and Sensitive Report Data
 
-Backend and stepwise-frontend step results expose
+Backend, stepwise-frontend, and stepwise-e2e step results expose
 `StepResult.resolved_bindings` for diagnosing cross-step identity and
 correspondence problems. The field is diagnostic only:
 it does not participate in Oracle evaluation, status calculation, report
@@ -217,7 +221,7 @@ equality, or quality gates.
 
 Those projections fill the field only after every binding for that step resolves
 successfully. It remains `{}` for steps without bindings, binding-resolution
-errors, blocked steps, legacy frontend results, and results from e2e or contract.
+errors, blocked steps, legacy frontend/e2e results, and contract results.
 If binding succeeds, the values remain available even when later execution,
 normalization, evidence validation, checks, or polling produce `ERROR`,
 `FAILED`, or `SKIPPED`.
@@ -237,11 +241,13 @@ Stepwise UI permits and evidence can also contain sensitive bound paths,
 bindings, mock bodies, rendered data, requests, responses, and diagnostic
 traffic. Refract does not proactively print or generically serialize these
 objects, and their sensitive payload fields are excluded from ordinary
-`repr()`. Nevertheless, `dataclasses.asdict()` and general-purpose serializers
-can still collect them. Reports, permits, and evidence must all be treated as
-potentially sensitive. The future C-13 machine-export path must use an explicit
-field allowlist or an explicit redaction policy; it must not directly serialize
-a report, permit, or evidence object.
+`repr()`. Provider recordings are likewise excluded from the default
+`repr(DomainResult)` and nested `repr(RunReport)`. Nevertheless,
+`dataclasses.asdict()` and general-purpose serializers can still collect all of
+these values. Reports, permits, and evidence must all be treated as potentially
+sensitive. The future C-13 machine-export path must use an explicit field
+allowlist or an explicit redaction policy; it must not directly serialize a
+report, permit, or evidence object.
 
 ### Strict Quality Gates
 
@@ -304,37 +310,81 @@ This structure replaces the earlier per-anchor `{visible, count, text}` shape
 and is a breaking `UiDriver` port-contract change. Third-party UI adapters must
 be updated before using this version.
 
-## Stepwise Frontend Capability and Evidence Identity
+## Stepwise UI Capability and Evidence Identity
 
 `StepwiseUiDriver` is an independent, optional port. Capability detection is an
 explicit `isinstance(ui, StepwiseUiDriver)` check; having coincidentally named
 methods is not sufficient. Existing adapters need only continue implementing
 `UiDriver.run_intent()` for single-step frontend and e2e runs.
 
-For a multi-step frontend mock run, core owns the orchestration and authorizes
-exactly one semantic action at a time. Each projection execution receives a new
+Core owns one shared multi-step orchestration loop for frontend mock and e2e
+live. It authorizes exactly one semantic action at a time, validates and
+evaluates that action's evidence, updates binding inputs, and only then decides
+whether the next action may run. Each projection execution receives a new
 execution id and 32-byte random signing secret. Each step receives distinct
 action and request ids, attempt index zero, a W3C `traceparent`, its declared and
-bound path identities, resolved bindings, and that step's synthesized mock
-response. The permit token is HMAC-SHA256 over the canonical execution/action/
-request/step/attempt/mode/method/path/trace identity. Mock responses are built
+bound path identities, resolved bindings, and a mode. Frontend permits carry
+that step's synthesized mock response; live permits carry `mock_response=None`.
+The permit token is HMAC-SHA256 over the canonical execution/action/request/
+step/attempt/mode/method/path/trace identity. Frontend mock responses are built
 per step and carried by permits; they are not stored in a global
 `(method, path)` map, so repeated endpoints retain declaration order and distinct
 responses.
 
+Frontend and e2e remain separate physical projections. If both are selected in
+one `run_scenario()` call, frontend opens its own mock context and e2e opens its
+own live context. Within either projection, every step performs one semantic
+action exactly once and all steps reuse that projection's authenticated session
+and UI context. E2e authentication runs once, followed by each declared
+precondition in order, before the context is opened. Missing or failing
+precondition resolution becomes a structured `ERROR` with later steps
+`BLOCKED`; no UI action or provider recording is produced.
+
 The adapter returns either one completed `UiActionEvidence` or one non-empty
 skip reason. Completed evidence must echo the permit identity and contain one
-primary final request/response pair plus the current rendered surface. Core
-checks the token, step and run identities, declared/bound/actual paths, trace,
-final marker, request/response value correspondence, and mock body before
-normalization. Only that verified primary response can feed a later bind.
-Additional UI traffic is diagnostic only—even when its method and path match the
-declared request—and cannot satisfy request assertions. Diagnostic traffic that
-reuses the primary permit's trace correlation is a protocol error.
+primary final request/response pair plus the current rendered surface. The four
+e2e observation points—frontend, request, response, and backend state—are
+evaluated for that single action and its trace; they are not obtained by
+replaying the action. Core checks the token, step and run identities, declared
+and bound paths, trace, final marker, request/response value correspondence, and
+(in mock mode) mock body before normalization. Only that verified primary
+response can be recorded or feed a later bind.
+
+Path identity has three distinct layers. `template_path` is the declaration;
+`bound_logical_path` is the template after bind substitution; and `actual_path`
+is what the browser or transport boundary observed. The primary
+`RequestSpec.path` must equal the bound logical path. The actual path may add a
+leading slash or product base path, but it must be non-empty and must agree
+between action evidence and its `RecordedResponse`. This lets adapter mapping
+remain outside the core without confusing logical and transport evidence.
+
+One action may expose one permit-correlated primary final request/response and
+additional uncorrelated diagnostic traffic. Diagnostics—even a request with the
+same method and path—cannot satisfy assertions and are never written to the
+provider `Recorder`. A delayed prior response may remain diagnostic; traffic
+that reuses the current permit's trace correlation is a protocol error, as is a
+second current-correlated primary (retry is not supported). The core records
+only fully verified live primary responses and verifies the Recorder's returned
+count, identity, and order rather than trusting its list order.
+
+`StateProbe` remains a separate port and is called by core only when the current
+step declares `backend_state`. It receives the verified primary response's
+permit trace id. Every returned `StateFacts`, including every eventual-
+consistency polling observation, must have the same non-empty, type-strict trace
+id. Missing `StateProbe` remains a visible degradation: the step may continue,
+but the final report cannot be strictly `PASSED`. The UI driver and
+`UiActionEvidence` do not carry backend state facts.
+
+Multi-step UI/business-response polling remains unsupported and is rejected
+before authentication or any action; core never repeats a click or permit to
+simulate it. Backend-state eventual-consistency polling is different: it may
+repeat `StateProbe.observe()` after one completed action, while the UI action,
+business request, and permit still occur exactly once.
 
 This protocol detects contradictory identity, mismatches, and replay across
 steps or runs. It does not make an untrusted adapter incapable of fabricating an
-internally consistent evidence bundle. Product-specific actions, navigation,
+internally consistent evidence bundle, and it does not make `StateProbe` an
+independent or unforgeable trust root. Product-specific actions, navigation,
 controls, and traffic capture remain adapter responsibilities; core does not
 infer a UI action from an HTTP method or path.
 
