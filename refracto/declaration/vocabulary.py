@@ -12,6 +12,7 @@ _TERMS = {
     "frontend": {
         "visible": ("anchor",),
         "count_gt": ("anchor", "n"),
+        "objects_matching_count": ("anchor", "field", "value", "n"),
         "object_field_equals": ("anchor", "id", "field", "value"),
         "no_anonymous": ("anchor",),
     },

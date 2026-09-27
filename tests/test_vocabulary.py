@@ -15,6 +15,7 @@ def test_valid_terms_per_point():
     assert v.is_valid("backend_state", "span_attr")
     assert v.is_valid("frontend", "visible")
     assert v.is_valid("frontend", "count_gt")
+    assert v.is_valid("frontend", "objects_matching_count")
     assert v.is_valid("frontend", "object_field_equals")
     assert v.is_valid("frontend", "no_anonymous")
 
@@ -41,6 +42,9 @@ def test_failure_has_no_params():
 
 
 def test_frontend_identity_terms_have_bounded_shapes():
+    assert v.required_params("frontend", "objects_matching_count") == (
+        "anchor", "field", "value", "n",
+    )
     assert v.required_params("frontend", "object_field_equals") == (
         "anchor", "id", "field", "value",
     )

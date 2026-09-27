@@ -53,6 +53,29 @@ def _eval_frontend(assertion, rendered, bound_values=None, inputs=None):
         ok = count > n
         return CheckResult("frontend", "count_gt", ok,
                            "" if ok else f"{anchor} count {count} !> {n}")
+    if assertion.check == "objects_matching_count":
+        expected, value_error = values.resolve(
+            assertion.params["value"], bound_values=bound_values, inputs=inputs)
+        if value_error is not None:
+            return CheckResult(
+                "frontend", "objects_matching_count", False, value_error)
+        field = assertion.params["field"]
+        matched = sum(
+            1
+            for obj in (*identified, *anonymous)
+            if isinstance(obj.get("fields"), dict)
+            and field in obj["fields"]
+            and values.equal(obj["fields"][field], expected)
+        )
+        n = assertion.params["n"]
+        ok = matched == n
+        return CheckResult(
+            "frontend", "objects_matching_count", ok,
+            "" if ok else (
+                f"anchor {anchor!r} field {field!r} matched {matched} object(s), "
+                f"expected {n}"
+            ),
+        )
     if assertion.check == "object_field_equals":
         object_id, id_error = values.resolve(
             assertion.params["id"], bound_values=bound_values, inputs=inputs)
