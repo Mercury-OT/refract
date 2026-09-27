@@ -154,6 +154,26 @@ def _parse_value_ref(raw, where: str):
 def _validate_param_values(point: str, check: str, params: dict) -> None:
     if check == "count_gt" and not _is_number(params.get("n")):
         raise DeclarationError(f"{point}.count_gt: 'n' must be a number, got {params.get('n')!r}")
+    if check == "objects_matching_count":
+        for name in ("anchor", "field"):
+            value = params.get(name)
+            if not isinstance(value, str) or not value.strip():
+                raise DeclarationError(
+                    f"{point}.objects_matching_count: {name!r} must be a non-empty string, "
+                    f"got {value!r}")
+        n = params.get("n")
+        if type(n) is not int or n < 0:
+            raise DeclarationError(
+                f"{point}.objects_matching_count: 'n' must be a non-negative integer, "
+                f"got {n!r}")
+        expected = _parse_value_ref(
+            params.get("value"), f"{point}.objects_matching_count.value")
+        if expected is not None:
+            params["value"] = expected
+        elif not _is_json_scalar(params.get("value")):
+            raise DeclarationError(
+                f"{point}.objects_matching_count: 'value' must be a JSON scalar or a "
+                f"value reference, got {params.get('value')!r}")
     if check == "span_attr":
         op = params.get("op")
         if op not in vocab.COMPARISON_OPS:
@@ -381,6 +401,11 @@ def _validate_value_refs(expect, bound_placeholders, input_counts, where: str) -
                     f"{where}.expect.frontend.object_field_equals.value",
                     assertion.params.get("value"),
                 ),
+            ))
+        elif assertion.check == "objects_matching_count":
+            references.append((
+                f"{where}.expect.frontend.objects_matching_count.value",
+                assertion.params.get("value"),
             ))
     for assertion in expect.response:
         if assertion.check == "field_equals":

@@ -67,6 +67,7 @@ For v1, `request` also appears under `expect`. For v2, request ownership is carr
 |---|---|
 | `visible` | `anchor` |
 | `count_gt` | `anchor`, `n` |
+| `objects_matching_count` | `anchor`, `field`, `value`, `n` |
 | `object_field_equals` | `anchor`, `id`, `field`, `value` |
 | `no_anonymous` | `anchor` |
 
@@ -81,6 +82,14 @@ loading:
 Its `value` may be a YAML/JSON scalar literal or either reference form above.
 `no_anonymous` requires the anchor to contain no rendered objects whose business
 identity could not be determined.
+
+`objects_matching_count` counts objects whose named field is present and exactly
+matches `value`; it includes both identified and anonymous objects and is
+independent of object order, names, list positions, and database IDs. This is a
+content-matching count, not an object-identity assertion, and it cannot prove
+that an object can be reliably tracked. When identity is required, combine
+`object_field_equals` with `no_anonymous`. Its `value` accepts a scalar literal
+or the same `{from_input: key}` / `{from_bind: key}` references described above.
 
 `visible` and `count_gt` retain their existing meanings. Their count is the
 total number of identified and anonymous objects at the anchor, and `visible`
