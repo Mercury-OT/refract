@@ -26,7 +26,7 @@ def _matching(n, value="active", *, source=None, key=None):
         value = ValueRef(source=source, key=key)
     return Assertion(
         check="objects_matching_count",
-        params={"anchor": "project_row", "field": "status", "value": value, "n": n},
+        params={"anchor": "project_row", "field": "status", "value": value, "count": n},
     )
 
 
@@ -120,7 +120,7 @@ def test_objects_matching_count_resolves_input_bind_and_reports_unresolved():
 
     assert input_result.ok and bind_result.ok
     assert not unresolved.ok
-    assert "from_bind:wanted has no resolved bound value" in unresolved.detail
+    assert "response reference 'wanted' has no resolved value" in unresolved.detail
 
 
 def test_frontend_and_e2e_use_the_same_matching_count_evaluator():
@@ -133,7 +133,7 @@ def test_frontend_and_e2e_use_the_same_matching_count_evaluator():
         intent="",
         steps=[Step(
             id="main",
-            request=None,
+            request=None, action="click", target="rows.refresh",
             expect=Expect(frontend=[_matching(2)]),
         )],
     )
@@ -144,7 +144,7 @@ def test_frontend_and_e2e_use_the_same_matching_count_evaluator():
     frontend_result = frontend.run(
         scenario,
         ui=FakeUi(rendered=rendered),
-        normalizer=FakeNormalizer(),
+        normalizer=FakeNormalizer(), mock_plan=[],
     )
     e2e_result = e2e.run(
         scenario,
@@ -161,18 +161,15 @@ def test_frontend_and_e2e_use_the_same_matching_count_evaluator():
     ]
 
 
-def _scenario_text(frontend_assertion, *, inputs="", steps=None):
-    if steps is not None:
-        return (
-            "version: 2\nscenario: demo.matching_count\n"
-            "grid: {level: smoke, module: ui}\nactor: viewer\n"
-            f"inputs: {inputs}\nsteps:\n" + steps
-        )
-    return (
-        "scenario: demo.matching_count\ngrid: {level: smoke, module: ui}\n"
-        "actor: viewer\n" + f"inputs: {inputs}\n"
-        "expect:\n  frontend:\n    - " + frontend_assertion + "\n"
+def _scenario_text(frontend_assertion, *, inputs="{}", steps=None):
+    prefix = (
+        "schema_version: 1\nscenario: demo.matching_count\n"
+        "grid: {level: smoke, module: ui}\nactor: viewer\n"
+        f"parameters: {inputs}\nsteps:\n"
     )
+    return prefix + (steps if steps is not None else
+        "  - id: inspect\n    do: click\n    target: rows.refresh\n"
+        "    expect:\n      ui:\n        - " + frontend_assertion + "\n")
 
 
 def _load_text(tmp_path, text):
@@ -185,79 +182,69 @@ def test_loader_accepts_literal_and_input_references(tmp_path):
     literal = _load_text(
         tmp_path,
         _scenario_text(
-            "{check: objects_matching_count, anchor: project_row, field: status, value: active, n: 1}",
-            inputs="[]",
+            "{check: objects_matching_count, anchor: project_row, field: status, value: active, count: 1}",
+            inputs="{}",
         ),
     )
     input_ref = _load_text(
         tmp_path,
         _scenario_text(
             "{check: objects_matching_count, anchor: project_row, field: status, "
-            "value: {from_input: wanted}, n: 1}",
-            inputs="[{wanted: active}]",
+            "value: {from_parameter: wanted}, count: 1}",
+            inputs="{wanted: active}",
         ),
     )
     assert literal.steps[0].expect.frontend[0].params["value"] == "active"
     assert isinstance(input_ref.steps[0].expect.frontend[0].params["value"], ValueRef)
 
 
-def test_loader_accepts_from_bind_and_counts_it_as_used(tmp_path):
+def test_loader_accepts_direct_response_reference_without_alias(tmp_path):
     text = _scenario_text(
         "unused",
-        inputs="[]",
         steps=(
             "  - id: create\n"
-            "    request: {method: POST, path: projects}\n"
-            "    expect:\n"
-            "      response:\n"
-            "        - {check: has, field: status}\n"
+            "    do: {request: {method: POST, path: [projects]}}\n"
+            "    expect:\n      response:\n        - {check: has, field: status}\n"
             "  - id: list\n"
-            '    request: {method: GET, path: "projects/{wanted}"}\n'
-            "    bind: {wanted: {from: create, field: status}}\n"
-            "    expect:\n"
-            "      frontend:\n"
+            "    do: click\n    target: projects.refresh\n"
+            "    expect:\n      ui:\n"
             "        - {check: objects_matching_count, anchor: project_row, field: status, "
-            "value: {from_bind: wanted}, n: 1}\n"
+            "value: {from_step: create, response_field: status}, count: 1}\n"
         ),
     )
     scenario = _load_text(tmp_path, text)
-    assert isinstance(
-        scenario.steps[1].expect.frontend[0].params["value"], ValueRef)
+    assert isinstance(scenario.steps[1].expect.frontend[0].params["value"], ValueRef)
+    assert scenario.steps[1].bind[0].from_step == "create"
 
 
 @pytest.mark.parametrize(
     "fragment",
     [
-        "anchor: '', field: status, value: active, n: 1",
-        "anchor: 1, field: status, value: active, n: 1",
-        "anchor: [], field: status, value: active, n: 1",
-        "anchor: project_row, field: '', value: active, n: 1",
-        "anchor: project_row, field: 1, value: active, n: 1",
-        "anchor: project_row, field: [], value: active, n: 1",
-        "anchor: project_row, field: status, value: active, n: true",
-        "anchor: project_row, field: status, value: active, n: 1.0",
-        "anchor: project_row, field: status, value: active, n: -1",
-        "anchor: project_row, field: status, value: [active], n: 1",
-        "anchor: project_row, field: status, value: {nested: active}, n: 1",
-        "anchor: project_row, field: status, value: active, n: 1, extra: nope",
+        "anchor: '', field: status, value: active, count: 1",
+        "anchor: 1, field: status, value: active, count: 1",
+        "anchor: [], field: status, value: active, count: 1",
+        "anchor: project_row, field: '', value: active, count: 1",
+        "anchor: project_row, field: 1, value: active, count: 1",
+        "anchor: project_row, field: [], value: active, count: 1",
+        "anchor: project_row, field: status, value: active, count: true",
+        "anchor: project_row, field: status, value: active, count: 1.0",
+        "anchor: project_row, field: status, value: active, count: -1",
+        "anchor: project_row, field: status, value: [active], count: 1",
+        "anchor: project_row, field: status, value: {nested: active}, count: 1",
+        "anchor: project_row, field: status, value: active, count: 1, extra: nope",
     ],
 )
 def test_loader_rejects_invalid_objects_matching_count_params(tmp_path, fragment):
-    text = (
-        "scenario: demo.matching_count\ngrid: {level: smoke, module: ui}\n"
-        "actor: viewer\nexpect:\n  frontend:\n    - {check: objects_matching_count, "
-        + fragment
-        + "}\n"
-    )
+    text = _scenario_text("{check: objects_matching_count, " + fragment + "}")
     with pytest.raises(DeclarationError):
         _load_text(tmp_path, text)
 
 
-def test_loader_rejects_unresolved_bind_reference(tmp_path):
+def test_loader_rejects_unresolved_response_reference(tmp_path):
     text = _scenario_text(
-        "{check: objects_matching_count, value: {from_bind: wanted}, "
-        "anchor: project_row, field: status, n: 0}",
-        inputs="[]",
+        "{check: objects_matching_count, value: {from_step: missing, response_field: status}, "
+        "anchor: project_row, field: status, count: 0}",
+        inputs="{}",
     )
-    with pytest.raises(DeclarationError, match="from_bind.*wanted"):
+    with pytest.raises(DeclarationError, match="earlier request-bearing step"):
         _load_text(tmp_path, text)

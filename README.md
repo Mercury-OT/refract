@@ -26,7 +26,7 @@ It provides three things:
 * a deterministic multi-projection executor
 * a port-based adapter model
 
-A scenario declares what should be true, not how to click it. The framework runs that declaration across multiple projections so one scenario can validate frontend behavior, request shape, response contract, and backend evidence.
+A scenario declares ordered actions and what should be true after them. Logical UI targets keep product selectors in the adapter; direct API requests remain explicit actions. Selected projections check frontend behavior, outgoing requests, responses, and backend evidence without hiding business preparation in adapter scripts.
 
 ## Current Scope
 
@@ -117,6 +117,11 @@ request/response integration.
 ## Philosophy
 
 See [`MANIFESTO.md`](MANIFESTO.md) for the beliefs and vision behind this framework.
+
+## Planning
+
+See the [public roadmap](docs/roadmap.md) for task priorities, design boundaries,
+and the distinction between planned work and the currently supported contract.
 
 ## License
 

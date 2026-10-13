@@ -26,15 +26,7 @@ def test_validate_valid_scenario_exits_zero_with_summary():
 def test_validate_invalid_scenario_exits_nonzero(tmp_path):
     bad = tmp_path / "bad.yaml"
     bad.write_text(
-        "scenario: bad.x\n"
-        "grid: {level: smoke, module: demo}\n"
-        "actor: user\n"
-        "precondition: []\n"
-        "inputs: []\n"
-        "intent: x\n"
-        "expect:\n"
-        "  response:\n"
-        "    - {check: no_such_check}\n",
+        'schema_version: 1\nscenario: bad.x\ngrid:\n  level: smoke\n  module: demo\nactor: user\ndescription: x\nsteps:\n- id: main\n  do: open\n  target: resource.page\n  expect:\n    response:\n    - check: no_such_check\n',
         encoding="utf-8",
     )
     r = _run("validate", str(bad))

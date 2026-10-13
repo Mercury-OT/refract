@@ -1,481 +1,391 @@
 # Refract Scenario Contract
 
-A scenario is the single source of truth for Refract.
+A Scenario is a versioned acceptance baseline expressed as data: metadata,
+parameters, and ordered primitive actions with expectations. It is not a complete
+business truth or a script. Product preparation belongs in visible steps, not an
+adapter's hidden workflow. Selectors, transport routing, session handling, and
+truthful evidence normalization remain adapter responsibilities.
 
-It is a pure data declaration that describes:
+## Format and metadata
 
-* who is acting
-* under which grid cell the scenario should run
-* optional preconditions and inputs
-* one or more steps
-* what must hold at each observation point
-
-A scenario does not contain selectors, sleeps, imperative logic, or product-specific implementation details.
-
-## Supported Forms
-
-Refract supports two forms:
-
-| Form | Selector | Meaning |
-|---|---|---|
-| v1 | no `version` field | legacy flat scenario, normalized to one implicit step |
-| v2 | `version: 2` | ordered `steps` list |
-
-Internally, execution is step-based.
-
-## Top-Level Fields
+The executable format is `schema_version: 1`. This identifies the declaration
+format, not a Scenario's content revision or approval. Unversioned declarations,
+`version: 2`, and the former `inputs`, `intent`, `precondition`, and `bind` YAML
+fields are rejected; no silent conversion or compatibility mode is provided.
 
 | Field | Required | Meaning |
-|---|---|---|
-| `scenario` | yes | stable scenario id |
-| `grid` | yes | execution grid selector: `{level, module}` |
-| `actor` | yes | role or identity used by the adapter |
-| `version` | v2 only | currently `2` |
-| `precondition` | no | list of `{ref: ...}` references |
-| `inputs` | no | ordered single-key input mappings |
-| `intent` | no | human-readable scenario intent |
-| `expect` | v1 only | flat assertions |
-| `steps` | v2 only | ordered step list |
+| --- | --- | --- |
+| `schema_version` | yes | strict integer `1` |
+| `scenario` | yes | stable nonempty Scenario identifier |
+| `description` | no | human-readable intent |
+| `actor` | yes | identity or role resolved by the authenticator |
+| `parameters` | no | mapping of declared data values |
+| `grid` | no | organizational selector `{level, module}` |
+| `steps` | yes | nonempty ordered list with unique step IDs |
 
-## Step Fields
+Parameters contain finite JSON-like data, not scripts or generators. Unknown
+fields, duplicate mapping keys, and invalid reference shapes fail validation.
+A requested grid filter does not silently match a Scenario without that grid.
 
-Each v2 step may contain:
+## One action per step
 
-| Field | Required | Meaning |
-|---|---|---|
-| `id` | yes | unique step id within the scenario |
-| `request` | yes | request template: `{method, path, body?}` |
-| `bind` | no | cross-step binding from prior normalized response fields |
-| `poll` | no | polling policy |
-| `expect` | no | assertions for this step |
+There is no `action`, `type`, or `sequence` wrapper. A step has one `id`, one `do`,
+the applicable action fields below, and optionally `expect`.
 
-## Observation Points
+| Action | Declaration | Meaning |
+| --- | --- | --- |
+| Open | `do: open`, `target` | open one logical page |
+| Click | `do: click`, `target` | activate one logical control |
+| Fill | `do: fill`, `target`, `value` | fill one logical input |
+| Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
+| API request | `do: {request: {method, path, body?}}` | send the declared request |
 
-A step can assert three observation points directly:
+Targets map to elements, not multi-action business scripts. A click must not
+secretly navigate, fill fields, and submit. Wait does not trigger a scheduled
+job, change the host clock, or assert success.
 
-* `frontend`
-* `response`
-* `backend_state`
+An API action stores its request under `do.request`, never under `expect`.
+A UI action may declare `expect.request` to constrain the traffic it causes.
+The same step cannot contain both request forms. Requests use an HTTP method,
+an explicit list of logical path segments, and an optional body mapping.
+Each path segment is encoded separately after resolving references.
 
-For v1, `request` also appears under `expect`. For v2, request ownership is carried by the step's own `request` field.
+One step may have no expectations. The entire Scenario must have at least one
+effective request constraint or bounded assertion. An API command, wait, or
+empty expectation container alone does not make a test.
 
-## Bounded Vocabulary
+## Expectations and projections
 
-### frontend
+`expect` can contain `request` (a request mapping on UI actions), `ui`, `response`,
+and `backend_state` (lists of bounded assertions). There are no separate e2e or
+contract assertion areas.
 
-| check | params |
-|---|---|
+| Projection | Execution and checks |
+| --- | --- |
+| `backend` | sends API actions or a UI step's declared request; checks response and declared state; does not perform or verify UI actions |
+| `frontend` | performs UI primitives with explicit mock fixtures; checks UI, associated outgoing requests, and mock responses |
+| `e2e` | performs UI primitives live, or explicitly declared API actions; reuses relevant checks on associated evidence |
+| `contract` | compares declared response compatibility with backend recordings; sends no requests |
+
+Projection selection belongs to the caller. Checks outside that projection must
+be reported as such, not described as verified. Missing evidence or capability
+within a selected projection is not a pass. E2e must never repair missing or
+incorrect UI traffic by sending a correct API request itself. Contract requires
+backend and does not implicitly execute it or prove whole-system equivalence.
+
+This slice rejects frontend direct API actions, API actions with UI assertions,
+and requestless backend-state observation before side effects. No previous trace
+is borrowed to simulate requestless observation.
+
+### UI vocabulary
+
+The declaration calls this area `ui`; the evaluator and reports retain the
+`frontend` observation-point name.
+
+| Check | Parameters |
+| --- | --- |
 | `visible` | `anchor` |
-| `count_gt` | `anchor`, `n` |
-| `objects_matching_count` | `anchor`, `field`, `value`, `n` |
+| `count_gt` | `anchor`, `count` |
+| `objects_matching_count` | `anchor`, `field`, `value`, `count` |
 | `object_field_equals` | `anchor`, `id`, `field`, `value` |
 | `no_anonymous` | `anchor` |
 
-`object_field_equals` selects one identified business object at `anchor` and
-compares one of its fields with exact type and value equality. Its `id` must be
-one of these data-only references; a literal id is rejected during scenario
-loading:
+`visible` means at least one rendered object. `count_gt` means strictly more
+than `count`; `objects_matching_count` means exactly `count` objects whose field
+is present and equals `value`. Both identified and anonymous objects participate.
+Counts do not establish identity. Use `object_field_equals` and `no_anonymous`
+when business identity is part of the obligation.
 
-* `{from_input: key}` — exactly one top-level input with that key
-* `{from_bind: key}` — a binding declared by the current step
+`object_field_equals.id` must be a parameter or prior-response reference, not a
+literal. Its `value` and matching-count `value` accept scalar literals or
+references. Equality is type-strict: `false` is not `0`, and `true` is not `1`.
+`no_anonymous` requires no rendered object at the anchor to lack reliable
+business identity; it is not a user-authentication assertion.
 
-Its `value` may be a YAML/JSON scalar literal or either reference form above.
-`no_anonymous` requires the anchor to contain no rendered objects whose business
-identity could not be determined.
+### Request constraints
 
-`objects_matching_count` counts objects whose named field is present and exactly
-matches `value`; it includes both identified and anonymous objects and is
-independent of object order, names, list positions, and database IDs. This is a
-content-matching count, not an object-identity assertion, and it cannot prove
-that an object can be reliably tracked. When identity is required, combine
-`object_field_equals` with `no_anonymous`. Its `value` accepts a scalar literal
-or the same `{from_input: key}` / `{from_bind: key}` references described above.
+A UI step's `expect.request` constrains method, logical path, and declared body
+fields. Mapping comparisons are recursive subsets: additional transport fields
+are allowed. Arrays require equal length and order with type-strict recursive
+elements; mappings inside arrays remain subsets. Scalars require identical types
+and values. A mapper must not invent
+undeclared business inputs to satisfy the constraint.
 
-`visible` and `count_gt` retain their existing meanings. Their count is the
-total number of identified and anonymous objects at the anchor, and `visible`
-is true when that total is greater than zero. The e2e projection uses the same
-frontend evaluation rules.
+### Response vocabulary
 
-### request
-
-| check | params |
-|---|---|
-| `request` | `method`, `path` |
-
-Optional v1 param:
-
-* `async`
-
-### response
-
-| check | params |
-|---|---|
+| Check | Parameters |
+| --- | --- |
 | `success` | none |
 | `failure` | none |
 | `has` | `field` |
 | `field_equals` | `field`, `value` |
 | `field_absent` | `field` |
+| `collection_matching_count` | `field`, `matching`, `count` |
 
-`success` requires the normalized response's success indicator to be true;
-`failure` is its exact opposite and requires that indicator to be false. A
-response expectation may declare either one, but not both: declaring `success`
-and `failure` in the same step is rejected when the scenario is loaded. A
-`failure` assertion is complete on its own and can also be combined with
-`field_equals` to require both rejection and the expected reason.
+`success` and `failure` check the normalized success indicator and cannot coexist
+in a step. `failure` is a complete rejection assertion; add field checks for an
+expected rejection reason. `has` checks presence. `field_equals` checks presence
+plus exact type and value, using a scalar literal or reference. These are
+normalized fields, not arbitrary raw JSON paths.
 
-`field_equals` requires the normalized response to contain `field` and for its
-value to equal the declared expected value with exact type and value equality.
-Its `value` is one of:
+`field_absent` checks membership, not truthiness: a present null, zero, false,
+empty string, list, or mapping fails. Failure details name the field, not its
+value. Duplicate absence checks, or absence combined with `has`,
+`field_equals`, or `collection_matching_count` on the same field, are invalid.
 
-* a YAML/JSON scalar literal (`null`, boolean, number, or string)
-* `{from_input: key}` — exactly one top-level input with that key
-* `{from_bind: key}` — a binding declared by the current step
+`collection_matching_count` checks an observed list of objects in one normalized
+field. `matching` is a nonempty mapping of field names to scalar literals or
+parameter/prior-response references. A member matches only if every named field
+is present on that same member and strictly equals its expected value. Extra
+fields are allowed; list order is irrelevant and duplicate members count
+separately. `count` is an exact nonnegative integer, not a boolean or reference.
 
-References are data-only. They do not support expressions, JSONPath,
-arithmetic, concatenation, or coercion.
+```yaml
+- id: read_list
+  do:
+    request:
+      method: GET
+      path: [records]
+  expect:
+    response:
+      - check: success
+      - check: collection_matching_count
+        field: records
+        matching:
+          id: {from_step: create, response_field: id}
+          name: {from_parameter: record_name}
+        count: 1
+```
 
-`field_absent` requires `field not in normalized_response.fields`. A present
-field fails the assertion regardless of whether its value is `null`, `0`,
-`false`, an empty string, an empty list, or an empty mapping. Failure details
-name only the unexpected field and never include its value. Within one response
-expectation, duplicate `field_absent` declarations for the same field are
-invalid, as are `field_absent` combined with `has` or `field_equals` for that
-field. A negative assertion does not guarantee field presence and therefore
-cannot provide a later step's binding source.
+This fragment assumes an earlier request-bearing `create` step and a declared
+`record_name` parameter. References read actual responses, not expectations.
+Known nonscalar parameter values are invalid declarations; a runtime nonscalar
+response reference produces `ERROR` before executing the step. Literal null or
+a null parameter may be matched, but a missing member field is not null. Existing
+missing/null prior-response reference errors are unchanged.
 
-The evidence boundary is intentionally narrow: `field_absent` observes
-`NormalizedResponse.fields`, not the raw HTTP JSON. It proves only that the
-field is absent from the normalized response surface exposed by the adapter. A
-`ResponseNormalizer` may filter a field that was present in the raw response,
-so this assertion alone cannot prove that a production HTTP response contains
-no leaked data. It does not close the need for trusted evidence, adapter
-conformance, E-7, or a security extension. Raw provider recordings retained in
-reports may also still contain sensitive data; this change does not expand the
-handling of that existing risk.
+A missing field, non-list value, or any non-object list member fails, even when
+count is zero. Only an actual empty list can establish zero without inspecting
+members. Multiple constraints on the same collection are all retained. New
+diagnostics report names, counts, and structural reasons, not matching values or
+raw members. These checks inspect only the observed response/page; they do not
+fetch other pages, infer UI identity, or prove database state. The normalizer
+must preserve the observed collection, not select its first item or prefilter
+it using expected values. No JSONPath or nested matching syntax is supported.
 
-### backend_state
+This is a normalized-only boundary. A normalizer can omit a raw response field;
+absence from its field map is not proof that raw HTTP data contains no leak.
+Trusted evidence, adapter conformance, and security verification remain separate.
+Retained raw recordings may still contain sensitive data.
 
-| check | params |
-|---|---|
+### Backend-state vocabulary
+
+| Check | Parameters |
+| --- | --- |
 | `span_exists` | `span` |
 | `span_attr` | `span`, `attr`, `op`, `value` |
 
-## Binding Rules
+`span_attr` uses `>`, `>=`, `<`, `<=`, or `==`; ordering requires a numeric
+value. Supported reference comparisons use equality. StateProbe remains separate
+and is called only for declared state checks against the selected real trace.
+Live UI state facts must carry that same nonempty, type-strict trace ID. Missing
+StateProbe is visible degradation. A span alone does not establish persistence;
+shared trace correlation does not establish independent evidence.
 
-Bindings are explicit references from a later step to a prior step.
+An explicit API call is paired with its returned request/response at the driver
+boundary. If that response has no trace ID, core may use the trace it put on the
+strictly matched outgoing request as local correlation. This is not evidence
+that the server echoed or observed that trace. A contradictory returned trace is
+an error in e2e; UI traffic still needs its separate action-origin association.
+State assertions still require actual StateProbe facts, not this fallback alone.
 
-A binding:
+## Parameters and prior response values
 
-* must reference a prior step id
-* must reference a field explicitly guaranteed by that source step through a
-  response `has` or `field_equals` assertion
-* substitutes path placeholders and whole-value body placeholders
-* does not support expressions, arithmetic, or inline interpolation
+The reference forms are `{from_parameter: record_name}` and
+`{from_step: submit, response_field: id}`. They can occur in action values, path
+segments, body values, and supported assertion values. A response reference names
+an earlier request-bearing step and reads its actual normalized runtime response,
+never its expected value. A source step need not assert `has`: preparation
+requests may supply values without inventing checks.
 
-## Polling Rules
+Missing or null response fields produce `ERROR` atomically, with no partial
+resolved mapping. Zero, false, and empty strings remain valid. No user-managed
+binding aliases, expressions, arithmetic, concatenation, JSONPath, reference-valued
+mapping keys, or coercion are supported. Frontend references read mock responses,
+which remain distinguishable from live responses.
 
-Polling is step-local.
+## Polling and outcomes
 
-* currently GET-only
-* stop condition is the step's `expect.response`
-* `on_timeout` supports `FAIL` and `SKIP`
+Only explicit API `GET` actions may declare `poll`; response assertions are the
+stop predicate. Core sends the first attempt immediately, then repeats under the
+caller's `PollConfig` timeout and interval. `on_timeout` is `FAIL` or `SKIP`.
+Transport exceptions are `ERROR`, not blind retries. Each attempt has a distinct
+trace and recording; only a successful terminal attempt is final. State checks
+evaluate against that response.
 
-Because the full response assertion list is the stop condition,
-`field_equals` polling waits for the declared value rather than stopping as
-soon as the field appears.
+```yaml
+schema_version: 1
+scenario: demo.export_ready
+actor: user
+steps:
+  - id: wait_for_export
+    do:
+      request:
+        method: GET
+        path: [exports, export-123, status]
+    poll:
+      on_timeout: FAIL
+    expect:
+      response:
+        - check: field_equals
+          field: state
+          value: ready
+```
 
-## Execution Semantics
+Polling never repeats UI clicks. Eventual-consistency observation may repeat
+StateProbe calls without replaying an action. Backend and e2e support explicit
+API polling; frontend rejects it before context creation.
+Live UI state observation uses the caller's timeout/interval budget, including
+single-step runs through the shared loop. The backend state helper retains its
+separate existing default observation budget; response polling does not imply
+that every projection shares one combined deadline.
 
-* steps run in order
-* execution is fail-fast
-* blocked later steps become `BLOCKED`
-* step status is first-class
+Steps run in order. `FAILED`, `ERROR`, and `SKIPPED` block later steps.
+A no-check action can be `COMPLETED`; a backend UI-only step is
+`NOT_APPLICABLE`. These have empty checks and are not assertion successes.
+Projection `PASSED` requires actual checks without failure or degradation.
+`EMPTY` and `NOT_SELECTED` cannot satisfy the strict gate.
 
-Single-step e2e continues to use exactly one legacy
-`UiDriver.run_intent(..., mock=None)` call, even when the adapter also offers
-stepwise execution. Multi-step e2e requires a `StepwiseUiDriver` that explicitly
-reports `supports_stepwise_mode("live")`. A legacy or mock-only adapter reports
-`multi-step e2e live capability not supported` before authentication,
-preconditions, context creation, or UI actions.
+## UI evidence and mock sources
 
-The frontend projection keeps the existing single-step `UiDriver.run_intent()`
-path unchanged. A multi-step frontend scenario requires the optional
-`StepwiseUiDriver` capability. A legacy-only UI adapter reports
-`multi-step UI capability not supported` before opening a UI context or
-performing an action; the core never loops over `run_intent()` as a substitute.
+Frontend and e2e share one orchestration loop for every step count. Core
+authorizes one primitive, checks evidence, resolves later values, and decides
+whether the next action may run. One authenticated UI context is reused and
+closed exactly once. There is no legacy `run_intent()` workflow fallback.
 
-For supported multi-step frontend runs, the core opens one UI context, reuses it
-for every authorized step, and closes it exactly once. Steps are fail-fast:
-after `FAILED`, `ERROR`, or `SKIPPED`, every later step is `BLOCKED` and the
-adapter receives no further action permit. A context-close failure is reported
-as a structured `ERROR` on the last non-blocked step. Multi-step frontend
-polling is not supported and is rejected before the context is opened; the core
-does not simulate polling by repeating a UI action.
+Action identity is separate from traffic: an action may produce zero to many
+requests. Each associated request has an immutable ID and response pairing.
+Core checks run, step, action, mode, permit, and traffic correspondence, then
+selects the unique declared method/path target. Missing or ambiguous target
+traffic cannot pass. Stale, swapped, or replayed identity is a protocol error;
+correctly associated traffic with a wrong body fails the request check.
 
-Possible step outcomes include:
+Background/unassigned traffic is diagnostic only. First method/path match,
+arrival window, and list position do not establish action ownership. The
+reference browser adapter captures bounded event/request-creation lineage;
+untracked async origins remain unavailable. Completion follows actual operation
+and render lifecycle, not the appearance of expected content. This is not
+universal browser causality or protection from a malicious adapter fabricating
+an internally consistent bundle.
 
-* `PASSED`
-* `FAILED`
-* `SKIPPED`
-* `BLOCKED`
-* `ERROR`
+Frontend mocks are explicit caller-supplied ordered fixtures, including initial
+and secondary routes. Source and consumption remain visible. Mocks are not
+synthesized from `expect`; unmatched traffic cannot silently reach a live server.
+Mock responses never become live provider recordings. Recorder failures are
+errors; returned live recordings are verified, not trusted by list order alone.
 
-### Binding Diagnostics and Sensitive Report Data
+Rendered anchors contain `identified` objects with nonempty string IDs and field
+maps, and `anonymous` objects with field maps and no ID. Values are JSON scalars.
+Adapters retain unidentified objects rather than dropping them. Content matching
+must not guess identity from names, row order, or response order.
 
-Backend, stepwise-frontend, and stepwise-e2e step results expose
-`StepResult.resolved_bindings` for diagnosing cross-step identity and
-correspondence problems. The field is diagnostic only:
-it does not participate in Oracle evaluation, status calculation, report
-equality, or quality gates.
+## Reports and sensitive data
 
-Those projections fill the field only after every binding for that step resolves
-successfully. It remains `{}` for steps without bindings, binding-resolution
-errors, blocked steps, legacy frontend/e2e results, and contract results.
-If binding succeeds, the values remain available even when later execution,
-normalization, evidence validation, checks, or polling produce `ERROR`,
-`FAILED`, or `SKIPPED`.
+`StepResult.resolved_bindings` remains a diagnostic view even though YAML no
+longer declares `bind`. It is filled after complete resolution, retained after
+later failure/error, and empty on resolution failure or blocked steps. It does
+not affect equality, checks, status, or gates. It is a
+**top-level-container-isolated diagnostic view**, not an immutable snapshot:
+nested objects may remain shared.
 
-`resolved_bindings` is a **top-level-container-isolated diagnostic view**: the
-filling projection makes a shallow copy of the mapping used for execution. The mapping
-objects are distinct, but nested lists or dictionaries may still be shared. It
-is not an immutable snapshot.
+Refract does not automatically print or serialize this field. Default step and
+nested run representations hide it; provider recordings and sensitive
+permit/evidence payloads are also hidden. `sensitive=True` is metadata, not a
+security mechanism. `dataclasses.asdict()` and generic third-party serializers
+can still expose values. Reports, permits, fixtures, and evidence are sensitive.
+Machine exports need explicit allowlists or redaction, never direct generic
+serialization of these objects.
 
-Binding values may contain sensitive data. Refract itself does not print or
-serialize this field, and neither `repr(StepResult)` nor the nested
-`repr(RunReport)` includes it. The dataclass field metadata contains
-`sensitive=True`, but that label is not a security mechanism. In particular,
-`dataclasses.asdict()` and general-purpose third-party serializers still collect
-the field. Consumers must treat every report object as potentially sensitive.
-Stepwise UI permits and evidence can also contain sensitive bound paths,
-bindings, mock bodies, rendered data, requests, responses, and diagnostic
-traffic. Refract does not proactively print or generically serialize these
-objects, and their sensitive payload fields are excluded from ordinary
-`repr()`. Provider recordings are likewise excluded from the default
-`repr(DomainResult)` and nested `repr(RunReport)`. Nevertheless,
-`dataclasses.asdict()` and general-purpose serializers can still collect all of
-these values. Reports, permits, and evidence must all be treated as potentially
-sensitive. The future C-13 machine-export path must use an explicit field
-allowlist or an explicit redaction policy; it must not directly serialize a
-report, permit, or evidence object.
-
-### Strict Quality Gates
-
-`rep.passed` being true does not guarantee that every declared assertion ran.
-When an optional port such as `StateProbe` is unavailable, the affected
-assertions are recorded as skipped, the report status is `DEGRADED`, and
-`rep.passed` may remain true.
-
-A strict quality gate has one complete condition:
+The only complete strict execution gate is:
 
 ```python
 assert rep.status == "PASSED"
 ```
 
-An empty degradation list is useful as a supplementary diagnostic or an
-additional assertion:
+`rep.passed` can include `DEGRADED`. `rep.degradations() == []` is supplementary,
+not a standalone gate: failed, empty, or unselected reports may have none.
+A pass covers performed checks, not omitted obligations or the correctness and
+completeness of the human-approved baseline.
 
-```python
-assert rep.degradations() == []
-```
+## Contract identity
 
-It must not be used as a gate on its own. A `FAILED`, `EMPTY`, or
-`NOT_SELECTED` report can also have no degradations. The status assertion is
-the gate; the degradation assertion only adds confirmation that no declared
-capability was skipped.
+Contract consumes backend recordings without sending requests. Its identity is
+`(step_id, method, declared template_path)`; bound and actual paths remain
+evidence, not replacements for declared identity. Only final polling recordings
+contribute. Response requirements retain success/failure/don't-care, required
+fields, expected values, forbidden fields, and all collection matching
+constraints. Collection checks evaluate final provider collections with the
+same strict matching rules and actual provider-reference values; contract does
+not reduce them to presence checks. Empty consumer checks do not
+produce a passing contract. Compatibility does not prove UI or full business
+acceptance.
 
-This is the current integration rule; it does not replace a future, clearer
-core-level quality-gate API.
+## Worked UI example
 
-## UiDriver Rendered-Object Contract
-
-`UiResult.rendered` is a partial mapping from anchors to business objects. Each
-anchor has this shape:
-
-```python
-{
-    "identified": [
-        {"id": "business-id", "fields": {"name": "example", "count": 3}},
-    ],
-    "anonymous": [
-        {"fields": {"name": "unidentified"}},
-    ],
-}
-```
-
-The rules are:
-
-* every `identified` entry has a non-empty string `id` and a `fields` mapping;
-* every `anonymous` entry has only a `fields` mapping and no `id` key;
-* both lists may be empty;
-* field names are opaque to the core and field values are JSON scalars;
-* adapters must retain unidentified objects in `anonymous` rather than dropping
-  them.
-
-The adapter owns translation from the product surface to business ids and
-scalar fields. Refract's core neither interprets field-name semantics nor
-receives product-specific location concepts.
-
-This structure replaces the earlier per-anchor `{visible, count, text}` shape
-and is a breaking `UiDriver` port-contract change. Third-party UI adapters must
-be updated before using this version.
-
-## Stepwise UI Capability and Evidence Identity
-
-`StepwiseUiDriver` is an independent, optional port. Capability detection is an
-explicit `isinstance(ui, StepwiseUiDriver)` check; having coincidentally named
-methods is not sufficient. Existing adapters need only continue implementing
-`UiDriver.run_intent()` for single-step frontend and e2e runs.
-
-Core owns one shared multi-step orchestration loop for frontend mock and e2e
-live. It authorizes exactly one semantic action at a time, validates and
-evaluates that action's evidence, updates binding inputs, and only then decides
-whether the next action may run. Each projection execution receives a new
-execution id and 32-byte random signing secret. Each step receives distinct
-action and request ids, attempt index zero, a W3C `traceparent`, its declared and
-bound path identities, resolved bindings, and a mode. Frontend permits carry
-that step's synthesized mock response; live permits carry `mock_response=None`.
-The permit token is HMAC-SHA256 over the canonical execution/action/request/
-step/attempt/mode/method/path/trace identity. Frontend mock responses are built
-per step and carried by permits; they are not stored in a global
-`(method, path)` map, so repeated endpoints retain declaration order and distinct
-responses.
-
-Frontend and e2e remain separate physical projections. If both are selected in
-one `run_scenario()` call, frontend opens its own mock context and e2e opens its
-own live context. Within either projection, every step performs one semantic
-action exactly once and all steps reuse that projection's authenticated session
-and UI context. E2e authentication runs once, followed by each declared
-precondition in order, before the context is opened. Missing or failing
-precondition resolution becomes a structured `ERROR` with later steps
-`BLOCKED`; no UI action or provider recording is produced.
-
-The adapter returns either one completed `UiActionEvidence` or one non-empty
-skip reason. Completed evidence must echo the permit identity and contain one
-primary final request/response pair plus the current rendered surface. The four
-e2e observation points—frontend, request, response, and backend state—are
-evaluated for that single action and its trace; they are not obtained by
-replaying the action. Core checks the token, step and run identities, declared
-and bound paths, trace, final marker, request/response value correspondence, and
-(in mock mode) mock body before normalization. Only that verified primary
-response can be recorded or feed a later bind.
-
-Path identity has three distinct layers. `template_path` is the declaration;
-`bound_logical_path` is the template after bind substitution; and `actual_path`
-is what the browser or transport boundary observed. The primary
-`RequestSpec.path` must equal the bound logical path. The actual path may add a
-leading slash or product base path, but it must be non-empty and must agree
-between action evidence and its `RecordedResponse`. This lets adapter mapping
-remain outside the core without confusing logical and transport evidence.
-
-One action may expose one permit-correlated primary final request/response and
-additional uncorrelated diagnostic traffic. Diagnostics—even a request with the
-same method and path—cannot satisfy assertions and are never written to the
-provider `Recorder`. A delayed prior response may remain diagnostic; traffic
-that reuses the current permit's trace correlation is a protocol error, as is a
-second current-correlated primary (retry is not supported). The core records
-only fully verified live primary responses and verifies the Recorder's returned
-count, identity, and order rather than trusting its list order.
-
-`StateProbe` remains a separate port and is called by core only when the current
-step declares `backend_state`. It receives the verified primary response's
-permit trace id. Every returned `StateFacts`, including every eventual-
-consistency polling observation, must have the same non-empty, type-strict trace
-id. Missing `StateProbe` remains a visible degradation: the step may continue,
-but the final report cannot be strictly `PASSED`. The UI driver and
-`UiActionEvidence` do not carry backend state facts.
-
-Multi-step UI/business-response polling remains unsupported and is rejected
-before authentication or any action; core never repeats a click or permit to
-simulate it. Backend-state eventual-consistency polling is different: it may
-repeat `StateProbe.observe()` after one completed action, while the UI action,
-business request, and permit still occur exactly once.
-
-This protocol detects contradictory identity, mismatches, and replay across
-steps or runs. It does not make an untrusted adapter incapable of fabricating an
-internally consistent evidence bundle, and it does not make `StateProbe` an
-independent or unforgeable trust root. Product-specific actions, navigation,
-controls, and traffic capture remain adapter responsibilities; core does not
-infer a UI action from an HTTP method or path.
-
-## Contract Projection Identity
-
-The contract projection consumes recordings produced by the backend projection;
-it does not execute requests on its own.
-
-For both static and templated multi-step requests, consumer and provider entries
-are matched by:
-
-* step id
-* request method
-* the declared request path template
-
-The path after binding and the adapter-resolved path remain recording evidence,
-but do not replace the declared template as contract identity. For a polled step,
-only the recording marked as final contributes to the provider contract.
-
-## Worked Example
-
-A minimal public example stays product-neutral by using the demo namespace:
+This synthetic declaration makes each interaction visible. Targets and fields
+need truthful mappings; frontend execution also needs explicit mock data.
 
 ```yaml
-scenario: demo.item_update
-grid:
-    level: regression
-    module: demo
-actor: user
-precondition:
-    - ref: item_exists
-inputs:
-    - new_name: renamed
-intent: rename an existing item
-expect:
-    request:
-        - check: request
-          method: PUT
-          path: items
-    response:
+schema_version: 1
+scenario: demo.record_create
+description: Create a record and check response and rendered content.
+actor: editor
+parameters:
+  record_name: Example record
+steps:
+  - id: open_list
+    do: open
+    target: records.page
+  - id: open_create_form
+    do: click
+    target: records.new_button
+  - id: fill_name
+    do: fill
+    target: records.name_input
+    value: {from_parameter: record_name}
+  - id: submit
+    do: click
+    target: records.submit_button
+    expect:
+      request:
+        method: POST
+        path: [records]
+        body:
+          name: {from_parameter: record_name}
+      response:
         - check: success
         - check: has
-          field: itemId
-    backend_state:
-        - check: span_exists
-          span: item.update
-        - check: span_attr
-          span: item.update
-          attr: row_count
-          op: ">"
-          value: 0
+          field: id
+        - check: field_equals
+          field: name
+          value: {from_parameter: record_name}
+      ui:
+        - check: objects_matching_count
+          anchor: records.rows
+          field: name
+          value: {from_parameter: record_name}
+          count: 1
 ```
 
-Note two things this example models:
+## Validation and review
 
-* every observation point holds a **list** of assertions, including `request`;
-* the declared `path` is the **logical** template (`items`), not a concrete resource
-  path. Mapping it to the actual path the product serves is the adapter's job.
+`refracto validate` checks declarations, not product behavior or human approval.
+Missing actions, invalid references, unsupported vocabulary, duplicate identities,
+and assertion-free Scenarios fail loudly. Review and approve the actual YAML;
+validation must not silently add checks or convert old files. There is currently
+no supported graphical Scenario authoring tool in this repository.
 
-## Validation
-
-Scenario loading is fail-loud.
-
-Typical validation failures include:
-
-* unsupported version
-* malformed top-level structure
-* unknown fields
-* invalid assertion terms
-* missing required params
-* duplicate step ids
-* invalid or unused bindings
-* malformed placeholders
-* invalid polling configuration
-
-## Public Reference
-
-The code-level sources of truth are:
-
-* `refracto/declaration/model.py`
-* `refracto/declaration/loader.py`
-* `refracto/declaration/vocabulary.py`
-* `refracto/declaration/binding.py`
-
-If this document and the implementation differ, the implementation wins.
+Implementation lives in `declaration/model.py`, `loader.py`, `vocabulary.py`,
+and `binding.py`, and is exercised by projection and adapter tests.
+Disagreement between this document and implementation is a defect to resolve,
+not permission to silently alter acceptance intent.

@@ -36,6 +36,13 @@ def build_adapters(app: MinimalRestApp | None = None) -> runner.Adapters:
 The recorder is Refract's existing in-memory recorder, not another target port.
 The example implements no `StateProbe` and no `UiDriver`.
 
+The declaration uses `schema_version: 1`, a `parameters` mapping, and ordered
+steps. API commands are under `do.request`; response checks are under
+`expect.response`. Preparation is another visible step. Later steps can use
+`{from_step: create, response_field: id}` without declaring binding aliases.
+See [SCENARIO.md](../SCENARIO.md) for the complete contract. Old unversioned and
+`version: 2` files are rejected, not silently upgraded.
+
 The example resolver translates the declaration's `records` path to the target's
 `/items` route. Keep this boundary explicit in a real integration: declarations
 describe logical requests, while `resolve_request` owns target routing, headers,
@@ -62,10 +69,11 @@ step id, and reason. The
 [`state_degraded.yaml`](../examples/minimal/scenarios/state_degraded.yaml) scenario
 is the CI anchor for this behavior.
 
-`UiDriver` is optional until `frontend` or `e2e` is requested. Requesting either
-projection without a UI driver raises a `ValueError` containing `UiDriver` before
-any target request is sent. It does not leak an internal attribute error or run
-part of the scenario first.
+UI primitives need a stepwise UI adapter. Unsupported projection/action
+combinations are rejected before target side effects. Frontend does not execute
+direct API steps. E2e may execute explicitly declared API steps without a
+browser; it must never send an extra request to repair missing or incorrect UI
+traffic. Selecting backend does not verify UI interactions.
 
 ## Strict quality gates
 

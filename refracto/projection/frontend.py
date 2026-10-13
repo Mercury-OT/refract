@@ -1,37 +1,12 @@
 """Frontend projection.
 
-Drive the UI against a mock backend generated from the consumer contract and
+Drive the UI against an explicitly supplied mock plan and
 assert frontend rendering plus outgoing-request shape. This projection does not
 use a real backend or a state probe.
 """
 from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED
-from refracto.contract import store
 from refracto.declaration import values
-from refracto.declaration.loader import DeclarationError
 from refracto.projection import ui_stepwise
-
-
-def build_mock(scenario, normalizer) -> dict:
-    consumer = store.consumer_contract(scenario)
-    # Consumer contract entries are keyed on (step_id, method, template_path).
-    # The aggregate mock presented to legacy UiDriver.run_intent() is keyed on
-    # (method, path). This function remains a single-step compatibility path;
-    # stepwise frontend builds and carries one mock body per action permit.
-    mocks = {}
-    for (_step_id, method, path), shape in consumer.entries.items():
-        concrete = {}
-        for field, declared in shape.response_values.items():
-            resolved, error = values.resolve(declared, inputs=scenario.inputs)
-            if error is not None:
-                raise DeclarationError(error)
-            concrete[field] = resolved
-        if concrete:
-            mocks[(method, path)] = normalizer.synthesize(shape.response_fields, concrete)
-        else:
-            # Preserve compatibility for adapters implementing the original
-            # one-argument synthesizer until they opt into value assertions.
-            mocks[(method, path)] = normalizer.synthesize(shape.response_fields)
-    return mocks
 
 
 def _objects_at(rendered, anchor):
@@ -49,7 +24,7 @@ def _eval_frontend(assertion, rendered, bound_values=None, inputs=None):
         ok = count > 0
         return CheckResult("frontend", "visible", ok, "" if ok else f"{anchor} not visible")
     if assertion.check == "count_gt":
-        n = assertion.params["n"]
+        n = assertion.params["count"]
         ok = count > n
         return CheckResult("frontend", "count_gt", ok,
                            "" if ok else f"{anchor} count {count} !> {n}")
@@ -67,7 +42,7 @@ def _eval_frontend(assertion, rendered, bound_values=None, inputs=None):
             and field in obj["fields"]
             and values.equal(obj["fields"][field], expected)
         )
-        n = assertion.params["n"]
+        n = assertion.params["count"]
         ok = matched == n
         return CheckResult(
             "frontend", "objects_matching_count", ok,
@@ -119,33 +94,18 @@ def _eval_frontend(assertion, rendered, bound_values=None, inputs=None):
 
 
 def _eval_request_shape(request, outgoing):
-    ok = any(o.method == request.method and o.path == request.path for o in outgoing)
+    ok = len(outgoing) == 1 and (
+        outgoing[0].method == request.method
+        and outgoing[0].path == request.path
+        and (request.body is None or ui_stepwise._subset(outgoing[0].body, request.body))
+    )
     return CheckResult("request", "request", ok,
-                       "" if ok else f"UI did not send {request.method} {request.path}")
+                       "" if ok else "associated UI request violates its declaration")
 
 
-def run(scenario, *, ui, normalizer, auth=None):
-    if len(scenario.steps) != 1:
-        return ui_stepwise.run(
-            scenario,
-            ui=ui,
-            normalizer=normalizer,
-            auth=auth,
-            eval_frontend=_eval_frontend,
-            eval_request_shape=_eval_request_shape,
-        )
-    step = scenario.steps[0]
-    session = auth.session(scenario.actor) if auth else None
-    mock = build_mock(scenario, normalizer)
-    result = ui.run_intent(scenario, session, mock)
-    checks = [
-        _eval_frontend(a, result.rendered, inputs=scenario.inputs)
-        for a in step.expect.frontend
-    ]
-    if step.request is not None:
-        checks.append(_eval_request_shape(step.request, result.outgoing))
-    for c in checks:
-        c.step = step.id
-    status = FAILED if any(not c.ok for c in checks) else PASSED
-    return DomainResult(projection="frontend",
-                        steps=[StepResult(step.id, status, checks=checks)])
+def run(scenario, *, ui, normalizer, auth=None, mock_plan=None, now=None, sleep=None):
+    return ui_stepwise.run(
+        scenario, ui=ui, normalizer=normalizer, auth=auth,
+        eval_frontend=_eval_frontend, eval_request_shape=_eval_request_shape,
+        mock_plan=mock_plan, now=now, sleep=sleep,
+    )

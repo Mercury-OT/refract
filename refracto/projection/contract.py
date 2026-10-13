@@ -18,6 +18,8 @@ from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILE
 
 def run(scenario, provider_recordings, normalizer) -> DomainResult:
     consumer = store.consumer_contract(scenario)
+    if not consumer.entries or not any(step.request and step.expect.response for step in scenario.steps):
+        return DomainResult(projection="contract", steps=[])
     provider = store.provider_contract(provider_recordings, normalizer)
     bound_values = store.provider_binding_values(scenario, provider)
     mismatches = store.diff(
@@ -46,6 +48,7 @@ def run(scenario, provider_recordings, normalizer) -> DomainResult:
                     f"field={field_name!r} expected={expected!r} observed={observed!r}")
             for field_name, error in mismatch.value_errors.items():
                 details.append(f"field={field_name!r} {error}")
+            details.extend(mismatch.collection_errors)
             checks.append(CheckResult(
                 "contract",
                 "diff",

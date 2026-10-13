@@ -44,13 +44,15 @@ def _adapters():
         ui=ui,
         recorder_factory=FakeRecorder,
         resolve_request=_resolver,
-        resolve_precondition=None,
         normalizer=FakeNormalizer(),
     )
 
 
 def test_run_all_projections_green():
-    rep = runner.run_scenario("tests/fixtures/synthetic_scenario.yaml", _adapters())
+    rep = runner.run_scenario("tests/fixtures/synthetic_scenario.yaml", _adapters(),
+        mock_plan=[ports.MockResponse(fixture_id="fixture-1", source="unit test fixture",
+            method="POST", path="resource/action",
+            response={"success": True, "data": {"taskId": "T1"}})])
     assert rep.passed
     assert rep.degradations() == []
     assert {d.projection for d in rep.domains} == {"backend", "frontend", "e2e", "contract"}

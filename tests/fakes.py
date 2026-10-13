@@ -4,6 +4,8 @@ These helpers exercise the framework without network or product-specific
 runtime dependencies.
 """
 import copy
+import dataclasses
+import secrets
 
 from refracto import ports
 
@@ -49,19 +51,64 @@ class FakeStateProbe(ports.StateProbe):
         )
 
 
-class FakeUi(ports.UiDriver):
-    def __init__(self, rendered=None, outgoing=None, recorded=None):
+class FakeUi(ports.UiDriver, ports.StepwiseUiDriver):
+    def __init__(self, rendered=None, outgoing=None, recorded=None, scripts=None):
         self._rendered = rendered or {}
         self._outgoing = outgoing or []
         self._recorded = recorded or []
+        self.scripts = scripts
+        self.permits = []
+        self.open_calls = self.close_calls = 0
+        self.contexts = []
+        self.fixture_index = 0
 
-    def run_intent(self, scenario, session=None, mock=None):
-        return ports.UiResult(
-            rendered=dict(self._rendered),
-            outgoing=list(self._outgoing),
-            recorded=list(self._recorded),
-        )
+    def supports_stepwise_mode(self, mode):
+        return mode in {"mock", "live"}
 
+    def open_stepwise(self, scenario, session=None, *, mode, mock_plan=None):
+        self.open_calls += 1
+        context = {"mode": mode, "mock_plan": mock_plan or []}
+        self.contexts.append(context)
+        return context
+
+    def close_stepwise(self, context):
+        self.close_calls += 1
+
+    def snapshot(self, context):
+        return copy.deepcopy(self._rendered)
+
+    def perform_step(self, scenario, step, context, permit):
+        index = len(self.permits)
+        self.permits.append(permit)
+        self.contexts.append(context)
+        if self.scripts is not None:
+            return self.scripts[index](self, step, context, permit)
+        responses = copy.deepcopy(self._recorded)
+        traffic = []
+        for i, request in enumerate(self._outgoing):
+            trace_id = secrets.token_hex(16)
+            request = dataclasses.replace(request, traceparent=f"00-{trace_id}-{secrets.token_hex(8)}-01")
+            request_id = secrets.token_hex(16)
+            fixture_id = None
+            if context["mode"] == "mock":
+                fixture = context["mock_plan"][self.fixture_index]
+                self.fixture_index += 1
+                fixture_id = fixture.fixture_id
+                response = ports.RecordedResponse(fixture.status, {}, copy.deepcopy(fixture.response), "", trace_id, request)
+            else:
+                response = responses[i]
+            response = dataclasses.replace(response, request=dataclasses.replace(request), trace_id=trace_id,
+                                           step_id=permit.step_id, actual_path="/" + request.path,
+                                           request_id=request_id, mock_fixture_id=fixture_id)
+            traffic.append(ports.UiTraffic(
+                execution_id=permit.execution_id, action_id=permit.action_id, step_id=permit.step_id,
+                mode=permit.mode, request_id=request_id, permit_token=permit.token,
+                request=request, response=response, mock_fixture_id=fixture_id))
+        return ports.UiActionResult(evidence=ports.UiActionEvidence(
+            execution_id=permit.execution_id, action_id=permit.action_id, step_id=permit.step_id,
+            mode=permit.mode, permit_token=permit.token, traffic=traffic,
+            rendered=copy.deepcopy(self._rendered),
+            mock_recordings=[t.response for t in traffic] if permit.mode == "mock" else []))
 
 class FakeRecorder(ports.Recorder):
     def __init__(self):
@@ -94,11 +141,3 @@ class FakeNormalizer(ports.ResponseNormalizer):
             status=resp.status,
             raw=resp,
         )
-
-    def synthesize(self, fields, values=None) -> dict:
-        values = values or {}
-        return {
-            "success": True,
-            "error": None,
-            "data": {f: values.get(f, f"<stub:{f}>") for f in fields},
-        }

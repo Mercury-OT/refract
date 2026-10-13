@@ -20,10 +20,12 @@ examples/authoring/     .claude/skills/             refracto/
 intent + oracle         structure from rules.md     frozen handoff       deterministic
 ```
 
-* Humans write `cases/*.case.yaml`: intent plus oracle.
+* Humans may write `cases/*.case.yaml`: intent plus oracle. These are optional
+  drafting inputs, not another executable language or approval artifact.
 * AI structures those cases into deterministic `scenarios/*.yaml` according to
   `rules.md`.
-* The framework executes the frozen scenario and returns a deterministic report.
+* Humans approve the exact resulting `schema_version: 1` YAML, then the framework
+  executes that frozen scenario. Validation is not approval or execution.
 
 ## The handoff boundary
 
@@ -54,3 +56,8 @@ examples/authoring/cases/item_update.case.yaml
 ```
 
 See `GENERATION-LOG.md` for example capture records.
+
+The existing `cases/*.case.yaml` and generation log are historical authoring
+inputs, not executable Scenarios or current-format templates. In particular,
+their preparation descriptions must become explicit actions when drafting a
+current Scenario; they do not authorize an adapter precondition callback.

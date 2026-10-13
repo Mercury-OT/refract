@@ -6,11 +6,16 @@ If no StateProbe is wired, declared backend-state assertions degrade visibly
 instead of reading as a full pass.
 """
 import dataclasses
+import copy
 import secrets
+import time
 from refracto import asyncwait
 from refracto.declaration import binding
 from refracto.declaration import values
+from refracto.declaration import collections
 from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
+
+_NO_SESSION = object()
 
 
 def gen_traceparent() -> str:
@@ -18,6 +23,12 @@ def gen_traceparent() -> str:
 
 
 def _eval_response(assertion, norm, bound_values=None, inputs=None):
+    if assertion.check == "collection_matching_count":
+        params = assertion.params
+        ok, detail = collections.evaluate(
+            norm.fields, params["field"], params["matching"], params["count"],
+            bound_values=bound_values, inputs=inputs)
+        return CheckResult("response", assertion.check, ok, detail)
     if assertion.check == "success":
         ok = norm.succeeded
         return CheckResult("response", "success", ok, "" if ok else f"not succeeded (status {norm.status})")
@@ -100,7 +111,7 @@ def _cmp(a, op, b):
     elif op == "<=":
         return a <= b
     elif op == "==":
-        return a == b
+        return values.equal(a, b)
     else:
         raise ValueError(f"unknown comparison operator: {op!r}")
 
@@ -121,7 +132,9 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
         return checks, skipped
     if state is None:
         for a in step.expect.backend_state:
-            skipped.append(f"{a.check}({a.params}) — no StateProbe (product has no OTel here)")
+            # Resolved assertion parameters can contain sensitive binding values.
+            # Preserve the unmet check and degradation without echoing its data.
+            skipped.append(f"{a.check} — no StateProbe (backend-state evidence unavailable)")
         return checks, skipped
     if trace_id is None:
         checks.append(CheckResult(point="backend_state", check="_no_trace_id", ok=False,
@@ -162,9 +175,10 @@ def _subset(declared, actual):
         if not isinstance(actual, dict):
             return False
         return all(k in actual and _subset(v, actual[k]) for k, v in declared.items())
-    if type(declared) is not type(actual):
-        return False
-    return declared == actual
+    if isinstance(declared, list):
+        return isinstance(actual, list) and len(declared) == len(actual) and all(
+            _subset(a, b) for a, b in zip(declared, actual))
+    return values.equal(declared, actual)
 
 
 def _check_option_b(step, template, spec):
@@ -177,10 +191,9 @@ def _check_option_b(step, template, spec):
     if step.request.method.upper() != spec.method.upper():
         raise ValueError(
             f"resolver changed declared method {step.request.method!r} -> {spec.method!r}")
-    if template.body is not None and not _subset(template.body, spec.body or {}):
+    if not values.equal(template.body or {}, spec.body or {}):
         raise ValueError(
-            f"resolver overrode/dropped a declared body field: "
-            f"declared={template.body!r} actual={spec.body!r}")
+            "resolver changed declared business body; transport mapping must not invent values")
 
 
 def _run_poll_step(step, template, spec, api, session, recorder, normalizer, state,
@@ -200,23 +213,25 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         # keep their original trace identity.
         attempt_spec = dataclasses.replace(spec, traceparent=traceparent)
         resp = api.send(attempt_spec, session)
+        _require_live_response(resp)
 
         resp.step_id = step.id
         resp.attempt_index = attempts["n"]
         resp.is_final = False
-        resp.template_path = step.request.path
+        resp.template_path = step.request.declared_path or step.request.path
         resp.bound_logical_path = template.path
         resp.actual_path = attempt_spec.path
-        recorder.record(resp)
-
-        norm = normalizer.normalize(resp)
+        try:
+            norm = normalizer.normalize(copy.deepcopy(resp))
+            ok = all(_eval_response(a, norm, bound_values, inputs).ok
+                     for a in step.expect.response)
+        except Exception:
+            recorder.record(copy.deepcopy(resp))
+            raise
+        resp.is_final = bool(ok)
+        recorder.record(copy.deepcopy(resp))
         attempts["n"] += 1
         last["resp"], last["norm"], last["traceparent"] = resp, norm, traceparent
-
-        ok = all(
-            _eval_response(a, norm, bound_values, inputs).ok
-            for a in step.expect.response
-        )
         return ok, (resp, norm, traceparent)
 
     timeout = poll_config.timeout if poll_config else 30
@@ -277,21 +292,25 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
 
     spec.traceparent = gen_traceparent()
     resp = api.send(spec, session)
+    _require_live_response(resp)
 
     # Record the step identity and the three path identities used by the run.
     resp.step_id = step.id
     resp.attempt_index = 0
     resp.is_final = True
-    resp.template_path = step.request.path
+    resp.template_path = step.request.declared_path or step.request.path
     resp.bound_logical_path = template.path
     resp.actual_path = spec.path
-    recorder.record(resp)
+    recorder.record(copy.deepcopy(resp))
 
-    norm = normalizer.normalize(resp)
+    norm = normalizer.normalize(copy.deepcopy(resp))
 
     response_checks = [
         _eval_response(a, norm, bound_values, inputs) for a in step.expect.response
     ]
+    if step.request_asserted:
+        response_checks.insert(0, CheckResult("request", "request", True,
+            "declared transport request sent; UI behavior is not checked"))
     for c in response_checks:
         c.step = step.id
 
@@ -304,21 +323,52 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
     for c in state_checks:
         c.step = step.id
 
-    status = FAILED if any(not c.ok for c in response_checks + state_checks) else PASSED
+    status = FAILED if any(not c.ok for c in response_checks + state_checks) else (PASSED if response_checks + state_checks else "COMPLETED")
     return StepResult(step.id, status, checks=response_checks + state_checks,
                       skipped=skips, attempts=1, trace_id=trace_id), norm
 
 
+def _require_live_response(response):
+    """Never promote an explicitly marked fixture into live provider evidence."""
+    if response.mock_fixture_id is not None:
+        raise ValueError("live API response cannot contain a mock fixture marker")
+
+
+def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
+                     normalizer, auth=None, session=_NO_SESSION, poll_config=None,
+                     now=None, sleep=None, bound_values=None):
+    """Execute a prepared explicit request (also reused by the e2e loop)."""
+    if step.action == "request" and step.expect.frontend:
+        raise ValueError("direct API action with UI assertions is not supported")
+    if session is _NO_SESSION:
+        if auth is None:
+            raise ValueError("Authenticator is required")
+        session = auth.session(scenario.actor)
+    template = step.request
+    if template is None:
+        raise ValueError("request action has no request")
+    # The mapper receives an independent value and cannot mutate the declaration
+    # to make its own changed output compare equal.
+    spec = resolve_request(scenario, copy.deepcopy(step), copy.deepcopy(template))
+    _check_option_b(step, template, spec)
+    return _run_step(step, template, spec, api, session, recorder, normalizer,
+                     state, poll_config, now, sleep, bound_values, scenario.inputs)
+
+
 def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
-        resolve_precondition=None, poll_config=None, now=None, sleep=None):
-    session = auth.session(scenario.actor)
-    if resolve_precondition:
-        for ref in scenario.precondition:
-            resolve_precondition(ref, session)
+        poll_config=None, now=None, sleep=None):
 
     step_results = []
     prior_norms = {}
     stopped = False
+    session = _NO_SESSION
+    # Validate the complete flow before authentication, waits, mapping or sends.
+    # A later unsupported step must not allow earlier steps to have side effects.
+    unsupported = None
+    if any(s.action == "request" and s.expect.frontend for s in scenario.steps):
+        unsupported = "direct API action with UI assertions is not supported"
+    elif any(s.request is None and (s.expect.backend_state or s.expect.response) for s in scenario.steps):
+        unsupported = "requestless backend_state has no correlation source"
     for step in scenario.steps:
         if stopped:
             step_results.append(StepResult(step.id, BLOCKED,
@@ -328,14 +378,31 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
         bound_values = {}
         resolved_bindings = {}
         try:
-            bound_values = binding.resolve_bindings(step, prior_norms)
+            if unsupported:
+                raise ValueError(unsupported)
+            if step.action == "wait":
+                (sleep or time.sleep)(step.duration / 1000)
+                sr = StepResult(step.id, "COMPLETED", not_checked=(
+                    ["UI checks are outside backend projection"] if step.expect.frontend else []))
+                step_results.append(sr)
+                continue
+            if step.request is None:
+                sr = StepResult(step.id, "NOT_APPLICABLE",
+                    not_checked=["UI action/checks are outside backend projection"])
+                step_results.append(sr)
+                continue
+            prepared, bound_values = binding.prepare_step(step, scenario, prior_norms)
             resolved_bindings = dict(bound_values)
-            template = binding.substitute(step.request, bound_values)
-            spec = resolve_request(scenario, step, template)
-            _check_option_b(step, template, spec)
-            sr, norm = _run_step(step, template, spec, api, session, recorder,
-                                  normalizer, state, poll_config, now, sleep,
-                                  bound_values, scenario.inputs)
+            if session is _NO_SESSION:
+                if auth is None:
+                    raise ValueError("Authenticator is required")
+                session = auth.session(scenario.actor)
+            sr, norm = execute_api_step(scenario, prepared, api=api, state=state,
+                recorder=recorder, resolve_request=resolve_request, normalizer=normalizer,
+                session=session, poll_config=poll_config, now=now, sleep=sleep,
+                bound_values=bound_values)
+            if step.action != "request" or step.expect.frontend:
+                sr.not_checked.append("UI actions/checks are outside backend projection")
         except Exception as exc:
             sr = StepResult(step.id, ERROR, detail=str(exc))
         sr.resolved_bindings = resolved_bindings
@@ -345,5 +412,10 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
         if sr.status in (FAILED, ERROR, SKIPPED):
             stopped = True
 
+    try:
+        recordings = recorder.responses()
+    except Exception as exc:
+        step_results.append(StepResult("_recorder", ERROR, detail=str(exc)))
+        recordings = []
     return DomainResult(projection="backend", steps=step_results,
-                        provider_recordings=recorder.responses())
+                        provider_recordings=recordings)

@@ -49,6 +49,8 @@ class RecordedResponse:
     template_path: str | None = None       # declared step.request.path
     bound_logical_path: str | None = None  # path after binding substitution
     actual_path: str | None = None         # adapter-resolved path used in execution
+    request_id: str | None = field(default=None, kw_only=True)
+    mock_fixture_id: str | None = field(default=None, kw_only=True)
 
 
 @dataclass
@@ -71,32 +73,17 @@ class NormalizedResponse:
     raw: "RecordedResponse"
 
 
-@dataclass
-class UiResult:
-    # anchor -> a partial mapping of identified and anonymous rendered objects
-    rendered: dict[str, RenderedAnchor] = field(default_factory=dict)
-    outgoing: list = field(default_factory=list)    # list[RequestSpec] sent by the UI
-    recorded: list = field(default_factory=list)    # list[RecordedResponse] captured from UI traffic
-
-
 @dataclass(frozen=True, kw_only=True)
 class UiActionPermit:
-    """One-use core authorization for one semantic UI action."""
+    """One-use authorization for one primitive, independent of network traffic."""
 
     execution_id: str
     action_id: str
-    request_id: str
     step_id: str
-    attempt_index: int
     mode: str
-    method: str
-    template_path: str
-    bound_logical_path: str = field(
-        repr=False,
-        metadata={"sensitive": True},
-    )
-    traceparent: str
-    trace_id: str
+    action: str
+    target: str | None
+    value: object = field(repr=False, metadata={"sensitive": True})
     token: str = field(
         repr=False,
         metadata={"sensitive": True},
@@ -106,11 +93,33 @@ class UiActionPermit:
         compare=False,
         metadata={"sensitive": True},
     )
-    mock_response: dict | None = field(
-        repr=False,
-        compare=False,
-        metadata={"sensitive": True},
-    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class MockResponse:
+    """One inspectable ordered fixture; never generated from expectations."""
+
+    fixture_id: str
+    source: str
+    method: str
+    path: str = field(repr=False)
+    response: dict = field(repr=False, metadata={"sensitive": True})
+    status: int = 200
+
+
+@dataclass(frozen=True, kw_only=True)
+class UiTraffic:
+    """An origin-associated request/response pair, not a time-window guess."""
+
+    execution_id: str
+    action_id: str
+    step_id: str
+    mode: str
+    request_id: str
+    permit_token: str = field(repr=False, metadata={"sensitive": True})
+    request: RequestSpec = field(repr=False, metadata={"sensitive": True})
+    response: RecordedResponse = field(repr=False, metadata={"sensitive": True})
+    mock_fixture_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -119,33 +128,13 @@ class UiActionEvidence:
 
     execution_id: str
     action_id: str
-    request_id: str
     step_id: str
-    attempt_index: int
     mode: str
-    method: str
-    template_path: str
-    bound_logical_path: str = field(
-        repr=False,
-        metadata={"sensitive": True},
-    )
     permit_token: str = field(
         repr=False,
         metadata={"sensitive": True},
     )
-    actual_path: str = field(
-        repr=False,
-        metadata={"sensitive": True},
-    )
-    is_final: bool
-    primary_request: RequestSpec = field(
-        repr=False,
-        metadata={"sensitive": True},
-    )
-    primary_response: RecordedResponse = field(
-        repr=False,
-        metadata={"sensitive": True},
-    )
+    traffic: list[UiTraffic] = field(repr=False, metadata={"sensitive": True})
     rendered: dict[str, RenderedAnchor] = field(
         repr=False,
         metadata={"sensitive": True},
@@ -159,6 +148,9 @@ class UiActionEvidence:
         default_factory=list,
         repr=False,
         metadata={"sensitive": True},
+    )
+    mock_recordings: list[RecordedResponse] = field(
+        default_factory=list, repr=False, metadata={"sensitive": True},
     )
 
 
@@ -194,37 +186,22 @@ class ResponseNormalizer(ABC):
     @abstractmethod
     def normalize(self, resp: RecordedResponse) -> NormalizedResponse: ...
 
-    @abstractmethod
-    def synthesize(self, fields, values=None) -> dict:
-        """Build a product-shaped success response for declared fields.
-
-        ``values`` supplies concrete values for equality-constrained fields;
-        other fields may use adapter-defined placeholders.
-        """
-        ...
-
-
 class StateProbe(ABC):
     @abstractmethod
     def observe(self, trace_id: str) -> StateFacts: ...
 
 
 class UiDriver(ABC):
-    @abstractmethod
-    def run_intent(self, scenario, session: object | None, mock: dict | None) -> UiResult: ...
+    """Marker for UI adapters; execution requires primitive stepwise capability."""
 
 
 class StepwiseUiDriver(ABC):
-    """Optional capability for core-authorized, stateful multi-step UI execution."""
+    """Core-authorized primitive execution in a single stateful UI context."""
 
+    @abstractmethod
     def supports_stepwise_mode(self, mode: str) -> bool:
-        """Report an explicitly supported stepwise execution mode.
-
-        The default preserves the D6.1 contract: existing stepwise adapters are
-        mock-capable without needing to implement another method. Adapters that
-        can drive live traffic must opt in explicitly.
-        """
-        return mode == "mock"
+        """Explicitly opt into mock or live primitive execution."""
+        ...
 
     @abstractmethod
     def open_stepwise(
@@ -233,6 +210,7 @@ class StepwiseUiDriver(ABC):
         session: object | None,
         *,
         mode: str,
+        mock_plan: list[MockResponse] | None = None,
     ) -> object: ...
 
     @abstractmethod
@@ -246,6 +224,10 @@ class StepwiseUiDriver(ABC):
 
     @abstractmethod
     def close_stepwise(self, context: object) -> None: ...
+
+    def snapshot(self, context: object) -> dict[str, RenderedAnchor]:
+        """Read current rendering after a core wait without performing an action."""
+        raise NotImplementedError("UI snapshot capability not supported")
 
 
 class Recorder(ABC):

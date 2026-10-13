@@ -12,15 +12,17 @@ checklist derived from these rules.
 
 ## Four hard rules
 
-1. **Capture first.** Before writing a scenario, observe a real request against
-   a running product and record the real request, response, and spans. Never
-   invent paths, field names, or span names.
+1. **Separate requirements from observations.** Captures establish actual
+   routes, fields, and span mappings; they do not define correct behavior.
+   New features may start from approved requirements before a capture exists.
+   Missing observations remain unverified, never invented.
 2. **Use only bounded vocabulary.** Scenario assertions must use terms that are
    already registered in `refracto/declaration/vocabulary.py`. If an oracle
    cannot be mapped cleanly, stop and report it instead of forcing procedural
    logic into YAML.
-3. **Humans confirm the oracle.** The oracle always comes from the human.
-   AI may structure it, but must not invent expected behavior.
+3. **Humans confirm the executable declaration.** Review the exact structured
+   YAML, including inputs, actions and assertions, not only its prose summary.
+   AI may draft it, but must not invent or silently weaken expected behavior.
 4. **Freeze once for reproducibility.** After a scenario is frozen into
    `scenarios/`, execution always uses that frozen file instead of regenerating
    it at runtime.
@@ -39,8 +41,15 @@ cases rather than reducing the human role to rubber-stamping.
 | Response includes a field such as `itemId` | `response: {check: has, field: itemId}` |
 | Backend emits semantic span `X` | `backend_state: {check: span_exists, span: X}` |
 | Span `X` has an attribute comparison | `backend_state: {check: span_attr, span: X, attr: ..., op: ..., value: ...}` |
-| Page shows an anchor | `frontend: {check: visible, anchor: ...}` |
-| Anchor count is greater than `n` | `frontend: {check: count_gt, anchor: ..., n: ...}` |
-| Frontend/client sends `METHOD PATH` | `request: {check: request, method: ..., path: ...}` |
+| Page shows an anchor | `expect.ui: [{check: visible, anchor: ...}]` |
+| Anchor count is strictly greater than a threshold | `expect.ui: [{check: count_gt, anchor: ..., count: ...}]` |
+| Frontend/client sends a request | `expect.request: {method: POST, path: [records]}` |
+| Test directly sends a request | `do: {request: {method: GET, path: [records]}}` |
+
+Use only `schema_version: 1`, explicit primitive steps, `parameters` and direct
+response references. Preparation belongs in visible steps, not precondition
+callbacks. `GENERATION-LOG.md` preserves historical evidence; its old YAML shapes
+are not current templates. See `SCENARIO.md` at the repository root for the full
+executable contract.
 
 If an oracle cannot be mapped to this bounded vocabulary, stop and report it.

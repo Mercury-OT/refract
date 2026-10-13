@@ -1,8 +1,7 @@
 """ResponseNormalizer for the reference demo application.
 
 The demo app uses a small `{success, error, data}` envelope. This adapter maps
-that envelope into the core's product-neutral `NormalizedResponse` and can also
-synthesize mock bodies in the same shape.
+that envelope into the core's product-neutral `NormalizedResponse`.
 """
 from refracto import ports
 
@@ -25,11 +24,3 @@ class DemoResponseNormalizer(ports.ResponseNormalizer):
             status=resp.status,
             raw=resp,
         )
-
-    def synthesize(self, fields, values=None) -> dict:
-        values = values or {}
-        return {
-            "success": True,
-            "error": None,
-            "data": {f: values.get(f, f"<stub:{f}>") for f in fields},
-        }

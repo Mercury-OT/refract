@@ -69,6 +69,7 @@ def create_item(body: CreateItemRequest):
         "data": {
             "itemId": item_id,
             "itemKey": str(item_id),
+            "name": body.name,
             "count": len(body.rows),
         },
     }
@@ -158,10 +159,16 @@ _INDEX_HTML = """<!doctype html>
 <html>
 <head><title>Refract demo app</title></head>
 <body>
-  <input data-testid="item-name" type="text" />
-  <button data-testid="create-btn">Create</button>
+  <button data-testid="new-btn">New record</button>
+  <section id="create-form" hidden>
+    <input data-testid="item-name" type="text" />
+    <button data-testid="create-btn">Create</button>
+  </section>
   <ul id="items"></ul>
   <script>
+    document.querySelector('[data-testid="new-btn"]').addEventListener('click', function () {
+      document.getElementById('create-form').hidden = false;
+    });
     async function refresh() {
       const res = await fetch('/items');
       const body = await res.json();
@@ -170,7 +177,7 @@ _INDEX_HTML = """<!doctype html>
       for (const item of body.data.items) {
         const li = document.createElement('li');
         li.setAttribute('data-testid', 'item-row');
-        li.setAttribute('data-object-id', item.name);
+        li.setAttribute('data-object-id', String(item.id));
         li.setAttribute('data-object-fields', JSON.stringify({name: item.name, count: item.count}));
         li.textContent = item.name + ' (' + item.count + ')';
         ul.appendChild(li);

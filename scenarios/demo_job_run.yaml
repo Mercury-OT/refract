@@ -1,63 +1,95 @@
-version: 2
+schema_version: 1
 scenario: demo.job_run
-grid: {level: regression, module: demo}
+grid:
+  level: regression
+  module: demo
 actor: user
-inputs:
-  - {rows: 3}
-intent: Submit a job carrying the declared number of rows, wait for completion, fetch the result, and archive it; the backend must account for that exact row count both when the job is created and when its result is read.
+description: Submit a job carrying the declared number of rows, wait for completion,
+  fetch the result, and archive it; the backend must account for that exact row count
+  both when the job is created and when its result is read.
+parameters:
+  rows: 3
 steps:
-  - id: create_job
+- id: create_job
+  do:
     request:
       method: POST
-      path: jobs
-    expect:
-      response:
-        - {check: success}
-        - {check: has, field: jobId}
-      backend_state:
-        - {check: span_exists, span: job.create}
-        - {check: span_attr, span: job.create, attr: row_count, op: "==", value: {from_input: rows}}
-  - id: wait_done
+      path:
+      - jobs
+      body: {rows: [1, 2, 3]}
+  expect:
+    response:
+    - check: success
+    - check: has
+      field: jobId
+    backend_state:
+    - check: span_exists
+      span: job.create
+    - check: span_attr
+      span: job.create
+      attr: row_count
+      op: ==
+      value:
+        from_parameter: rows
+- id: wait_done
+  do:
     request:
       method: GET
-      path: jobs/{jobId}/status
-    bind:
-      jobId:
-        from: create_job
-        field: jobId
-    poll:
-      on_timeout: FAIL
-    expect:
-      response:
-        - {check: field_equals, field: result, value: ready}
-  - id: fetch_result
+      path:
+      - jobs
+      - from_step: create_job
+        response_field: jobId
+      - status
+  poll:
+    on_timeout: FAIL
+  expect:
+    response:
+    - check: field_equals
+      field: result
+      value: ready
+- id: fetch_result
+  do:
     request:
       method: GET
-      path: jobs/{jobId}/result
-    bind:
-      jobId:
-        from: create_job
-        field: jobId
-    expect:
-      response:
-        - {check: success}
-        - {check: has, field: result}
-        - {check: field_equals, field: count, value: {from_input: rows}}
-      backend_state:
-        - {check: span_exists, span: job.result.read}
-        - {check: span_attr, span: job.result.read, attr: row_count, op: "==", value: {from_input: rows}}
-  - id: archive_job
+      path:
+      - jobs
+      - from_step: create_job
+        response_field: jobId
+      - result
+  expect:
+    response:
+    - check: success
+    - check: has
+      field: result
+    - check: field_equals
+      field: count
+      value:
+        from_parameter: rows
+    backend_state:
+    - check: span_exists
+      span: job.result.read
+    - check: span_attr
+      span: job.result.read
+      attr: row_count
+      op: ==
+      value:
+        from_parameter: rows
+- id: archive_job
+  do:
     request:
       method: POST
-      path: archives
+      path:
+      - archives
       body:
-        job: "{jobId}"
+        job:
+          from_step: create_job
+          response_field: jobId
         note: archived
-    bind:
-      jobId:
-        from: create_job
-        field: jobId
-    expect:
-      response:
-        - {check: success}
-        - {check: field_equals, field: archived, value: {from_bind: jobId}}
+  expect:
+    response:
+    - check: success
+    - check: field_equals
+      field: archived
+      value:
+        from_step: create_job
+        response_field: jobId

@@ -9,6 +9,7 @@ from adapters.demo.config import DemoConfig  # noqa: E402
 from adapters.demo.ui import DemoUiDriver  # noqa: E402
 from adapters.demo.wiring import build_adapters  # noqa: E402
 from refracto import runner  # noqa: E402
+from tests.demo.ui_fixtures import creation_plan
 
 
 @pytest.fixture(scope="module")
@@ -25,7 +26,7 @@ def test_demo_item_list_after_create_frontend_domain_green(_chromium_available, 
     config = DemoConfig(base_url=demo_server)
     adapters = build_adapters(demo_server, ui=DemoUiDriver(config))
     rep = runner.run_scenario("scenarios/demo_item_list_after_create.yaml", adapters,
-                              projections=("frontend", "e2e"))
+                              projections=("frontend", "e2e"), mock_plan=creation_plan())
     assert rep.passed is True, rep.localize()
     by_projection = {d.projection: d for d in rep.domains}
     assert set(by_projection) == {"frontend", "e2e"}

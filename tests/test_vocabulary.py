@@ -32,8 +32,7 @@ def test_unknown_term_invalid():
 def test_field_equals_has_a_bounded_shape():
     assert v.required_params("response", "field_equals") == ("field", "value")
     assert v.VALUE_REF_SOURCES == {
-        "from_bind": "bind",
-        "from_input": "input",
+        "from_parameter": "input",
     }
 
 
@@ -43,7 +42,7 @@ def test_failure_has_no_params():
 
 def test_frontend_identity_terms_have_bounded_shapes():
     assert v.required_params("frontend", "objects_matching_count") == (
-        "anchor", "field", "value", "n",
+        "anchor", "field", "value", "count",
     )
     assert v.required_params("frontend", "object_field_equals") == (
         "anchor", "id", "field", "value",

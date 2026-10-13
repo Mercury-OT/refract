@@ -1,6 +1,6 @@
 """The frozen `demo_item_delete.yaml` scenario passes through the backend projection.
 
-The resolver creates the declared number of pre-existing items, then the scenario
+The scenario explicitly creates its item, then
 issues `DELETE items/{id}` and verifies a successful response, the `item.delete` span,
 and the exact number of items the backend reports as remaining afterwards.
 """
