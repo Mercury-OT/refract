@@ -41,11 +41,6 @@ class MinimalResponseNormalizer(ports.ResponseNormalizer):
             raw=resp,
         )
 
-    def synthesize(self, fields, values=None) -> dict:
-        values = values or {}
-        return {field: values.get(field, f"<stub:{field}>") for field in fields}
-
-
 def resolve_request(scenario, step, template) -> ports.RequestSpec:
     logical_path = template.path.strip("/")
     if logical_path == "records":

@@ -1,15 +1,40 @@
+schema_version: 1
 scenario: demo.item_delete
-grid: {level: regression, module: demo}
+grid:
+  level: regression
+  module: demo
 actor: user
-precondition: [{ref: item_exists}]
-inputs:
-  - {existing_items: 1}
-intent: Given the declared number of items already exist, the user deletes one; the backend emits the item.delete semantic span, and the number of items remaining afterwards is one fewer than declared.
-expect:
-  request:
-    - {check: request, method: DELETE, path: items}
-  response:
+description: Given the declared number of items already exist, the user deletes one;
+  the backend emits the item.delete semantic span, and the number of items remaining
+  afterwards is one fewer than declared.
+parameters:
+  existing_items: 1
+steps:
+- id: create
+  do:
+    request:
+      method: POST
+      path: [items]
+      body: {name: delete-target, rows: [1]}
+  expect:
+    response:
     - {check: success}
-  backend_state:
-    - {check: span_exists, span: item.delete}
-    - {check: span_attr, span: item.delete, attr: row_count, op: "==", value: 0}
+    - {check: has, field: itemId}
+- id: main
+  do:
+    request:
+      method: DELETE
+      path:
+      - items
+      - {from_step: create, response_field: itemId}
+  expect:
+    response:
+    - check: success
+    backend_state:
+    - check: span_exists
+      span: item.delete
+    - check: span_attr
+      span: item.delete
+      attr: row_count
+      op: ==
+      value: 0

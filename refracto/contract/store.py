@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from refracto.declaration import values
+from refracto.declaration import collections
 
 StatusExpectation = Literal["requires_success", "requires_failure", "dont_care"]
 
@@ -27,6 +28,8 @@ class EndpointShape:
         default_factory=frozenset,
         kw_only=True,
     )
+    collection_constraints: list = field(
+        default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
@@ -45,6 +48,7 @@ class ContractMismatch:
         default_factory=frozenset,
         kw_only=True,
     )
+    collection_errors: list[str] = field(default_factory=list, kw_only=True)
 
 
 def consumer_contract(scenario) -> Contract:
@@ -55,10 +59,13 @@ def consumer_contract(scenario) -> Contract:
 
     * `status_expectation` is derived from a declared `success` or `failure`
       response assertion; without either assertion, status is not constrained.
-    * `response_fields` comes from declared `has` and `field_equals` assertions.
+    * `response_fields` comes from declared presence, equality, and collection
+      assertions.
     * `response_values` retains the value side of `field_equals` assertions.
+    * `collection_constraints` retains every collection predicate in order;
+      several predicates on the same field must not overwrite one another.
     * `forbidden_fields` comes from declared `field_absent` assertions.
-    * A v1-normalized step with no request contributes no entry.
+    * A step with no request contributes no entry.
     """
     entries = {}
     for step in scenario.steps:
@@ -73,7 +80,7 @@ def consumer_contract(scenario) -> Contract:
             status_expectation = DONT_CARE
         fields = frozenset(
             a.params["field"] for a in step.expect.response
-            if a.check in ("has", "field_equals")
+            if a.check in ("has", "field_equals", "collection_matching_count")
         )
         response_values = {
             a.params["field"]: a.params["value"]
@@ -88,6 +95,11 @@ def consumer_contract(scenario) -> Contract:
             response_values=response_values,
             status_expectation=status_expectation,
             forbidden_fields=forbidden_fields,
+            collection_constraints=[
+                {"field": a.params["field"], "matching": dict(a.params["matching"]),
+                 "count": a.params["count"]}
+                for a in step.expect.response if a.check == "collection_matching_count"
+            ],
         )
     return Contract(entries=entries)
 
@@ -133,7 +145,8 @@ def provider_binding_values(scenario, provider: Contract) -> dict:
                 source.request.path,
             )
             source_shape = provider.entries.get(source_key)
-            if source_shape is None or binding.field not in source_shape.response_values:
+            if (source_shape is None or binding.field not in source_shape.response_values
+                    or source_shape.response_values[binding.field] is None):
                 continue
             step_values[binding.placeholder] = source_shape.response_values[binding.field]
         resolved[step.id] = step_values
@@ -154,7 +167,14 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
         unexpected = want.forbidden_fields & have.response_fields
         wrong_values = {}
         value_errors = {}
+        collection_errors = []
         step_id = key[0]
+        for constraint in want.collection_constraints:
+            ok, detail = collections.evaluate(
+                have.response_values, constraint["field"], constraint["matching"],
+                constraint["count"], bound_values=bound_values_by_step.get(step_id), inputs=inputs)
+            if not ok:
+                collection_errors.append(detail)
         for field_name, declared in want.response_values.items():
             if field_name in missing:
                 continue
@@ -177,7 +197,7 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
             status_note = "status mismatch"
         elif want.status_expectation == REQUIRES_FAILURE and have.succeeded:
             status_note = "expected failure, provider succeeded"
-        if missing or unexpected or status_note or wrong_values or value_errors:
+        if missing or unexpected or status_note or wrong_values or value_errors or collection_errors:
             out.append(ContractMismatch(
                 endpoint=key,
                 missing_fields=missing,
@@ -185,5 +205,6 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
                 wrong_values=wrong_values,
                 value_errors=value_errors,
                 unexpected_fields=unexpected,
+                collection_errors=collection_errors,
             ))
     return out

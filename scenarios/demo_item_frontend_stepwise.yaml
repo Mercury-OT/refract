@@ -1,36 +1,55 @@
-version: 2
+schema_version: 1
 scenario: demo.item_frontend_stepwise
-grid: {level: smoke, module: demo}
 actor: user
-inputs:
-  - {first_name: first-ui-item}
-intent: Create two rendered items through one UI context, using the first mock response identity in the second action.
+description: Two explicit creations with a previous response value as the second name.
+parameters:
+  first_name: first
 steps:
+  - id: open_page
+    do: open
+    target: items.page
+  - id: open_form
+    do: click
+    target: items.new_button
+  - id: fill_first
+    do: fill
+    target: items.name_input
+    value: {from_parameter: first_name}
   - id: create_first
-    request:
-      method: POST
-      path: items
+    do: click
+    target: items.submit_button
     expect:
-      frontend:
-        - {check: object_field_equals, anchor: item_row, id: {from_input: first_name}, field: name, value: {from_input: first_name}}
-        - {check: no_anonymous, anchor: item_row}
+      request:
+        method: POST
+        path: [items]
+        body: {name: {from_parameter: first_name}}
       response:
-        - {check: has, field: itemId}
-        - {check: field_equals, field: stage, value: first}
-  - id: create_bound
-    request:
-      method: POST
-      path: items
-      body:
-        source: "{itemId}"
-    bind:
-      itemId:
-        from: create_first
-        field: itemId
+        - check: success
+        - check: has
+          field: itemKey
+      ui:
+        - check: objects_matching_count
+          anchor: items.rows
+          field: name
+          value: {from_parameter: first_name}
+          count: 1
+  - id: fill_second
+    do: fill
+    target: items.name_input
+    value: {from_step: create_first, response_field: itemKey}
+  - id: create_second
+    do: click
+    target: items.submit_button
     expect:
-      frontend:
-        - {check: object_field_equals, anchor: item_row, id: {from_bind: itemId}, field: name, value: {from_bind: itemId}}
-        - {check: no_anonymous, anchor: item_row}
+      request:
+        method: POST
+        path: [items]
+        body: {name: {from_step: create_first, response_field: itemKey}}
       response:
-        - {check: has, field: itemId}
-        - {check: field_equals, field: stage, value: second}
+        - check: success
+      ui:
+        - check: objects_matching_count
+          anchor: items.rows
+          field: name
+          value: {from_step: create_first, response_field: itemKey}
+          count: 1

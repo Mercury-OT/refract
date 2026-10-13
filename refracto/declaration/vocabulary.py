@@ -11,14 +11,12 @@ OBSERVATION_POINTS = ("frontend", "request", "response", "backend_state")
 _TERMS = {
     "frontend": {
         "visible": ("anchor",),
-        "count_gt": ("anchor", "n"),
-        "objects_matching_count": ("anchor", "field", "value", "n"),
+        "count_gt": ("anchor", "count"),
+        "objects_matching_count": ("anchor", "field", "value", "count"),
         "object_field_equals": ("anchor", "id", "field", "value"),
         "no_anonymous": ("anchor",),
     },
     "request": {
-        # Optional key `async` names a response field carrying an async handle.
-        # It is a contract hint, not a poll trigger.
         "request": ("method", "path"),
     },
     "response": {
@@ -27,6 +25,7 @@ _TERMS = {
         "has": ("field",),
         "field_equals": ("field", "value"),
         "field_absent": ("field",),
+        "collection_matching_count": ("field", "matching", "count"),
     },
     "backend_state": {
         "span_exists": ("span",),
@@ -35,9 +34,7 @@ _TERMS = {
 }
 
 # point -> {term -> optional param keys}
-_OPTIONAL = {
-    "request": {"request": ("async",)},
-}
+_OPTIONAL = {}
 
 # Comparison operators accepted by `span_attr`. Ordering operators require a
 # numeric value.
@@ -49,8 +46,7 @@ ORDERING_OPS = (">", ">=", "<", "<=")
 # mapping `{<source_tag>: <key>}`.
 #   tag in scenario YAML -> canonical source name stored on model.ValueRef
 VALUE_REF_SOURCES = {
-    "from_bind": "bind",
-    "from_input": "input",
+    "from_parameter": "input",
 }
 
 # A value reference may only be compared with equality in this step. Ordering

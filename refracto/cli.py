@@ -28,7 +28,8 @@ def _validate(path: str) -> int:
     resp = sum(len(st.expect.response) for st in steps)
     bs = sum(len(st.expect.backend_state) for st in steps)
     reqs = sum(1 for st in steps if st.request is not None)
-    print(f"OK {s.id}  grid={s.grid.level}/{s.grid.module}  steps={len(steps)} requests={reqs}  "
+    label = f"{s.grid.level}/{s.grid.module}" if s.grid is not None else "<none>"
+    print(f"OK {s.id}  grid={label}  steps={len(steps)} requests={reqs}  "
           f"asserts: frontend={fe} response={resp} backend_state={bs}")
     return 0
 

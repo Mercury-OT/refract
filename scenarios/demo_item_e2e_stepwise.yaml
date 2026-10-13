@@ -1,43 +1,71 @@
-version: 2
+schema_version: 1
 scenario: demo.item_e2e_stepwise
-grid: {level: smoke, module: demo}
 actor: user
-inputs:
-  - {first_name: first-live-item}
-  - {rows: 3}
-intent: Create two items through one live UI context and correlate every step with its own trace.
+description: Two real creations, explicit UI primitives, and independent trace checks.
+parameters:
+  first_name: first
 steps:
+  - id: open_page
+    do: open
+    target: items.page
+  - id: open_form
+    do: click
+    target: items.new_button
+  - id: fill_first
+    do: fill
+    target: items.name_input
+    value: {from_parameter: first_name}
   - id: create_first
-    request:
-      method: POST
-      path: items
+    do: click
+    target: items.submit_button
     expect:
-      frontend:
-        - {check: object_field_equals, anchor: item_row, id: {from_input: first_name}, field: count, value: {from_input: rows}}
-        - {check: no_anonymous, anchor: item_row}
+      request:
+        method: POST
+        path: [items]
+        body: {name: {from_parameter: first_name}, rows: [1, 2, 3]}
       response:
-        - {check: success}
-        - {check: has, field: itemKey}
+        - check: success
+        - check: has
+          field: itemKey
+      ui:
+        - check: objects_matching_count
+          anchor: items.rows
+          field: name
+          value: {from_parameter: first_name}
+          count: 1
       backend_state:
-        - {check: span_exists, span: item.create}
-        - {check: span_attr, span: item.create, attr: row_count, op: "==", value: {from_input: rows}}
-  - id: create_bound
-    request:
-      method: POST
-      path: items
-      body:
-        source: "{itemKey}"
-    bind:
-      itemKey:
-        from: create_first
-        field: itemKey
+        - check: span_exists
+          span: item.create
+        - check: span_attr
+          span: item.create
+          attr: row_count
+          op: ==
+          value: 3
+  - id: fill_second
+    do: fill
+    target: items.name_input
+    value: {from_step: create_first, response_field: itemKey}
+  - id: create_second
+    do: click
+    target: items.submit_button
     expect:
-      frontend:
-        - {check: object_field_equals, anchor: item_row, id: {from_bind: itemKey}, field: count, value: {from_input: rows}}
-        - {check: no_anonymous, anchor: item_row}
+      request:
+        method: POST
+        path: [items]
+        body: {name: {from_step: create_first, response_field: itemKey}, rows: [1, 2, 3]}
       response:
-        - {check: success}
-        - {check: has, field: itemKey}
+        - check: success
+      ui:
+        - check: objects_matching_count
+          anchor: items.rows
+          field: name
+          value: {from_step: create_first, response_field: itemKey}
+          count: 1
       backend_state:
-        - {check: span_exists, span: item.create}
-        - {check: span_attr, span: item.create, attr: row_count, op: "==", value: {from_input: rows}}
+        - check: span_exists
+          span: item.create
+        - check: span_attr
+          span: item.create
+          attr: row_count
+          op: ==
+          value: 3

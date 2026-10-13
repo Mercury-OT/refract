@@ -28,24 +28,19 @@ def test_fake_normalizer_failure_when_success_false():
     assert norm.succeeded is False
 
 
-def test_fake_normalizer_synthesize_builds_stub_body():
-    n = FakeNormalizer()
-    body = n.synthesize({"itemId"})
-    assert body["success"] is True
-    assert "itemId" in body["data"]
+def test_normalizer_requires_no_synthesis_capability():
+    assert ports.ResponseNormalizer.__abstractmethods__ == {"normalize"}
+    assert isinstance(FakeNormalizer(), ports.ResponseNormalizer)
 
 
 def test_demo_normalizer_maps_envelope():
     n = DemoResponseNormalizer()
     norm = n.normalize(_resp({"success": True, "error": None, "data": {"itemId": 7}}))
     assert norm.succeeded is True and norm.fields == {"itemId": 7}
-    assert n.synthesize({"itemId"})["data"] == {"itemId": "<stub:itemId>"}
 
 
-def test_normalizers_synthesize_declared_values_over_stubs():
+def test_normalizers_do_not_invent_absent_response_fields():
     for normalizer in (FakeNormalizer(), DemoResponseNormalizer()):
-        body = normalizer.synthesize({"itemId", "state"}, {"state": "ready"})
-        assert body["data"] == {
-            "itemId": "<stub:itemId>",
-            "state": "ready",
-        }
+        norm = normalizer.normalize(_resp({"success": True, "data": {"state": "ready"}}))
+        assert norm.fields == {"state": "ready"}
+        assert not hasattr(normalizer, "synthesize")

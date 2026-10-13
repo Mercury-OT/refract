@@ -20,7 +20,7 @@ def _scenario() -> Scenario:
         intent="create an item via POST /items and observe its item.create span",
         steps=[Step(
             id="main",
-            request=RequestTemplate(method="POST", path="items"),
+            request=RequestTemplate(method="POST", path="items", body={"name": "demo", "rows": [1, 2, 3]}),
             expect=Expect(
                 response=[
                     Assertion(check="success"),
@@ -45,7 +45,6 @@ def test_backend_state_projection_green_against_local_demo_server(demo_server):
         state=adapters.state,
         recorder=adapters.recorder_factory(),
         resolve_request=adapters.resolve_request,
-        resolve_precondition=adapters.resolve_precondition,
         normalizer=adapters.normalizer,
     )
 

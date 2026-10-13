@@ -33,69 +33,64 @@ def _object_equals(*, value, source="input", key="item_id"):
     )
 
 
-def test_build_mock_from_consumer_contract():
+def _plan(payload=None):
+    return [ports.MockResponse(fixture_id="import", source="explicit test fixture",
+        method="POST", path="resource/action",
+        response=payload if payload is not None else {"success": True, "data": {"taskId": "T1"}})]
+
+
+def _run_frontend(scenario, *, ui, normalizer, **kwargs):
+    return frontend.run(scenario, ui=ui, normalizer=normalizer, mock_plan=kwargs.pop("mock_plan", _plan()), **kwargs)
+
+
+def test_frontend_consumes_explicit_fixture_not_consumer_synthesis():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
-    mock = frontend.build_mock(s, FakeNormalizer())
-    key = ("POST", "resource/action")
-    assert key in mock
-    assert mock[key]["success"] is True
-    assert "taskId" in mock[key]["data"]
+    ui = FakeUi(rendered=_rendered([_identified("1")]),
+                outgoing=[ports.RequestSpec("POST", "resource/action")])
+    result = _run_frontend(s, ui=ui, normalizer=FakeNormalizer())
+    assert result.passed
+    assert result.mock_consumption[0]["fixture_id"] == "import"
+    assert result.mock_consumption[0]["source"] == "explicit test fixture"
+    assert result.provider_recordings == []
 
 
-def test_build_mock_synthesizes_declared_literal_and_input_values(tmp_path):
+def test_frontend_does_not_make_fixture_match_declared_parameter(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
-        "inputs: [{rows: 3}]\n"
-        "expect:\n"
-        "  request:\n    - {check: request, method: GET, path: result}\n"
-        "  response:\n"
-        "    - {check: field_equals, field: state, value: ready}\n"
-        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        "schema_version: 1\nscenario: x\nactor: a\nparameters: {rows: 3}\n"
+        "steps:\n- id: read\n  do: click\n  target: resource.submit\n"
+        "  expect:\n    request: {method: POST, path: [resource, action]}\n"
+        "    response:\n"
+        "      - {check: field_equals, field: count, value: {from_parameter: rows}}\n",
         encoding="utf-8")
+    fixture = _plan({"success": True, "data": {"count": 4}})
+    result = _run_frontend(load_scenario(str(y)),
+        ui=FakeUi(outgoing=[ports.RequestSpec("POST", "resource/action")]),
+        normalizer=FakeNormalizer(), mock_plan=fixture)
+    assert not result.passed
+    assert any(c.check == "field_equals" and not c.ok for c in result.checks)
+    assert fixture[0].response["data"]["count"] == 4
 
-    mock = frontend.build_mock(load_scenario(str(y)), FakeNormalizer())
 
-    assert mock[("GET", "result")]["data"] == {"state": "ready", "count": 3}
-
-
-def test_build_mock_keeps_one_argument_normalizer_compatibility():
-    class ExistingAdapterNormalizer(FakeNormalizer):
-        def synthesize(self, fields):
-            return super().synthesize(fields)
+def test_frontend_never_calls_normalizer_synthesis():
+    class NormalizerWithoutSynthesis(FakeNormalizer):
+        def synthesize(self, *args):
+            raise AssertionError("Expectations must not generate mock responses")
 
     scenario = load_scenario("tests/fixtures/synthetic_scenario.yaml")
+    result = _run_frontend(scenario, ui=FakeUi(
+        rendered=_rendered([_identified("1")]), outgoing=[ports.RequestSpec("POST", "resource/action")]),
+        normalizer=NormalizerWithoutSynthesis())
+    assert result.passed
 
-    mock = frontend.build_mock(scenario, ExistingAdapterNormalizer())
 
-    assert "taskId" in mock[("POST", "resource/action")]["data"]
-
-
-def test_build_mock_rejects_unresolvable_value_reference_as_declaration_error():
-    """Direct model construction can bypass loader validation; mock synthesis
-    must still classify an unresolved reference as a declaration problem."""
-    scenario = Scenario(
-        id="invalid_frontend_reference",
-        grid=Grid("smoke", "generic"),
-        actor="actor1",
-        precondition=[],
-        inputs=[],
-        intent="",
-        steps=[Step(
-            id="main",
-            request=RequestTemplate(method="GET", path="resource"),
-            expect=Expect(response=[Assertion(
-                check="field_equals",
-                params={
-                    "field": "itemId",
-                    "value": ValueRef(source="bind", key="itemId"),
-                },
-            )]),
-        )],
-    )
-
-    with pytest.raises(DeclarationError, match="from_bind:itemId"):
-        frontend.build_mock(scenario, FakeNormalizer())
+def test_frontend_requires_explicit_mock_plan_before_any_context():
+    scenario = load_scenario("tests/fixtures/synthetic_scenario.yaml")
+    ui = FakeUi()
+    result = frontend.run(scenario, ui=ui, normalizer=FakeNormalizer())
+    assert result.steps[0].status == "ERROR"
+    assert "explicit mock_plan" in result.steps[0].detail
+    assert ui.open_calls == 0 and ui.permits == []
 
 
 def test_frontend_all_green():
@@ -105,7 +100,7 @@ def test_frontend_all_green():
                     _identified("2"),
                 ]),
                 outgoing=[ports.RequestSpec(method="POST", path="resource/action")])
-    res = frontend.run(s, ui=ui, normalizer=FakeNormalizer())
+    res = _run_frontend(s, ui=ui, normalizer=FakeNormalizer())
     assert res.passed
     assert len(res.steps) == 1
     assert res.steps[0].step_id == s.steps[0].id
@@ -120,7 +115,7 @@ def test_frontend_visible_check_fails_when_no_objects_rendered():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
     ui = FakeUi(rendered=_rendered(),
                 outgoing=[ports.RequestSpec(method="POST", path="resource/action")])
-    res = frontend.run(s, ui=ui, normalizer=FakeNormalizer())
+    res = _run_frontend(s, ui=ui, normalizer=FakeNormalizer())
     assert any(c.check == "visible" and not c.ok for c in res.checks)
 
 
@@ -128,7 +123,7 @@ def test_frontend_count_check_fails_when_zero():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
     ui = FakeUi(rendered=_rendered(),
                 outgoing=[ports.RequestSpec(method="POST", path="resource/action")])
-    res = frontend.run(s, ui=ui, normalizer=FakeNormalizer())
+    res = _run_frontend(s, ui=ui, normalizer=FakeNormalizer())
     assert any(c.check == "count_gt" and not c.ok for c in res.checks)
 
 
@@ -143,7 +138,7 @@ def test_visible_and_count_include_identified_and_anonymous_objects():
         rendered,
     )
     count = frontend._eval_frontend(
-        Assertion(check="count_gt", params={"anchor": "result_row", "n": 2}),
+        Assertion(check="count_gt", params={"anchor": "result_row", "count": 2}),
         rendered,
     )
 
@@ -154,9 +149,10 @@ def test_visible_and_count_include_identified_and_anonymous_objects():
 def test_frontend_fails_when_expected_request_not_sent():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
     ui = FakeUi(rendered=_rendered([_identified("1"), _identified("2")]), outgoing=[])
-    res = frontend.run(s, ui=ui, normalizer=FakeNormalizer())
+    res = _run_frontend(s, ui=ui, normalizer=FakeNormalizer())
     assert not res.passed
-    assert any(c.point == "request" and not c.ok for c in res.checks)
+    assert res.steps[0].status == "ERROR"
+    assert "missing or ambiguous" in res.steps[0].detail
 
 
 def test_object_field_equals_passes_for_matching_identified_object():
@@ -205,7 +201,7 @@ def test_object_field_equals_resolves_from_bind_and_fails_unresolved_reference()
 
     assert resolved.ok
     assert not unresolved.ok
-    assert "from_bind:item_id has no resolved bound value" in unresolved.detail
+    assert "response reference 'item_id' has no resolved value" in unresolved.detail
 
 
 @pytest.mark.parametrize("observed, expected", [(True, 1), (3, 3.0)])
@@ -239,22 +235,20 @@ def test_no_anonymous_passes_when_empty_and_reports_nonempty_count():
     assert "2 anonymous" in dirty.detail
 
 
-def test_frontend_multi_step_unsupported_degrades():
+def test_frontend_missing_primitive_capability_is_explicit_before_actions():
     s = Scenario(
-        id="test_multi_step_ui",
-        grid=Grid("integration", "dataset"),
-        actor="admin",
-        precondition=[],
-        inputs=[],
-        intent="multi-step UI is not supported in the frontend projection",
+        id="test_missing_ui", grid=Grid("integration", "dataset"), actor="admin",
+        precondition=[], inputs=[], intent="Primitive capability is required",
         steps=[
             Step(id="s1", request=RequestTemplate(method="POST", path="resource/action"),
+                 action="click", target="submit", request_asserted=True,
                  expect=Expect(response=[Assertion("success", {})])),
             Step(id="s2", request=RequestTemplate(method="POST", path="resource/other"),
+                 action="click", target="submit", request_asserted=True,
                  expect=Expect(response=[Assertion("success", {})])),
         ],
     )
-    res = frontend.run(s, ui=FakeUi(), normalizer=FakeNormalizer())
-    assert res.steps == []
-    assert res.skipped == ["multi-step UI capability not supported"]
-    assert res.status == DEGRADED
+    res = _run_frontend(s, ui=ports.UiDriver(), normalizer=FakeNormalizer())
+    assert [step.status for step in res.steps] == ["ERROR", "BLOCKED"]
+    assert "primitive UI capability not supported" in res.steps[0].detail
+    assert not res.passed

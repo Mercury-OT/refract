@@ -1,44 +1,31 @@
-"""Browser-gated proof that the demo adapter implements D6.1 stepwise frontend."""
-from pathlib import Path
-
-import pytest
-
-pytest.importorskip("playwright")
-
-from playwright.sync_api import sync_playwright  # noqa: E402
-
-from adapters.demo.config import DemoConfig  # noqa: E402
-from adapters.demo.ui import DemoUiDriver  # noqa: E402
-from adapters.demo.wiring import build_adapters  # noqa: E402
-from refracto.declaration.loader import load_scenario  # noqa: E402
-from refracto.runner import run_scenario  # noqa: E402
+"""Mandatory Chromium run: primitives, ordered explicit mocks and response refs."""
+from adapters.demo.config import DemoConfig
+from adapters.demo.ui import DemoUiDriver
+from adapters.demo.wiring import build_adapters
+from refracto.runner import run_scenario
+from tests.demo.ui_fixtures import creation_plan
+import httpx
 
 
-SCENARIO = Path(__file__).resolve().parents[2] / "scenarios" / "demo_item_frontend_stepwise.yaml"
-
-
-@pytest.fixture(scope="module")
-def _chromium_available():
-    try:
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch()
-            browser.close()
-    except Exception as exc:
-        pytest.skip(f"Chromium not available for Playwright: {exc}")
-
-
-def test_demo_stepwise_frontend_two_step_flow(_chromium_available, demo_server):
-    scenario = load_scenario(str(SCENARIO))
-    adapters = build_adapters(
-        demo_server,
-        ui=DemoUiDriver(DemoConfig(base_url=demo_server)),
-        scenario=scenario,
-    )
-    report = run_scenario(str(SCENARIO), adapters, projections=("frontend",))
-    result = report.domains[0]
-
-    assert report.status == "PASSED"
+def test_demo_stepwise_frontend_two_step_flow(demo_server):
+    driver = DemoUiDriver(DemoConfig(base_url=demo_server))
+    report = run_scenario("scenarios/demo_item_frontend_stepwise.yaml",
+        build_adapters(demo_server, ui=driver), projections=("frontend",),
+        mock_plan=creation_plan(("first", "1")))
+    assert report.status == "PASSED", [(s.status, s.detail) for s in report.domains[0].steps]
     assert report.degradations() == []
-    assert [step.status for step in result.steps] == ["PASSED", "PASSED"]
-    assert result.steps[1].resolved_bindings == {"itemId": "<stub:itemId>"}
-    assert all(check.ok for check in result.checks)
+    domain = report.domains[0]
+    assert [s.status for s in domain.steps] == ["COMPLETED"] * 3 + ["PASSED", "COMPLETED", "PASSED"]
+    assert list(domain.steps[4].resolved_bindings.values()) == ["1"]
+    assert [u["fixture_id"] for u in domain.mock_consumption] == ["initial-list", "create-1", "list-1", "create-2", "list-2"]
+    assert not domain.provider_recordings
+
+
+def test_unmatched_mock_refresh_aborts_without_real_backend_fallback(demo_server):
+    report = run_scenario("scenarios/demo_item_frontend_stepwise.yaml",
+        build_adapters(demo_server, ui=DemoUiDriver(DemoConfig(base_url=demo_server))),
+        projections=("frontend",), mock_plan=creation_plan(("first", "1"))[:2])
+    assert report.status == "FAILED"
+    assert report.domains[0].steps[3].status == "ERROR"
+    assert all(s.status == "BLOCKED" for s in report.domains[0].steps[4:])
+    assert httpx.get(demo_server + "/items").json()["data"]["items"] == []

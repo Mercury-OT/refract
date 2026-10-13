@@ -20,6 +20,8 @@ NOT_SELECTED = "NOT_SELECTED"  # grid filtered this scenario out — it did not 
 SKIPPED = "SKIPPED"          # a step did not run as a tolerated outcome
 BLOCKED = "BLOCKED"          # a step could not run because a prior step stopped the flow
 ERROR = "ERROR"              # a step raised/errored rather than failing a check
+COMPLETED = "COMPLETED"      # action completed; no assertion was evaluated
+NOT_APPLICABLE = "NOT_APPLICABLE"  # action outside the selected projection
 
 
 @dataclass
@@ -27,7 +29,7 @@ class CheckResult:
     point: str
     check: str
     ok: bool
-    detail: str = ""
+    detail: str = field(default="", repr=False)
     step: str = ""
 
 
@@ -39,7 +41,8 @@ class StepResult:
     skipped: list = field(default_factory=list)
     attempts: int = 1
     trace_id: object = None
-    detail: str = ""
+    detail: str = field(default="", repr=False)
+    not_checked: list[str] = field(default_factory=list, kw_only=True)
     resolved_bindings: dict[str, object] = field(
         default_factory=dict,
         repr=False,
@@ -54,6 +57,8 @@ class DomainResult:
     projection: str
     steps: list = field(default_factory=list)
     skipped: list = field(default_factory=list)
+    not_checked: list[str] = field(default_factory=list, kw_only=True)
+    mock_consumption: list[dict[str, str]] = field(default_factory=list, kw_only=True)
     provider_recordings: list = field(
         default_factory=list,
         repr=False,

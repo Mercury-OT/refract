@@ -23,6 +23,7 @@ from adapters.demo.ui import DemoUiDriver  # noqa: E402
 from adapters.demo.wiring import build_adapters  # noqa: E402
 from adapters.demo.config import DemoConfig  # noqa: E402
 from refracto import runner  # noqa: E402
+from tests.demo.ui_fixtures import creation_plan
 
 
 @pytest.fixture(scope="module")
@@ -39,7 +40,7 @@ def test_demo_item_create_all_four_projections_green(_chromium_available, demo_s
     config = DemoConfig(base_url=demo_server)
     adapters = build_adapters(demo_server, ui=DemoUiDriver(config))
 
-    rep = runner.run_scenario("scenarios/demo_item_create.yaml", adapters)
+    rep = runner.run_scenario("scenarios/demo_item_create.yaml", adapters, mock_plan=creation_plan())
 
     assert rep.passed is True
     assert rep.localize() == []  # empty localize() on a passing run is itself part of the DoD signal

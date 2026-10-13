@@ -32,7 +32,7 @@ def _scenario() -> Scenario:
         intent="create an item via POST /items",
         steps=[Step(
             id="main",
-            request=RequestTemplate(method="POST", path="items"),
+            request=RequestTemplate(method="POST", path="items", body={"name": "demo", "rows": [1, 2, 3]}),
             expect=Expect(
                 response=[
                     Assertion(check="success"),

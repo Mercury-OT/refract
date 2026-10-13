@@ -154,4 +154,6 @@ def test_frozen_job_run_scenario_pins_response_values_to_literal_input_and_bindi
 
     assert wait_value == "ready"
     assert count_value == ValueRef(source="input", key="rows")
-    assert archived_value == ValueRef(source="bind", key="jobId")
+    source = next(b for b in steps["archive_job"].bind
+                  if b.from_step == "create_job" and b.field == "jobId")
+    assert archived_value == ValueRef(source="bind", key=source.placeholder)

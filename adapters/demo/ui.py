@@ -1,11 +1,10 @@
-"""Playwright UiDriver for the reference demo application.
+"""Primitive Playwright adapter with bounded event-origin request correlation.
 
-The driver keeps the UI surface intentionally small: one page, one form, and a
-single list refresh cycle. It supports two modes:
-
-* mock mode: fulfill declared routes from a synthesized mock backend
-* live mode: drive the real app once, inject `traceparent`, and record the
-  correlated network responses for e2e evaluation
+Synchronous fetches created by a targeted event carry that event's action ID.
+Fetches after an untracked async continuation remain diagnostic. Waiting for
+handler promises is only a completion barrier, never a correlation mechanism.
+Mock routes consume explicit caller fixtures; missing fixtures abort, not fall
+through to a real backend. No scenario ID or expectation determines actions.
 """
 import copy
 import dataclasses
@@ -15,182 +14,228 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
-
 from refracto import ports
-from refracto.projection.backend import gen_traceparent
 
-_ITEM_NAME = "demo-item"
+
+_INSTRUMENT = r"""(() => {
+  const originalAdd = EventTarget.prototype.addEventListener;
+  const originalFetch = window.fetch.bind(window);
+  const state = window.__refract = {armed: null, origin: null, pending: 0};
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    if (typeof listener !== 'function') return originalAdd.call(this, type, listener, options);
+    return originalAdd.call(this, type, function(event) {
+      const previous = state.origin;
+      const arm = state.armed;
+      state.origin = arm && arm.type === event.type && event.target.closest?.(arm.selector)
+        ? arm.action_id : null;
+      let result;
+      try { result = listener.call(this, event); }
+      finally { state.origin = previous; }
+      if (result && typeof result.then === 'function') {
+        state.pending++;
+        Promise.resolve(result).finally(() => state.pending--);
+      }
+      return result;
+    }, options);
+  };
+  window.fetch = function(input, init = {}) {
+    const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+    const hex = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), x => x.toString(16).padStart(2,'0')).join('');
+    headers.set('x-refract-request-id', crypto.randomUUID());
+    if (state.origin) headers.set('x-refract-action-id', state.origin);
+    headers.set('traceparent', '00-' + hex(16) + '-' + hex(8) + '-01');
+    return originalFetch(input, {...init, headers});
+  };
+})();"""
 
 
 @dataclass
-class _StepwiseContext:
+class _Context:
     playwright: object
     browser: object
     browser_context: object
     page: object
-    loaded: bool = False
-    active_permit: object = None
-    active_object_id: str = ""
-    primary_request: object = None
-    primary_response: object = None
-    diagnostic_outgoing: list = field(default_factory=list)
-    diagnostic_recorded: list = field(default_factory=list)
-    items: list = field(default_factory=list)
-
-
-def _testid(page_or_dialog, name: str):
-    return page_or_dialog.locator(f'[data-testid="{name}"]')
-
-
-def _real_path(path: str) -> str:
-    return path if path.startswith("/") else f"/{path}"
-
-
-def _safe_json(request):
-    try:
-        return request.post_data_json
-    except Exception:
-        return None
+    mode: str
+    mock_plan: list
+    fixture_index: int = 0
+    permits: dict = field(default_factory=dict)
+    traffic: list = field(default_factory=list)
+    diagnostics: list = field(default_factory=list)
+    mock_recordings: list = field(default_factory=list)
+    errors: list = field(default_factory=list)
 
 
 class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
-    _STEPWISE_ACTIONS = {
-        ("demo.item_frontend_stepwise", "create_first"): ("input", "first_name"),
-        ("demo.item_frontend_stepwise", "create_bound"): ("bind", "itemId"),
-        ("demo.item_e2e_stepwise", "create_first"): ("input", "first_name"),
-        ("demo.item_e2e_stepwise", "create_bound"): ("bind", "itemKey"),
+    _TARGETS = {
+        "items.new_button": '[data-testid="new-btn"]',
+        "items.name_input": '[data-testid="item-name"]',
+        "items.submit_button": '[data-testid="create-btn"]',
+        "records.new_button": '[data-testid="new-btn"]',
+        "records.name_input": '[data-testid="item-name"]',
+        "records.submit_button": '[data-testid="create-btn"]',
     }
 
     def __init__(self, config):
         self._config = config
 
-    def supports_stepwise_mode(self, mode: str) -> bool:
-        return mode in ("mock", "live")
+    def supports_stepwise_mode(self, mode):
+        return mode in {"mock", "live"}
 
-    def run_intent(self, scenario, session, mock) -> ports.UiResult:
-        step = scenario.steps[0]
-        object_id = next(
-            (item.value for item in scenario.inputs if item.kind == "item_id"),
-            _ITEM_NAME,
-        )
-        object_id = str(object_id)
-        declared = [(step.request.method, step.request.path)] if step.request is not None else []
-        outgoing, recorded, injected = [], [], {}
-        pending_responses = []
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=os.environ.get("SAT_HEADED") != "1")
-            context = None
-            try:
-                context = browser.new_context()
-                page = context.new_page()
-                self._install_routes(
-                    page, declared, mock, outgoing, injected, object_id
-                )
-                if mock is None:
-                    page.on(
-                        "response",
-                        lambda r: pending_responses.append(r) if id(r.request) in injected else None,
-                    )
-                self._run_flow(page, object_id)
-                rendered = self._read_rendered(page)
-                for resp in pending_responses:
-                    recorded.append(self._to_recorded(resp, injected))
-            finally:
-                if context is not None:
-                    context.close()
-                browser.close()
-        return ports.UiResult(rendered=rendered, outgoing=outgoing, recorded=recorded)
-
-    def open_stepwise(self, scenario, session, *, mode):
-        if not self.supports_stepwise_mode(mode):
-            raise ValueError(f"DemoUiDriver stepwise mode {mode!r} is not supported")
-        playwright = sync_playwright().start()
-        browser = None
-        browser_context = None
+    def open_stepwise(self, scenario, session, *, mode, mock_plan=None):
+        pw = sync_playwright().start()
+        browser = browser_context = None
         try:
-            browser = playwright.chromium.launch(headless=os.environ.get("SAT_HEADED") != "1")
+            browser = pw.chromium.launch(headless=os.environ.get("SAT_HEADED") != "1")
             browser_context = browser.new_context()
+            browser_context.add_init_script(_INSTRUMENT)
             page = browser_context.new_page()
-            context = _StepwiseContext(
-                playwright=playwright,
-                browser=browser,
-                browser_context=browser_context,
-                page=page,
-            )
-            page.route(
-                f"{self._config.base_url}/items*",
-                lambda route: self._handle_stepwise_route(context, route),
-            )
+            context = _Context(pw, browser, browser_context, page, mode, mock_plan or [])
+            page.route("**/*", lambda route: self._route(context, route))
             return context
         except Exception:
             if browser_context is not None:
                 browser_context.close()
             if browser is not None:
                 browser.close()
-            playwright.stop()
+            pw.stop()
             raise
 
     def perform_step(self, scenario, step, context, permit):
-        action = self._STEPWISE_ACTIONS.get((scenario.id, step.id))
-        if action is None:
-            raise ValueError(
-                f"no demo UI action registered for scenario={scenario.id!r}, step={step.id!r}")
-        source, name = action
-        if source == "input":
-            object_id = next(
-                item.value for item in scenario.inputs if item.kind == name
-            )
+        context.permits[permit.action_id] = permit
+        start = len(context.traffic)
+        diagnostic_start = len(context.diagnostics)
+        mock_start = len(context.mock_recordings)
+        page = context.page
+        if permit.action == "open":
+            if permit.target not in {"items.page", "records.page"}:
+                raise ValueError("unknown page target")
+            page.goto(self._config.base_url + "/", wait_until="networkidle")
         else:
-            object_id = permit.resolved_bindings[name]
+            selector = self._TARGETS.get(permit.target)
+            if selector is None:
+                raise ValueError("unknown element target")
+            locator = page.locator(selector)
+            if locator.count() != 1:
+                raise ValueError("UI target is missing or ambiguous")
+            page.evaluate("arm => window.__refract.armed = arm", {
+                "action_id": permit.action_id, "selector": selector,
+                "type": "click" if permit.action == "click" else "input",
+            })
+            try:
+                if permit.action == "click":
+                    locator.click()
+                elif permit.action == "fill":
+                    if type(permit.value) is not str:
+                        raise TypeError("demo text input requires a string value")
+                    locator.fill(permit.value)
+                else:
+                    raise ValueError("unsupported primitive")
+                page.wait_for_function("window.__refract.pending === 0")
+                page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+            finally:
+                page.evaluate("window.__refract.armed = null")
+        if context.errors:
+            raise ValueError(context.errors[0])
+        # A delayed earlier action's response is retained but cannot be assigned
+        # to the current step just because it arrived during its completion.
+        current, diagnostics = [], list(context.diagnostics[diagnostic_start:])
+        for traffic in context.traffic[start:]:
+            if traffic.action_id == permit.action_id:
+                current.append(traffic)
+            else:
+                diagnostics.append(traffic.response)
+        return ports.UiActionResult(evidence=ports.UiActionEvidence(
+            execution_id=permit.execution_id, action_id=permit.action_id,
+            step_id=permit.step_id, mode=permit.mode, permit_token=permit.token,
+            traffic=current, rendered=self.snapshot(context),
+            diagnostic_outgoing=[r.request for r in diagnostics],
+            diagnostic_recorded=diagnostics,
+            mock_recordings=list(context.mock_recordings[mock_start:]),
+        ))
 
-        context.active_permit = permit
-        context.active_object_id = str(object_id)
-        context.primary_request = None
-        context.primary_response = None
-        context.diagnostic_outgoing = []
-        context.diagnostic_recorded = []
+    def _route(self, context, route):
+        request = route.request
+        url = urlparse(request.url)
+        base = urlparse(self._config.base_url)
+        # The local app document/static assets are not mock API responses.
+        if request.resource_type not in {"fetch", "xhr"}:
+            if (url.scheme, url.netloc) != (base.scheme, base.netloc):
+                context.errors.append("cross-origin resource not allowed")
+                route.abort()
+            else:
+                route.continue_()
+            return
         try:
-            if not context.loaded:
-                context.page.goto(
-                    f"{self._config.base_url}/",
-                    wait_until="networkidle",
-                    timeout=30000,
-                )
-                context.loaded = True
-            _testid(context.page, "item-name").fill(context.active_object_id)
-            _testid(context.page, "create-btn").click()
-            context.page.wait_for_function(
-                """objectId => Array.from(
-                    document.querySelectorAll('[data-testid="item-row"]')
-                ).some(row => row.getAttribute('data-object-id') === objectId)""",
-                arg=context.active_object_id,
-                timeout=30000,
+            if (url.scheme, url.netloc) != (base.scheme, base.netloc):
+                raise ValueError("cross-origin API traffic not allowed")
+            request_id = request.headers.get("x-refract-request-id")
+            action_id = request.headers.get("x-refract-action-id")
+            permit = context.permits.get(action_id)
+            traceparent = request.headers.get("traceparent")
+            trace_id = traceparent.split("-")[1] if traceparent else None
+            try:
+                body = request.post_data_json
+            except Exception:
+                body = None
+            spec = ports.RequestSpec(request.method, url.path.lstrip("/"), body, traceparent)
+            fixture_id = None
+            if context.mode == "mock":
+                if context.fixture_index >= len(context.mock_plan):
+                    raise ValueError("unmatched mock traffic: plan exhausted")
+                fixture = context.mock_plan[context.fixture_index]
+                if (fixture.method, fixture.path) != (spec.method, spec.path):
+                    raise ValueError("unmatched mock traffic: ordered fixture differs")
+                fixture_id = fixture.fixture_id
+                context.fixture_index += 1
+                response_body, status = copy.deepcopy(fixture.response), fixture.status
+                text, headers = json.dumps(response_body), {"content-type": "application/json"}
+                route.fulfill(status=status, json=response_body)
+            else:
+                response = route.fetch(headers={k: v for k, v in request.headers.items()
+                                                if not k.startswith("x-refract-")})
+                status, headers, text = response.status, dict(response.headers), response.text()
+                try:
+                    response_body = response.json()
+                except Exception:
+                    response_body = None
+                route.fulfill(response=response)
+            recorded = ports.RecordedResponse(
+                status, headers, response_body, text, trace_id, dataclasses.replace(spec),
+                step_id=permit.step_id if permit else None, actual_path=url.path,
+                request_id=request_id, mock_fixture_id=fixture_id,
             )
-            if context.primary_request is None or context.primary_response is None:
-                raise RuntimeError("registered demo action produced no primary request/response")
-            evidence = ports.UiActionEvidence(
-                execution_id=permit.execution_id,
-                action_id=permit.action_id,
-                request_id=permit.request_id,
-                step_id=permit.step_id,
-                attempt_index=permit.attempt_index,
-                mode=permit.mode,
-                method=permit.method,
-                template_path=permit.template_path,
-                bound_logical_path=permit.bound_logical_path,
-                permit_token=permit.token,
-                actual_path=context.primary_response.actual_path,
-                is_final=True,
-                primary_request=context.primary_request,
-                primary_response=context.primary_response,
-                rendered=self._read_rendered(context.page),
-                diagnostic_outgoing=list(context.diagnostic_outgoing),
-                diagnostic_recorded=list(context.diagnostic_recorded),
-            )
-            return ports.UiActionResult(evidence=evidence)
-        finally:
-            context.active_permit = None
-            context.active_object_id = ""
+            if context.mode == "mock":
+                context.mock_recordings.append(recorded)
+            if permit is None:
+                context.diagnostics.append(recorded)
+            else:
+                context.traffic.append(ports.UiTraffic(
+                    execution_id=permit.execution_id, action_id=permit.action_id,
+                    step_id=permit.step_id, mode=permit.mode, request_id=request_id,
+                    permit_token=permit.token, request=spec, response=recorded,
+                    mock_fixture_id=fixture_id,
+                ))
+        except Exception as exc:
+            context.errors.append(str(exc))
+            route.abort()
+
+    def snapshot(self, context):
+        identified, anonymous = [], []
+        rows = context.page.locator('[data-testid="item-row"]')
+        for index in range(rows.count()):
+            row = rows.nth(index)
+            try:
+                fields = json.loads(row.get_attribute("data-object-fields") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                fields = {}
+            fields = fields if type(fields) is dict else {}
+            object_id = row.get_attribute("data-object-id")
+            if object_id:
+                identified.append({"id": object_id, "fields": fields})
+            else:
+                anonymous.append({"fields": fields})
+        rendered = {"identified": identified, "anonymous": anonymous}
+        return {"items.rows": rendered, "records.rows": rendered, "item_row": rendered}
 
     def close_stepwise(self, context):
         try:
@@ -200,216 +245,3 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
                 context.browser.close()
             finally:
                 context.playwright.stop()
-
-    def _handle_stepwise_route(self, context, route):
-        permit = context.active_permit
-        if permit is None:
-            raise RuntimeError("demo UI traffic occurred without a core action permit")
-        request = route.request
-        actual_path = urlparse(request.url).path
-        path = actual_path.lstrip("/")
-        is_primary = (
-            context.primary_request is None
-            and request.method == permit.method
-            and path == permit.bound_logical_path
-        )
-        if is_primary:
-            spec = ports.RequestSpec(
-                method=request.method,
-                path=path,
-                body=_safe_json(request),
-                traceparent=permit.traceparent,
-            )
-            if permit.mode == "mock":
-                body = copy.deepcopy(permit.mock_response)
-                status = 200
-                headers = {}
-                text = json.dumps(body)
-                if request.method == "POST":
-                    context.items.append({
-                        "id": len(context.items) + 1,
-                        "name": context.active_object_id,
-                        "count": 3,
-                    })
-                route.fulfill(json=body)
-            else:
-                live_response = route.fetch(headers={
-                    **request.headers,
-                    "traceparent": permit.traceparent,
-                })
-                status = live_response.status
-                headers = dict(live_response.headers)
-                try:
-                    body = live_response.json()
-                except Exception:
-                    body = None
-                try:
-                    text = live_response.text()
-                except Exception:
-                    text = ""
-                route.fulfill(response=live_response)
-            context.primary_request = spec
-            context.primary_response = ports.RecordedResponse(
-                status=status,
-                headers=headers,
-                json=copy.deepcopy(body),
-                text=text,
-                trace_id=permit.trace_id,
-                request=dataclasses.replace(spec),
-                step_id=permit.step_id,
-                attempt_index=permit.attempt_index,
-                is_final=True,
-                template_path=permit.template_path,
-                bound_logical_path=permit.bound_logical_path,
-                actual_path=actual_path,
-            )
-            return
-
-        spec = ports.RequestSpec(
-            method=request.method,
-            path=path,
-            body=_safe_json(request),
-            traceparent=request.headers.get("traceparent"),
-        )
-        if permit.mode == "mock":
-            body = {
-                "success": True,
-                "error": None,
-                "data": {"items": list(context.items)},
-            }
-            status = 200
-            headers = {}
-            text = json.dumps(body)
-            route.fulfill(json=body)
-        else:
-            live_response = route.fetch()
-            status = live_response.status
-            headers = dict(live_response.headers)
-            try:
-                body = live_response.json()
-            except Exception:
-                body = None
-            try:
-                text = live_response.text()
-            except Exception:
-                text = ""
-            route.fulfill(response=live_response)
-        diagnostic_response = ports.RecordedResponse(
-            status=status,
-            headers=headers,
-            json=copy.deepcopy(body),
-            text=text,
-            trace_id=None,
-            request=dataclasses.replace(spec),
-            actual_path=actual_path,
-        )
-        context.diagnostic_outgoing.append(spec)
-        context.diagnostic_recorded.append(diagnostic_response)
-
-    def _run_flow(self, page, object_id):
-        page.goto(f"{self._config.base_url}/", wait_until="networkidle", timeout=30000)
-        _testid(page, "item-name").fill(object_id)
-        _testid(page, "create-btn").click()
-        page.wait_for_function(
-            """objectId => Array.from(
-                document.querySelectorAll('[data-testid="item-row"]')
-            ).some(row => row.getAttribute('data-object-id') === objectId)""",
-            arg=object_id,
-            timeout=30000,
-        )
-
-    def _read_rendered(self, page):
-        loc = _testid(page, "item-row")
-        try:
-            loc.first.wait_for(state="visible", timeout=30000)
-        except Exception:
-            pass
-        identified, anonymous = [], []
-        for index in range(loc.count()):
-            row = loc.nth(index)
-            raw_fields = row.get_attribute("data-object-fields")
-            try:
-                fields = json.loads(raw_fields) if raw_fields is not None else {}
-            except (TypeError, json.JSONDecodeError):
-                fields = {}
-            if not isinstance(fields, dict):
-                fields = {}
-            object_id = row.get_attribute("data-object-id")
-            rendered_object = {"fields": fields}
-            if isinstance(object_id, str) and object_id:
-                identified.append({"id": object_id, **rendered_object})
-            else:
-                anonymous.append(rendered_object)
-        return {
-            "item_row": {
-                "identified": identified,
-                "anonymous": anonymous,
-            },
-        }
-
-    def _install_routes(self, page, declared, mock, outgoing, injected, object_id):
-        base = self._config.base_url
-        if mock is not None:
-            def handle(route):
-                req = route.request
-                method = req.method
-                path = "items"
-                key = (method, path)
-                if key in mock:
-                    outgoing.append(ports.RequestSpec(method=method, path=path, body=_safe_json(req)))
-                    route.fulfill(json=mock[key])
-                    return
-                overlay = self._mock_overlay(method, path, object_id)
-                if overlay is not None:
-                    route.fulfill(json=overlay)
-                    return
-                route.fulfill(json={"success": True, "error": None, "data": None})
-
-            page.route(f"{base}/items", handle)
-        else:
-            def handle(route):
-                req = route.request
-                method = req.method
-                path = "items"
-                tp = gen_traceparent()
-                injected[id(req)] = tp
-                outgoing.append(
-                    ports.RequestSpec(method=method, path=path, body=_safe_json(req), traceparent=tp)
-                )
-                route.continue_(headers={**req.headers, "traceparent": tp})
-
-            for method, path in set(declared):
-                page.route(f"{base}{_real_path(path)}", handle)
-
-    def _to_recorded(self, response, injected):
-        req = response.request
-        tp = injected[id(req)]
-        method = req.method
-        path = "items"
-        try:
-            body = response.json()
-        except Exception:
-            body = None
-        try:
-            text = response.text()
-        except Exception:
-            text = ""
-        trace_id = tp.split("-")[1]
-        spec = ports.RequestSpec(method=method, path=path, body=None, traceparent=tp)
-        return ports.RecordedResponse(
-            status=response.status,
-            headers=dict(response.headers),
-            json=body,
-            text=text,
-            trace_id=trace_id,
-            request=spec,
-        )
-
-    def _mock_overlay(self, method, path, object_id):
-        if method == "GET" and path == "items":
-            return {
-                "success": True,
-                "error": None,
-                "data": {"items": [{"id": 1, "name": object_id, "count": 3}]},
-            }
-        return None

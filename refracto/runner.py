@@ -6,6 +6,7 @@ projection consumes provider recordings produced by the backend projection, so
 it may only be requested together with `backend`.
 """
 from dataclasses import dataclass
+import math
 from refracto.declaration.loader import load_scenario
 from refracto import grid
 from refracto.report import RunReport
@@ -22,6 +23,9 @@ class PollConfig:
     interval: float = 1.0
 
     def __post_init__(self):
+        if any(type(value) not in (int, float) or not math.isfinite(value)
+               for value in (self.timeout, self.interval)):
+            raise ValueError("PollConfig timing must be finite numbers")
         if self.timeout <= 0:
             raise ValueError(f"PollConfig.timeout must be > 0, got {self.timeout!r}")
         if self.interval <= 0:
@@ -39,7 +43,6 @@ class Adapters:
     ui: object
     recorder_factory: object            # callable -> Recorder
     resolve_request: object             # callable(scenario, step, template) -> RequestSpec
-    resolve_precondition: object = None
     normalizer: object = None           # ResponseNormalizer
 
 
@@ -47,7 +50,8 @@ _VALID_PROJECTIONS = {"backend", "frontend", "e2e", "contract"}
 
 
 def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "contract"),
-                 level=None, module=None, poll_config=None, now=None, sleep=None):
+                 level=None, module=None, poll_config=None, now=None, sleep=None,
+                 mock_plan=None):
     poll_config = poll_config or PollConfig()
     scenario = load_scenario(path)
     report = RunReport(scenario_id=scenario.id)
@@ -57,7 +61,9 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         raise ValueError(f"unknown projection(s): {sorted(unknown)}; valid: {sorted(_VALID_PROJECTIONS)}")
     if adapters.normalizer is None:
         raise ValueError("adapters.normalizer is required (a ResponseNormalizer)")
-    if adapters.ui is None and any(p in projections for p in ("frontend", "e2e")):
+    needs_ui = any(step.action in ("open", "click", "fill") or step.expect.frontend
+                   for step in scenario.steps)
+    if adapters.ui is None and ("frontend" in projections or ("e2e" in projections and needs_ui)):
         raise ValueError(
             "frontend/e2e projection requested but no UiDriver was provided")
     # The contract projection diffs the declaration against recordings the backend
@@ -81,19 +87,19 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         d = backend_proj.run(scenario, auth=adapters.auth, api=adapters.api,
                              state=adapters.state, recorder=rec,
                              resolve_request=adapters.resolve_request,
-                             resolve_precondition=adapters.resolve_precondition,
                              normalizer=adapters.normalizer, poll_config=poll_config,
                              now=now, sleep=sleep)
         provider_recordings = d.provider_recordings
         report.domains.append(d)
     if "frontend" in projections:
         report.domains.append(frontend_proj.run(scenario, ui=adapters.ui, auth=adapters.auth,
-                                                 normalizer=adapters.normalizer))
+                                                 normalizer=adapters.normalizer,
+                                                 mock_plan=mock_plan, now=now, sleep=sleep))
     if "e2e" in projections:
         rec = adapters.recorder_factory()
         report.domains.append(e2e_proj.run(scenario, auth=adapters.auth, ui=adapters.ui,
+                                            api=adapters.api, resolve_request=adapters.resolve_request,
                                             state=adapters.state, recorder=rec,
-                                            resolve_precondition=adapters.resolve_precondition,
                                             normalizer=adapters.normalizer, poll_config=poll_config,
                                             now=now, sleep=sleep))
     if "contract" in projections:

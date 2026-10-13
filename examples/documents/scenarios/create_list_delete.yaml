@@ -1,44 +1,93 @@
-version: 2
+schema_version: 1
 scenario: documents.create_list_delete
-grid: {level: regression, module: documents}
+grid:
+  level: regression
+  module: documents
 actor: editor
-precondition: []
-inputs:
-  - {document_title: field-notes}
-  - {filter_category: guide}
-  - {cursor: 0}
-  - {page_size: 1}
-intent: Create a server-identified document, find that exact document through a filtered page, and delete it.
+description: Create an unrelated document and a target, find the target after the
+  unrelated member in one filtered page, and delete both documents.
+parameters:
+  document_title: field-notes
+  filter_category: guide
+  cursor: 0
+  page_size: 2
 steps:
-  - id: create
+# Preparation is a visible action, not hidden adapter behavior.
+- id: create_unrelated
+  do:
     request:
       method: POST
-      path: documents
-      body: {title: field-notes, category: guide}
-    expect:
-      response:
-        - {check: success}
-        - {check: has, field: document_id}
-        - {check: field_equals, field: title, value: {from_input: document_title}}
-        - {check: field_equals, field: category, value: {from_input: filter_category}}
-  - id: list_filtered
+      path: [documents]
+      body:
+        title: other-notes
+        category: guide
+  expect:
+    response:
+    - check: success
+    - check: has
+      field: document_id
+- id: create
+  do:
+    request:
+      method: POST
+      path:
+      - documents
+      body:
+        title: field-notes
+        category: guide
+  expect:
+    response:
+    - check: success
+    - check: has
+      field: document_id
+    - check: field_equals
+      field: title
+      value:
+        from_parameter: document_title
+    - check: field_equals
+      field: category
+      value:
+        from_parameter: filter_category
+- id: list_filtered
+  do:
     request:
       method: GET
-      path: documents/search
-    bind:
-      created_id: {from: create, field: document_id}
-    expect:
-      response:
-        - {check: success}
-        - {check: field_equals, field: returned, value: 1}
-        - {check: field_equals, field: document_id, value: {from_bind: created_id}}
-        - {check: field_equals, field: category, value: {from_input: filter_category}}
-  - id: delete
+      path:
+      - documents
+      - search
+  expect:
+    response:
+    - check: success
+    - check: field_equals
+      field: returned
+      value: 2
+    - check: collection_matching_count
+      field: documents
+      # This checks the returned page only; it does not fetch later pages.
+      matching:
+        document_id: {from_step: create, response_field: document_id}
+        title: {from_parameter: document_title}
+        category: {from_parameter: filter_category}
+      count: 1
+- id: delete
+  do:
     request:
       method: DELETE
-      path: documents/{created_id}
-    bind:
-      created_id: {from: create, field: document_id}
-    expect:
-      response:
-        - {check: success}
+      path:
+      - documents
+      - from_step: create
+        response_field: document_id
+  expect:
+    response:
+    - check: success
+- id: delete_unrelated
+  do:
+    request:
+      method: DELETE
+      path:
+      - documents
+      - from_step: create_unrelated
+        response_field: document_id
+  expect:
+    response:
+    - check: success

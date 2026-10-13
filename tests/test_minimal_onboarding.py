@@ -54,7 +54,7 @@ def test_missing_state_probe_is_an_explicit_step_degradation():
     )
 
 
-@pytest.mark.parametrize("projection", ["frontend", "e2e"])
+@pytest.mark.parametrize("projection", ["frontend"])
 def test_missing_ui_driver_is_rejected_before_request_side_effects(projection):
     app = MinimalRestApp()
     adapters = minimal_adapters.build_adapters(app)
@@ -68,6 +68,13 @@ def test_missing_ui_driver_is_rejected_before_request_side_effects(projection):
 
     assert adapters.api.sent == []
     assert app.request_count == 0
+
+
+def test_explicit_api_e2e_does_not_require_ui_driver():
+    adapters = minimal_adapters.build_adapters()
+    rep = runner.run_scenario(SCENARIO_PATH, adapters, projections=("e2e",))
+    assert rep.status == PASSED
+    assert len(adapters.api.sent) == 2
 
 
 def test_empty_204_response_normalizes_and_the_scenario_stays_passed():

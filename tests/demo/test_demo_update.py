@@ -1,4 +1,4 @@
-"""The frozen `demo_item_update.yaml` scenario passes through the backend projection. Update is modeled as a backend-only scenario with no frontend assertions, and the resolver establishes its precondition by creating a real item first."""
+"""Explicit create then update, with no hidden resolver preparation."""
 from adapters.demo.wiring import build_adapters
 from refracto import runner
 

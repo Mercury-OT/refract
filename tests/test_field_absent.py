@@ -29,13 +29,7 @@ def _write(tmp_path, text):
 def _v1_response(*assertions):
     lines = "\n".join(f"    - {assertion}" for assertion in assertions)
     return (
-        "scenario: field_absent\n"
-        "grid: {level: regression, module: generic}\n"
-        "actor: actor\n"
-        "expect:\n"
-        "  request:\n"
-        "    - {check: request, method: GET, path: resource}\n"
-        "  response:\n"
+        'schema_version: 1\nscenario: field_absent\ngrid:\n  level: regression\n  module: generic\nactor: actor\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - resource\n  expect:\n    response:\n'
         f"{lines}\n"
     )
 
@@ -94,16 +88,7 @@ def test_field_absent_vocabulary_has_one_bounded_parameter():
     [
         _v1_response("{check: field_absent, field: internal_token}"),
         (
-            "version: 2\n"
-            "scenario: field_absent\n"
-            "grid: {level: regression, module: generic}\n"
-            "actor: actor\n"
-            "steps:\n"
-            "  - id: read\n"
-            "    request: {method: GET, path: resource}\n"
-            "    expect:\n"
-            "      response:\n"
-            "        - {check: field_absent, field: internal_token}\n"
+            'schema_version: 1\nscenario: field_absent\ngrid:\n  level: regression\n  module: generic\nactor: actor\nsteps:\n- id: read\n  do:\n    request:\n      method: GET\n      path:\n      - resource\n  expect:\n    response:\n    - check: field_absent\n      field: internal_token\n'
         ),
     ],
 )
@@ -169,46 +154,30 @@ def test_existing_has_and_field_equals_combination_remains_legal(tmp_path):
     ]
 
 
-def test_v1_async_implicit_has_participates_in_conflict_check(tmp_path):
+def test_removed_async_hint_is_rejected_instead_of_inventing_has(tmp_path):
     text = (
-        "scenario: async_conflict\n"
-        "grid: {level: regression, module: generic}\n"
-        "actor: actor\n"
-        "expect:\n"
-        "  request:\n"
-        "    - {check: request, method: POST, path: jobs, async: task_id}\n"
-        "  response:\n"
-        "    - {check: field_absent, field: task_id}\n"
+        'schema_version: 1\nscenario: async_conflict\ngrid:\n  level: regression\n  module: generic\nactor: actor\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n  expect:\n    response:\n    - check: field_absent\n      field: task_id\n'
     )
 
-    with pytest.raises(DeclarationError) as exc_info:
+    text = text.replace("      method: POST", "      async: task_id\n      method: POST")
+    with pytest.raises(DeclarationError, match="async"):
         load_scenario(str(_write(tmp_path, text)))
-
-    assert "field_absent" in str(exc_info.value)
-    assert "task_id" in str(exc_info.value)
 
 
 def test_field_absent_does_not_guarantee_a_later_binding_source(tmp_path):
     text = (
-        "version: 2\n"
-        "scenario: invalid_bind\n"
-        "grid: {level: regression, module: generic}\n"
-        "actor: actor\n"
-        "steps:\n"
-        "  - id: source\n"
-        "    request: {method: GET, path: source}\n"
-        "    expect:\n"
-        "      response:\n"
-        "        - {check: field_absent, field: item_id}\n"
-        "  - id: target\n"
-        "    request: {method: GET, path: 'items/{item_id}'}\n"
-        "    bind: {item_id: {from: source, field: item_id}}\n"
+        'schema_version: 1\nscenario: invalid_bind\ngrid:\n  level: regression\n  module: generic\nactor: actor\nsteps:\n- id: source\n  do:\n    request:\n      method: GET\n      path:\n      - source\n  expect:\n    response:\n    - check: field_absent\n      field: item_id\n- id: target\n  do:\n    request:\n      method: GET\n      path:\n      - items\n      - from_step: source\n        response_field: item_id\n'
     )
 
-    with pytest.raises(DeclarationError) as exc_info:
-        load_scenario(str(_write(tmp_path, text)))
-
-    assert "not guaranteed by source step" in str(exc_info.value)
+    scenario = load_scenario(str(_write(tmp_path, text)))
+    api = FakeApi()
+    result = backend.run(scenario, auth=FakeAuth(), api=api, state=None,
+                         recorder=FakeRecorder(), resolve_request=_resolver,
+                         normalizer=FakeNormalizer())
+    assert result.steps[0].status == PASSED
+    assert result.steps[1].status == "ERROR"
+    assert result.steps[1].resolved_bindings == {}
+    assert len(api.sent) == 1
 
 
 def test_backend_field_absent_passes_only_when_normalized_field_is_missing():
@@ -292,13 +261,13 @@ class SequenceApi(ports.ApiDriver):
 
 def _poll_scenario(tmp_path, on_timeout):
     text = (
-        "version: 2\n"
+        "schema_version: 1\n"
         "scenario: poll_absence\n"
         "grid: {level: regression, module: generic}\n"
         "actor: actor\n"
         "steps:\n"
         "  - id: poll\n"
-        "    request: {method: GET, path: resource}\n"
+        "    do: {request: {method: GET, path: [resource]}}\n"
         f"    poll: {{on_timeout: {on_timeout}}}\n"
         "    expect:\n"
         "      response:\n"
@@ -362,6 +331,9 @@ def test_e2e_field_absent_uses_normalized_fields_not_raw_json():
         value_json={"success": True, "internal_token": sentinel},
     )
     ui = FakeUi(outgoing=[raw_response.request], recorded=[raw_response])
+    scenario = _field_absent_scenario()
+    scenario.steps[0].action = "click"
+    scenario.steps[0].target = "resource.submit"
 
     class FilteringNormalizer(FakeNormalizer):
         def normalize(self, response):
@@ -373,7 +345,7 @@ def test_e2e_field_absent_uses_normalized_fields_not_raw_json():
             )
 
     filtered = e2e.run(
-        _field_absent_scenario(),
+        scenario,
         auth=FakeAuth(),
         ui=ui,
         state=None,
@@ -381,7 +353,7 @@ def test_e2e_field_absent_uses_normalized_fields_not_raw_json():
         normalizer=FilteringNormalizer(),
     )
     exposed = e2e.run(
-        _field_absent_scenario(),
+        scenario,
         auth=FakeAuth(),
         ui=ui,
         state=None,

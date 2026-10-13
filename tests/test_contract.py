@@ -341,12 +341,7 @@ def _value_resp(method, path, values, *, step_id, template_path):
 def test_contract_preserves_field_equals_values_on_both_sides(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
-        "inputs: [{rows: 3}]\n"
-        "expect:\n"
-        "  request:\n    - {check: request, method: GET, path: result}\n"
-        "  response:\n"
-        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nparameters:\n  rows: 3\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - result\n  expect:\n    response:\n    - check: field_equals\n      field: count\n      value:\n        from_parameter: rows\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     consumer = store.consumer_contract(scenario)
@@ -366,12 +361,7 @@ def test_contract_preserves_field_equals_values_on_both_sides(tmp_path):
 def test_contract_projection_detects_from_input_value_drift(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        "scenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
-        "inputs: [{rows: 3}]\n"
-        "expect:\n"
-        "  request:\n    - {check: request, method: GET, path: result}\n"
-        "  response:\n"
-        "    - {check: field_equals, field: count, value: {from_input: rows}}\n",
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nparameters:\n  rows: 3\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - result\n  expect:\n    response:\n    - check: field_equals\n      field: count\n      value:\n        from_parameter: rows\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     recording = _value_resp(
@@ -386,17 +376,7 @@ def test_contract_projection_detects_from_input_value_drift(tmp_path):
 def test_contract_projection_resolves_from_bind_against_source_recording(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        "version: 2\nscenario: x\ngrid: {level: smoke, module: m}\nactor: a\n"
-        "steps:\n"
-        "  - id: create\n"
-        "    request: {method: POST, path: items}\n"
-        "    expect:\n      response:\n"
-        "        - {check: has, field: itemId}\n"
-        "  - id: archive\n"
-        "    request: {method: POST, path: archives}\n"
-        "    bind: {itemId: {from: create, field: itemId}}\n"
-        "    expect:\n      response:\n"
-        "        - {check: field_equals, field: archived, value: {from_bind: itemId}}\n",
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - items\n  expect:\n    response:\n    - check: has\n      field: itemId\n- id: archive\n  do:\n    request:\n      method: POST\n      path:\n      - archives\n  expect:\n    response:\n    - check: field_equals\n      field: archived\n      value:\n        from_step: create\n        response_field: itemId\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     recordings = [

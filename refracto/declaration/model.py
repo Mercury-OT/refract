@@ -36,6 +36,8 @@ class RequestTemplate:
     method: str
     path: str
     body: dict | None = None
+    path_segments: list | None = field(default=None, kw_only=True)
+    declared_path: str | None = field(default=None, kw_only=True)
 
 @dataclass(frozen=True)
 class Binding:
@@ -56,17 +58,30 @@ class Expect:
 @dataclass
 class Step:
     id: str
-    request: RequestTemplate
+    request: RequestTemplate | None
     expect: Expect
     bind: list = field(default_factory=list)
     poll: object = None
+    action: str = "request"
+    target: str | None = None
+    value: object = None
+    duration: int | None = None
+    request_asserted: bool = False
 
 @dataclass
 class Scenario:
     id: str
-    grid: Grid
+    grid: Grid | None
     actor: str
     precondition: list
     inputs: list
     intent: str
     steps: list
+
+    @property
+    def parameters(self):
+        return {item.kind: item.value for item in self.inputs}
+
+    @property
+    def description(self):
+        return self.intent

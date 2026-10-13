@@ -33,16 +33,20 @@ class DocumentResponseNormalizer(ports.ResponseNormalizer):
             elif isinstance(resource, dict) and isinstance(resource.get("normalized"), dict):
                 fields = dict(resource["normalized"])
             elif isinstance(result_set, dict):
-                nodes = result_set.get("nodes")
-                nodes = nodes if isinstance(nodes, list) else []
                 page_info = result_set.get("page_info")
                 page_info = page_info if isinstance(page_info, dict) else {}
-                fields = {
-                    "returned": len(nodes),
-                    "next_cursor": page_info.get("next_cursor"),
-                }
-                if nodes:
-                    fields.update(_document_fields(nodes[0]))
+                fields = {"next_cursor": page_info.get("next_cursor")}
+                if "nodes" in result_set:
+                    nodes = result_set["nodes"]
+                    if isinstance(nodes, list):
+                        fields["documents"] = [
+                            _document_fields(node) if isinstance(node, dict) else node
+                            for node in nodes
+                        ]
+                        fields["returned"] = len(nodes)
+                    else:
+                        # Preserve malformed evidence rather than inventing an empty page.
+                        fields["documents"] = nodes
             elif isinstance(fault, dict):
                 fields = {
                     "error_code": fault.get("code"),
@@ -56,11 +60,3 @@ class DocumentResponseNormalizer(ports.ResponseNormalizer):
             status=resp.status,
             raw=resp,
         )
-
-    def synthesize(self, fields, values=None) -> dict:
-        values = values or {}
-        normalized = {field: values.get(field, f"<stub:{field}>") for field in fields}
-        return {
-            "receipt": {"state": "accepted", "operation": "synthetic"},
-            "resource": {"normalized": normalized},
-        }
