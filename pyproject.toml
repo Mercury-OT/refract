@@ -13,6 +13,7 @@ refracto = "refracto.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+browser = ["playwright>=1.44"]
 demo = [
     "fastapi>=0.110",
     "uvicorn>=0.29",

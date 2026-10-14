@@ -23,14 +23,15 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Core and adapter delivery independently audited and architect-accepted; workbench withdrawn. | Authorized submission with the dependent collection task, subject to CI and merge gates. |
-| 2 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Implemented, independently audited, and architect-accepted. | Authorized submission, subject to CI and merge gates. |
+| 1 | [Browser adapter support](tasks/browser-adapter-support.md) | Implemented, independently audited, and architect-accepted locally. | Separate submission authorization; changes remain unstaged and uncommitted. |
+| 2 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
+| 3 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
 
-The maintainer authorized implementation after approving the explicit do.request
-and polling form, and subsequently approved the bounded collection expression.
-Submission is authorized only after development, independent audit, and acceptance.
-The approved expression remains its basis; implementation convenience must not
-silently change its meaning.
+The maintainer approved the explicit do.request and polling form, and subsequently
+the bounded collection expression. Those two tasks have been delivered on main.
+Browser support has implementation-only authorization; its acceptance does not
+authorize submission. The approved expression remains the basis of execution;
+implementation convenience must not silently change its meaning.
 
 The retained local cutover includes core execution, reference adapters,
 maintained examples, and their documentation. On 2026-10-13 the maintainer
@@ -61,6 +62,23 @@ A bounded real-use maintenance exercise remains necessary to test authoring,
 review, execution, and diagnosis cost after capability changes. Its scope and
 evidence require separate approval. Passing demo tests alone will not establish
 adoption value, requirement completeness, or low maintenance cost.
+
+Cross-version maintenance work is deferred pending meaningful target changes.
+The current authorized task instead supplies optional reusable browser support:
+single-action execution, supported fetch/XHR request association, bounded
+collection waits, and owned-resource cleanup. Existing YAML and core ports stay
+unchanged. Public Demo code and independent synthetic pages are its sources and
+test targets. No private adapter or product evidence is included, and synthetic
+test success must not be presented as real-product adoption or maintenance savings.
+
+Browser support acceptance passed 863 regression tests with no skips and one
+existing dependency warning, including 81 real-browser support tests. Independent
+audit passed 96 browser and offline support checks. An isolated core-only install
+passed 759 tests with the optional Demo collection skipped; wheel installation
+and lazy imports passed without Playwright. All 11 maintained Scenario files
+validated unchanged. The Demo now uses the shared helper, while core files,
+ports, declarations, and the Demo application remain unchanged. Supported and
+unsupported browser behavior is documented in the [usage guide](browser-support.md).
 
 Graphical Scenario authoring, Scenario composition, intent hierarchies,
 cryptographic approval infrastructure, automatic approval propagation, and
