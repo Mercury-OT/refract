@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Synthetic browser primitive laboratory</title>
+<input id="value" value="initial">
+<button id="fetch">Fetch</button>
+<button id="xhr">XHR</button>
+<button id="xhr-trace">XHR with application trace</button>
+<button id="fetch-trace">Fetch with application trace</button>
+<button id="beacon">Unsupported beacon</button>
+<form action="/api/native-form" method="post">
+  <input name="submitted" value="synthetic-form-body-secret-498" type="hidden">
+  <button id="native-form" type="submit">Unsupported native form</button>
+</form>
+<button id="delayed">Delayed body</button>
+<button id="multi">Two requests</button>
+<button id="promise">Registered Promise</button>
+<button id="property">Property handler</button>
+<button id="inline" onclick="send('/api/inline')">Inline handler</button>
+<a id="cancel" href="/unexpected-navigation">Canceled link</a>
+<button id="timer">Timer</button>
+<button id="await">Untracked continuation</button>
+<button id="stale">Old timer</button>
+<button id="background">Start background</button>
+<button id="background-hang">Start unrelated unfinished response</button>
+<button id="removed">Removed listener</button>
+<button id="throw">Throwing listener</button>
+<button id="abort">Transport abort</button>
+<button id="hang">Unfinished body</button>
+<button id="cross">Foreign request</button>
+<button id="redirect">Redirect</button>
+<button id="sync-xhr">Unsupported synchronous XHR</button>
+<button id="websocket">Unsupported WebSocket</button>
+<button id="eventsource">Unsupported EventSource</button>
+<button id="worker">Unsupported worker</button>
+<button id="late" hidden>Delayed visible target</button>
+<button class="duplicate">Duplicate A</button>
+<button class="duplicate">Duplicate B</button>
+<button id="hidden" hidden>Hidden target</button>
+<button id="noop">No request</button>
+<pre id="result"></pre>
+<script>
+window.lab = {clicks: 0, inputs: 0, results: [], starts: [], thrown: 0};
+document.addEventListener('click', () => { lab.clicks += 1; }, true);
+document.addEventListener('input', () => { lab.inputs += 1; }, true);
+const value = () => document.querySelector('#value').value;
+const show = body => {
+  lab.results.push(body);
+  document.querySelector('#result').textContent = JSON.stringify(body);
+  return body;
+};
+const send = (path, supplied = value()) => {
+  lab.starts.push(path);
+  return fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({value: supplied})}).then(response => response.json()).then(show);
+};
+const on = (id, callback) => document.querySelector('#' + id).addEventListener('click', callback);
+on('fetch', () => send('/api/echo'));
+on('xhr', () => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/xhr', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.addEventListener('load', () => show(JSON.parse(xhr.responseText)));
+  xhr.send(JSON.stringify({value: value()}));
+});
+const applicationTrace = '00-11111111111111111111111111111111-2222222222222222-01';
+lab.traceCalls = 0;
+on('xhr-trace', () => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/xhr-trace', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader(++lab.traceCalls % 2 ? 'TraceParent' : 'tRaCePaReNt', applicationTrace);
+  xhr.addEventListener('load', () => show(JSON.parse(xhr.responseText)));
+  xhr.send(JSON.stringify({value: value()}));
+});
+on('fetch-trace', () => {
+  const headers = {'Content-Type': 'application/json'};
+  headers[++lab.traceCalls % 2 ? 'TraceParent' : 'tRaCePaReNt'] = applicationTrace;
+  return fetch('/api/fetch-trace', {method: 'POST', headers,
+    body: JSON.stringify({value: value()})}).then(response => response.json()).then(show);
+});
+on('beacon', () => navigator.sendBeacon('/api/beacon', JSON.stringify({value: value()})));
+on('delayed', () => send('/api/delayed'));
+on('multi', () => {
+  send('/api/first', 'first');
+  send('/api/second', 'second');
+});
+on('promise', () => Promise.resolve().then(() => send('/api/promise')));
+const propertyHandler = () => send('/api/property');
+document.querySelector('#property').onclick = propertyHandler;
+lab.propertyIdentity = document.querySelector('#property').onclick === propertyHandler;
+document.querySelector('#cancel').onclick = () => false;
+on('timer', () => setTimeout(() => send('/api/echo', 'timer'), 25));
+on('await', async () => {
+  await new Promise(resolve => setTimeout(resolve, 25));
+  send('/api/echo', 'await');
+});
+on('stale', () => setTimeout(() => send('/api/stale', 'previous'), 25));
+on('background', () => {
+  window.background = setInterval(() => send('/api/background', 'background'), 20);
+});
+on('background-hang', () => setTimeout(() => send('/api/hang', 'unrelated').catch(() => {}), 120));
+const removed = () => send('/api/removed');
+document.querySelector('#removed').addEventListener('click', removed);
+document.querySelector('#removed').removeEventListener('click', removed);
+const throwing = () => {
+  lab.thrown += 1;
+  setTimeout(() => send('/api/echo', 'after-throw'), 25);
+  throw new Error('synthetic handler failure');
+};
+on('throw', throwing);
+on('abort', () => send('/api/abort').catch(() => {}));
+on('hang', () => send('/api/hang').catch(() => {}));
+on('cross', () => send(new URLSearchParams(location.search).get('foreign')).catch(() => {}));
+on('redirect', () => send('/api/redirect').catch(() => {}));
+on('sync-xhr', () => {
+  const xhr = new XMLHttpRequest();
+  const flag = JSON.parse(new URLSearchParams(location.search).get('asyncFlag') || 'false');
+  xhr.open('POST', '/api/sync', flag);
+  xhr.send(JSON.stringify({value: value()}));
+});
+on('websocket', () => new WebSocket(new URLSearchParams(location.search).get('foreign').replace(/^http/, 'ws')));
+on('eventsource', () => new EventSource(new URLSearchParams(location.search).get('foreign')));
+on('worker', () => new Worker(new URLSearchParams(location.search).get('foreign')));
+setTimeout(() => { document.querySelector('#late').hidden = false; }, 250);
+</script>
+<script src="/static/ready.js"></script>
+</html>

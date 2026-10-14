@@ -567,6 +567,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+browser = [
+    { name = "playwright" },
+]
 demo = [
     { name = "fastapi" },
     { name = "httpx" },
@@ -587,12 +590,13 @@ requires-dist = [
     { name = "opentelemetry-api", marker = "extra == 'demo'", specifier = ">=1.24" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'demo'", specifier = ">=0.45b0" },
     { name = "opentelemetry-sdk", marker = "extra == 'demo'", specifier = ">=1.24" },
+    { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.44" },
     { name = "playwright", marker = "extra == 'demo'", specifier = ">=1.44" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "uvicorn", marker = "extra == 'demo'", specifier = ">=0.29" },
 ]
-provides-extras = ["dev", "demo"]
+provides-extras = ["dev", "browser", "demo"]
 
 [[package]]
 name = "starlette"

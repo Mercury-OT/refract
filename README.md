@@ -114,6 +114,9 @@ variants.
 See [`docs/onboarding.md`](docs/onboarding.md) for a CI-tested minimal
 request/response integration.
 
+For optional Playwright support in UI adapters, see
+[`docs/browser-support.md`](docs/browser-support.md).
+
 ## Philosophy
 
 See [`MANIFESTO.md`](MANIFESTO.md) for the beliefs and vision behind this framework.

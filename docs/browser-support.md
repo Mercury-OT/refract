@@ -1,0 +1,185 @@
+# Browser adapter support
+
+`refracto_browser.BrowserSupport` supplies Playwright browser lifetime, one
+authorized primitive, request and response recording, bounded completion waits,
+and cleanup. It is optional support for a product adapter implementing the
+existing `StepwiseUiDriver` port. The core still owns action order, wait actions,
+assertions, and stopping after a failed step.
+
+Install it with the browser extra and Chromium:
+
+```bash
+pip install -e ".[browser]"
+playwright install chromium
+```
+
+The `demo` extra continues to include Playwright. Installing only the core or
+`dev` extra does not install it; core imports and offline tests need no browser.
+
+## Connect an adapter
+
+The adapter supplies logical target mappings, authentication options, a read-only
+rendering callback, and any logical request-path mapping. Neither selectors nor
+input values come from expected assertions. This small example maps one page,
+one button, and one input:
+
+```python
+from refracto import ports
+from refracto_browser import BrowserSupport
+
+
+def read_rendered(page):
+    rows = page.locator("[data-record-id]")
+    identified = []
+    for index in range(rows.count()):
+        row = rows.nth(index)
+        identified.append({
+            "id": row.get_attribute("data-record-id"),
+            "fields": {"name": row.get_attribute("data-record-name")},
+        })
+    return {"records.rows": {"identified": identified, "anonymous": []}}
+
+
+class RecordsUi(ports.UiDriver, ports.StepwiseUiDriver):
+    def __init__(self, base_url):
+        self.base_url = base_url
+        self.browser = BrowserSupport(
+            base_url, read_rendered, timeout_ms=5000,
+            logical_path=lambda actual_path: actual_path.removeprefix("/"),
+        )
+        self.elements = {"records.save": "#save", "records.name": "#name"}
+
+    def supports_stepwise_mode(self, mode):
+        return mode in {"live", "mock"}
+
+    def open_stepwise(self, scenario, session, *, mode, mock_plan=None):
+        # This adapter defines session as Playwright browser context options,
+        # for example an authenticated storage_state supplied by its caller.
+        return self.browser.open(mode, mock_plan=mock_plan, context_options=session)
+
+    def perform_step(self, scenario, step, context, permit):
+        if permit.action == "open":
+            if permit.target != "records.page":
+                raise ValueError("unknown page target")
+            return self.browser.perform(context, permit, url=self.base_url + "/")
+        selector = self.elements.get(permit.target)
+        if selector is None:
+            raise ValueError("unknown element target")
+        return self.browser.perform(context, permit, selector=selector)
+
+    def snapshot(self, context):
+        return self.browser.snapshot(context)
+
+    def close_stepwise(self, context):
+        self.browser.close(context)
+```
+
+`open` creates an owned browser context at `about:blank`; the authorized `open`
+primitive performs navigation. It does not log in or prepare business objects.
+An `open` permit takes one absolute same-origin URL and no selector. A `click` or
+`fill` takes one CSS selector and no URL. Only `fill` accepts a value, which must
+already be a string. The helper passively waits for visibility and then requires
+exactly one visible match. It never chooses an arbitrary match or adds an extra
+business action to make an assertion pass.
+
+Core-issued permits are single-use. A context binds to its first execution ID;
+mixing executions or contexts is an error. Treat returned contexts as opaque.
+Use each helper and its contexts on the thread that created them. Concurrent
+contexts on that thread own separate browsers and share only the Playwright
+runtime; closing one leaves the others usable. `close` is safe to repeat.
+
+The executable [Demo adapter](../adapters/demo/ui.py) uses the same helper with
+its own mappings and rendering interpretation. Response normalization remains
+the product adapter's responsibility.
+
+## Request origins and completion
+
+Same-origin `fetch` and asynchronous `XMLHttpRequest` started in the targeted
+DOM event handler carry that action's origin. Supported handlers include
+`addEventListener`, `onclick`/`oninput` properties, and inline click/input
+handlers. Explicit Promise callbacks registered while a supported handler or
+callback is running inherit its origin:
+
+```javascript
+button.addEventListener('click', () =>
+  Promise.resolve().then(() => fetch('/records'))
+);
+```
+
+Native `async`/`await` continuations and timer callbacks do not inherit origin.
+For example, a fetch before the first `await` may belong to the action, while a
+fetch after that `await` remains diagnostic. Navigation-driven fetches are also
+diagnostic. Matching a declared method/path, returning an expected response, or
+arriving during another action never creates an origin. Each recorded supported
+request has its own request ID, paired response, and trace identifier.
+
+The helper waits for the current action's tracked requests and event-handler
+completion promises, then offers bounded animation-frame rendering opportunities.
+A returned handler promise is only a completion barrier: waiting for it does
+not assign an origin to its native async continuations. Collection includes the
+complete response body. Background traffic does not impose a global network-idle
+condition. Diagnostic records collected between actions are delivered with the
+next action's evidence.
+
+`timeout_ms` defaults to 5000 and must be positive and finite. Target readiness,
+interaction, request collection, and rendering opportunities share the action's
+deadline. A missing declared request still fails through the existing core
+rules. Timeouts, transport failures, ambiguous targets, rendering failures, and
+cleanup failures are visible errors; browser-operation failures release the
+owned resources. Rendering and logical-path callbacks should be short, read-only
+functions; Python callbacks must return control to the helper.
+
+## Explicit mock plans
+
+Live mode records actual traffic. Mock mode consumes a caller-authored, ordered
+list of `MockResponse` fixtures, including diagnostic background requests:
+
+```python
+plan = [
+    ports.MockResponse(
+        fixture_id="first-list", source="adapter fixture",
+        method="GET", path="records", response={"records": []},
+    ),
+    ports.MockResponse(
+        fixture_id="second-list", source="adapter fixture",
+        method="GET", path="records", response={"records": [{"id": "r1"}]},
+    ),
+]
+context = browser.open("mock", mock_plan=plan)
+```
+
+Repeated endpoints can consume different fixtures. Missing, wrong-order, or
+mismatched fixtures abort the request without reaching a live API. Omitting the
+plan in mock mode means an empty plan, so any API request fails. Live mode rejects
+a supplied mock plan. Evidence preserves fixture IDs and consumption records;
+expected assertions never supply mock data.
+
+## Transport and data boundaries
+
+This helper supports finite HTTP responses and JSON-object request bodies. It
+rejects cross-origin requests, redirects, synchronous XHR, frame traffic,
+workers, and streaming transports when encountered. Service workers are blocked.
+Outside fetch/XHR, only GET and HEAD requests for documents, stylesheets, scripts,
+images, fonts, media, text tracks, and manifests may reach the server. Other
+transports, including `sendBeacon`/ping and form writes, fail before forwarding in
+both modes; an empty mock plan never permits an unsupported write to fall through.
+Redirects are not followed, so credentials cannot be forwarded to an unvalidated
+destination. It is intended for one top-level page; browser-native application
+flows beyond these bounds need a separately scoped adapter design.
+
+Internal request-association headers are removed before traffic reaches the
+server. At request start the helper generates a fresh local trace, which replaces
+any application-supplied `traceparent` when the request is forwarded. Exactly one
+trace header reaches the server and its value matches the recorded evidence.
+Request identifiers use random bytes available on ordinary HTTP origins as well
+as secure origins. The forwarded `traceparent` supplies local test correlation, including
+the Demo's backend-state trace; it is not proof of independent provenance.
+Instrumentation runs inside the tested browser and does not protect against a
+malicious application, adapter, or normalizer.
+
+Helper/context repr and helper error messages omit bodies, browser handles,
+context options, bound values, selectors, and URLs. Raw port objects still hold
+sensitive request/response data and are not a safe logging or export format.
+The rendering callback must interpret existing UI state without clicking,
+navigating, or sending requests. The helper never sends a replacement API action
+to repair missing browser evidence.
