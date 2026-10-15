@@ -1,0 +1,15 @@
+schema_version: 1
+scenario: demo.include_items_ui
+actor: user
+description: Include the same visible UI sequence twice in one session with actual response handoff.
+parameters:
+  first_name: included-first
+steps:
+  - id: first
+    do: {include: demo.include_create_item_ui}
+    with:
+      item_name: {from_parameter: first_name}
+  - id: second
+    do: {include: demo.include_create_item_ui}
+    with:
+      item_name: {from_step: first, result: record_key}

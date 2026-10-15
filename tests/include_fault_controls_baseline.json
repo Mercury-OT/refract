@@ -1,0 +1,392 @@
+{
+  "baseline_commit": "9bebfa7559bfc22e7121bc31b1945e803676a1f8",
+  "harness_sha256": "caf1932c715316b95859c2554e5370f1a00d3f11b84a5505cc31e3f800739733",
+  "command": "PYTHONPATH=\"$TARGET\" \"$PYTHON\" \"$HARNESS\" --flat-only",
+  "cwd": "outside the source checkout",
+  "package_origin": "verified detached baseline checkout/refracto/__init__.py",
+  "exit_code": 0,
+  "results": [
+    {
+      "fault": "accepted_rejection",
+      "form": "flat",
+      "injected": false,
+      "classification": "passing_neighbor",
+      "status": "PASSED",
+      "fault_reached": 0,
+      "failures": [],
+      "steps": [
+        [
+          "reject",
+          "PASSED"
+        ],
+        [
+          "after",
+          "PASSED"
+        ]
+      ],
+      "requests": [
+        [
+          "POST",
+          "records",
+          {
+            "name": ""
+          }
+        ],
+        [
+          "GET",
+          "records",
+          null
+        ]
+      ],
+      "observed": [
+        {
+          "status": 422,
+          "ok": false,
+          "data": {}
+        },
+        {
+          "status": 200,
+          "ok": true,
+          "data": {
+            "records": [
+              {
+                "id": "unrelated",
+                "name": "other-name"
+              }
+            ]
+          }
+        }
+      ],
+      "degradations": []
+    },
+    {
+      "fault": "accepted_rejection",
+      "form": "flat",
+      "injected": true,
+      "classification": "detected",
+      "status": "FAILED",
+      "fault_reached": 1,
+      "failures": [
+        {
+          "step": "reject",
+          "check": "failure"
+        }
+      ],
+      "steps": [
+        [
+          "reject",
+          "FAILED"
+        ],
+        [
+          "after",
+          "BLOCKED"
+        ]
+      ],
+      "requests": [
+        [
+          "POST",
+          "records",
+          {
+            "name": ""
+          }
+        ]
+      ],
+      "observed": [
+        {
+          "status": 201,
+          "ok": true,
+          "data": {}
+        }
+      ],
+      "degradations": []
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "flat",
+      "injected": false,
+      "classification": "passing_neighbor",
+      "status": "PASSED",
+      "fault_reached": 0,
+      "failures": [],
+      "steps": [
+        [
+          "create",
+          "PASSED"
+        ],
+        [
+          "list",
+          "PASSED"
+        ],
+        [
+          "after",
+          "PASSED"
+        ]
+      ],
+      "requests": [
+        [
+          "POST",
+          "records",
+          {
+            "name": "target-name"
+          }
+        ],
+        [
+          "GET",
+          "records",
+          null
+        ],
+        [
+          "GET",
+          "records/record-1",
+          null
+        ]
+      ],
+      "observed": [
+        {
+          "status": 201,
+          "ok": true,
+          "data": {
+            "id": "record-1",
+            "name": "target-name"
+          }
+        },
+        {
+          "status": 200,
+          "ok": true,
+          "data": {
+            "records": [
+              {
+                "id": "unrelated",
+                "name": "other-name"
+              },
+              {
+                "id": "record-1",
+                "name": "target-name"
+              }
+            ]
+          }
+        },
+        {
+          "status": 200,
+          "ok": true,
+          "data": {
+            "id": "record-1",
+            "name": "target-name"
+          }
+        }
+      ],
+      "degradations": []
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "flat",
+      "injected": true,
+      "classification": "detected",
+      "status": "FAILED",
+      "fault_reached": 1,
+      "failures": [
+        {
+          "step": "list",
+          "check": "collection_matching_count"
+        }
+      ],
+      "steps": [
+        [
+          "create",
+          "PASSED"
+        ],
+        [
+          "list",
+          "FAILED"
+        ],
+        [
+          "after",
+          "BLOCKED"
+        ]
+      ],
+      "requests": [
+        [
+          "POST",
+          "records",
+          {
+            "name": "target-name"
+          }
+        ],
+        [
+          "GET",
+          "records",
+          null
+        ]
+      ],
+      "observed": [
+        {
+          "status": 201,
+          "ok": true,
+          "data": {
+            "id": "record-1",
+            "name": "target-name"
+          }
+        },
+        {
+          "status": 200,
+          "ok": true,
+          "data": {
+            "records": [
+              {
+                "id": "unrelated",
+                "name": "other-name"
+              },
+              {
+                "id": "record-1",
+                "name": "changed-name"
+              }
+            ]
+          }
+        }
+      ],
+      "degradations": []
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "flat",
+      "injected": false,
+      "classification": "passing_neighbor",
+      "status": "PASSED",
+      "fault_reached": 0,
+      "failures": [],
+      "steps": [
+        [
+          "create",
+          "PASSED"
+        ],
+        [
+          "read",
+          "PASSED"
+        ],
+        [
+          "after",
+          "PASSED"
+        ]
+      ],
+      "requests": [
+        [
+          "POST",
+          "records",
+          {
+            "name": "target-name"
+          }
+        ],
+        [
+          "GET",
+          "records/record-1",
+          null
+        ],
+        [
+          "GET",
+          "records",
+          null
+        ]
+      ],
+      "observed": [
+        {
+          "status": 201,
+          "ok": true,
+          "data": {
+            "id": "record-1",
+            "name": "target-name"
+          }
+        },
+        {
+          "status": 200,
+          "ok": true,
+          "data": {
+            "id": "record-1",
+            "name": "target-name"
+          }
+        },
+        {
+          "status": 200,
+          "ok": true,
+          "data": {
+            "records": [
+              {
+                "id": "unrelated",
+                "name": "other-name"
+              },
+              {
+                "id": "record-1",
+                "name": "target-name"
+              }
+            ]
+          }
+        }
+      ],
+      "degradations": []
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "flat",
+      "injected": true,
+      "classification": "detected",
+      "status": "FAILED",
+      "fault_reached": 1,
+      "failures": [
+        {
+          "step": "read",
+          "check": "field_equals"
+        }
+      ],
+      "steps": [
+        [
+          "create",
+          "PASSED"
+        ],
+        [
+          "read",
+          "FAILED"
+        ],
+        [
+          "after",
+          "BLOCKED"
+        ]
+      ],
+      "requests": [
+        [
+          "POST",
+          "records",
+          {
+            "name": "target-name"
+          }
+        ],
+        [
+          "GET",
+          "records/record-1",
+          null
+        ]
+      ],
+      "observed": [
+        {
+          "status": 201,
+          "ok": true,
+          "data": {
+            "id": "record-1",
+            "name": "target-name"
+          }
+        },
+        {
+          "status": 200,
+          "ok": true,
+          "data": {
+            "id": "record-2",
+            "name": "target-name"
+          }
+        }
+      ],
+      "degradations": []
+    }
+  ],
+  "detected": 3,
+  "valid_executed": 3,
+  "ratio": "3/3",
+  "exclusions": []
+}

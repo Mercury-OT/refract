@@ -2,17 +2,30 @@
 import math
 import numbers
 import urllib.parse
+import hashlib
+from pathlib import Path
 import yaml
 from refracto.declaration import vocabulary as vocab
 from refracto.declaration.collections import is_scalar
 from refracto.declaration.model import (
     Scenario, Grid, Input, Assertion, Expect, RequestTemplate, Binding,
-    PollPolicy, Step, ValueRef,
+    PollPolicy, Step, ValueRef, ResultSource,
 )
 
 
 class DeclarationError(Exception):
     pass
+
+
+class _ReferenceScope(dict):
+    """Authored local steps and explicitly exported prior include interfaces.
+
+    Expanded leaves are deliberately absent: declarations cannot bypass a
+    child's public result names by addressing its internal qualified step IDs.
+    """
+    def __init__(self):
+        super().__init__()
+        self.include_results = {}
 
 
 class _Loader(yaml.SafeLoader):
@@ -74,11 +87,20 @@ def _reference(value, parameters, prior, bindings, where):
             raise DeclarationError(f"{where}: unknown parameter {key!r}")
         return ValueRef("input", key)
     if "from_step" in value or "response_field" in value:
-        _mapping(value, {"from_step", "response_field"}, where)
         source = _string(value.get("from_step"), where)
-        field = _string(value.get("response_field"), where)
-        if source not in prior or prior[source].request is None:
-            raise DeclarationError(f"{where}: response source must be an earlier request-bearing step")
+        if "result" in value:
+            _mapping(value, {"from_step", "result"}, where)
+            name = _string(value["result"], where)
+            aliases = getattr(prior, "include_results", {}).get(source)
+            if aliases is None or name not in aliases:
+                raise DeclarationError(f"{where}: result source must name an earlier include's declared result")
+            alias = aliases[name]
+            source, field = alias.from_step, alias.response_field
+        else:
+            _mapping(value, {"from_step", "response_field"}, where)
+            field = _string(value.get("response_field"), where)
+            if source not in prior or prior[source].request is None:
+                raise DeclarationError(f"{where}: response source must be an earlier request-bearing step")
         # Length-prefix the source so dots/colons in identifiers cannot alias.
         key = f"{len(source)}:{source}:{field}"
         if not any(b.placeholder == key for b in bindings):
@@ -198,13 +220,26 @@ def _response_constraints(assertions):
         raise DeclarationError("field_absent conflicts with has/field_equals/collection_matching_count")
 
 
-def load_scenario(path: str) -> Scenario:
+def _decode_document(data):
     try:
-        with open(path, encoding="utf-8") as stream:
-            raw = yaml.load(stream, Loader=_Loader)
-    except yaml.YAMLError as exc:
-        raise DeclarationError(f"invalid YAML: {exc}") from exc
-    _mapping(raw, {"schema_version", "scenario", "description", "actor", "parameters", "grid", "steps"}, "top-level")
+        return yaml.load(data.decode("utf-8"), Loader=_Loader)
+    except (yaml.YAMLError, UnicodeError) as exc:
+        # Parser diagnostics can echo source lines containing sensitive values.
+        raise DeclarationError("invalid YAML or UTF-8 declaration") from exc
+
+
+def load_scenario(path: str) -> Scenario:
+    from refracto.declaration.includes import load_dependencies
+    file = Path(path)
+    data = file.read_bytes()
+    raw = _decode_document(data)
+    dependencies = load_dependencies(file, raw, _decode_document, _load_document)
+    return _load_document(raw, dependencies=dependencies,
+                          source_hash=hashlib.sha256(data).hexdigest())
+
+
+def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
+    _mapping(raw, {"schema_version", "scenario", "description", "actor", "parameters", "grid", "steps", "results"}, "top-level")
     if type(raw.get("schema_version")) is not int or raw["schema_version"] != 1:
         raise DeclarationError("schema_version must be integer 1; old declarations are unsupported")
     scenario_id = _string(raw.get("scenario"), "scenario")
@@ -218,17 +253,44 @@ def load_scenario(path: str) -> Scenario:
     for key, value in parameters.items():
         _string(key, "parameter key")
         _json(value, "parameter")
+    parameters = dict(parameters)
+    declared_parameters = dict(parameters)
     grid = None
     if "grid" in raw:
         g = _mapping(raw["grid"], {"level", "module"}, "grid")
         grid = Grid(_string(g.get("level"), "grid.level"), _string(g.get("module"), "grid.module"))
     if not isinstance(raw.get("steps"), list) or not raw["steps"]:
         raise DeclarationError("steps must be a non-empty list")
-    steps, prior, assertion_count = [], {}, 0
+    steps, prior, assertion_count = [], _ReferenceScope(), 0
+    execution_ids = set()
+    source_lookup, source_ids = {}, set()
     for item in raw["steps"]:
+        if dependencies is not None:
+            from refracto.declaration.includes import instantiate, is_include
+            sid = _string(item.get("id"), "step.id") if isinstance(item, dict) else None
+            if sid is None or "/" in sid or sid in source_ids:
+                raise DeclarationError("composition source step IDs must be unique and contain no slash")
+            source_ids.add(sid)
+            if is_include(item):
+                expanded, sources = instantiate(item, dependencies, parameters, prior, actor,
+                                                declared_parameters)
+                for step in expanded:
+                    if step.id in execution_ids:
+                        raise DeclarationError("expanded step ID collision")
+                    steps.append(step)
+                    execution_ids.add(step.id)
+                    assertion_count += int(step.request_asserted) + len(step.expect.frontend) + len(step.expect.response) + len(step.expect.backend_state)
+                source_lookup.update(sources)
+                child = dependencies[item["do"]["include"]][0]
+                prior.include_results[sid] = {
+                    name: ResultSource(f"{sid}/{alias.from_step}", alias.response_field)
+                    for name, alias in child.results.items()}
+                if len(steps) > 1000:
+                    raise DeclarationError("composition exceeds 1000 expanded leaves")
+                continue
         _mapping(item, {"id", "do", "target", "value", "duration", "expect", "poll"}, "step")
         sid = _string(item.get("id"), "step.id")
-        if sid in prior:
+        if sid in execution_ids:
             raise DeclarationError(f"step id {sid!r} is duplicated")
         bindings = []
         action = item.get("do")
@@ -237,7 +299,7 @@ def load_scenario(path: str) -> Scenario:
             _mapping(action, {"request"}, "do")
             if set(action) != {"request"}:
                 raise DeclarationError("do mapping must contain only request")
-            request = _request(action["request"], parameters, prior, bindings, "do.request")
+            request = _request(action["request"], declared_parameters, prior, bindings, "do.request")
             action = "request"
         elif action not in ("open", "click", "fill", "wait"):
             raise DeclarationError("do must be open/click/fill/wait or a request mapping")
@@ -245,7 +307,7 @@ def load_scenario(path: str) -> Scenario:
         if ((set(item) & {"target", "value", "duration"}) - allowed) or not allowed <= set(item):
             raise DeclarationError(f"{action}: wrong action fields; required {sorted(allowed)}")
         target = _string(item["target"], "target") if "target" in item else None
-        value = _data(item.get("value"), parameters, prior, bindings, "value")
+        value = _data(item.get("value"), declared_parameters, prior, bindings, "value")
         duration = item.get("duration")
         if action == "wait" and (type(duration) is not int or duration < 0):
             raise DeclarationError("duration must be a non-negative integer in milliseconds")
@@ -256,11 +318,11 @@ def load_scenario(path: str) -> Scenario:
                 raise DeclarationError("do.request must not also declare expect.request")
             if action == "wait":
                 raise DeclarationError("wait has no action/request correlation; expect.request is unsupported")
-            request = _request(exp["request"], parameters, prior, bindings, "expect.request")
+            request = _request(exp["request"], declared_parameters, prior, bindings, "expect.request")
         expect = Expect(
-            frontend=_assertions("frontend", exp.get("ui", []), parameters, prior, bindings),
-            response=_assertions("response", exp.get("response", []), parameters, prior, bindings),
-            backend_state=_assertions("backend_state", exp.get("backend_state", []), parameters, prior, bindings),
+            frontend=_assertions("frontend", exp.get("ui", []), declared_parameters, prior, bindings),
+            response=_assertions("response", exp.get("response", []), declared_parameters, prior, bindings),
+            backend_state=_assertions("backend_state", exp.get("backend_state", []), declared_parameters, prior, bindings),
         )
         _response_constraints(expect.response)
         if expect.response and request is None:
@@ -276,8 +338,34 @@ def load_scenario(path: str) -> Scenario:
             poll = PollPolicy(policy)
         step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted)
         steps.append(step)
+        execution_ids.add(sid)
         prior[sid] = step
+        if source_hash is not None:
+            source_lookup[sid] = {"scenario_id": scenario_id, "step_id": sid,
+                                  "include_step_id": None, "sha256": source_hash}
         assertion_count += int(request_asserted) + len(expect.frontend) + len(expect.response) + len(expect.backend_state)
     if not assertion_count:
         raise DeclarationError("Scenario must contain at least one effective assertion")
-    return Scenario(scenario_id, grid, actor, [], [Input(k, v) for k, v in parameters.items()], description, steps)
+    results = raw.get("results", {})
+    if not isinstance(results, dict):
+        raise DeclarationError("results must be a unique-key mapping")
+    aliases = {}
+    for name, alias in results.items():
+        _string(name, "result name")
+        _mapping(alias, {"from_step", "response_field"}, "result source")
+        source = _string(alias.get("from_step"), "result source.from_step")
+        field = _string(alias.get("response_field"), "result source.response_field")
+        if source not in prior or prior[source].request is None:
+            raise DeclarationError("result source must be an authored local request-bearing step")
+        aliases[name] = ResultSource(source, field)
+    result = Scenario(scenario_id, grid, actor, [], [Input(k, v) for k, v in parameters.items()], description, steps,
+                      source_lookup=source_lookup,
+                      include_dependencies={key: {"path": value[2], "sha256": value[1]}
+                                            for key, value in (dependencies or {}).items()},
+                      results=aliases, included_results=prior.include_results)
+    if dependencies is not None:
+        from refracto.declaration.includes import validate_instantiated
+        if len(steps) > 1000:
+            raise DeclarationError("composition exceeds 1000 expanded leaves")
+        validate_instantiated(result)
+    return result

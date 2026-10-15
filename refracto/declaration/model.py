@@ -12,7 +12,7 @@ class Ref:
 @dataclass(frozen=True)
 class Input:
     kind: str
-    value: object
+    value: object = field(repr=False, metadata={"sensitive": True})
 
 @dataclass(frozen=True)
 class ValueRef:
@@ -46,6 +46,12 @@ class Binding:
     field: str
 
 @dataclass(frozen=True)
+class ResultSource:
+    """Declaration-only response alias; never contains a resolved value."""
+    from_step: str
+    response_field: str
+
+@dataclass(frozen=True)
 class PollPolicy:
     on_timeout: str
 
@@ -77,6 +83,10 @@ class Scenario:
     inputs: list
     intent: str
     steps: list
+    source_lookup: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
+    include_dependencies: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
+    results: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
+    included_results: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
 
     @property
     def parameters(self):

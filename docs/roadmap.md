@@ -23,14 +23,16 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Browser adapter support](tasks/browser-adapter-support.md) | Implemented, independently audited, and architect-accepted locally. | Separate submission authorization; changes remain unstaged and uncommitted. |
-| 2 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
-| 3 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
+| 1 | [Named Scenario results](tasks/scenario-named-results.md) | Locally accepted: multiple explicit result names, one-level inclusion. | Separate maintainer submission authorization; no commit, push, or hosted CI yet. |
+| 2 | [Scenario inclusion](tasks/scenario-include.md) | Earlier slice locally accepted: one level, identical actors, parent sidecar pins. | Named results replace the exposed child-step interface before separate submission. |
+| 3 | [Browser adapter support](tasks/browser-adapter-support.md) | Delivered on main in `9bebfa7`. | Preserve the accepted support and evidence boundaries. |
+| 4 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
+| 5 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
 
 The maintainer approved the explicit do.request and polling form, and subsequently
 the bounded collection expression. Those two tasks have been delivered on main.
-Browser support has implementation-only authorization; its acceptance does not
-authorize submission. The approved expression remains the basis of execution;
+Browser support has subsequently been merged. The current inclusion task has
+implementation-only authorization, not submission authorization. The approved expression remains the basis of execution;
 implementation convenience must not silently change its meaning.
 
 The retained local cutover includes core execution, reference adapters,
@@ -64,7 +66,7 @@ evidence require separate approval. Passing demo tests alone will not establish
 adoption value, requirement completeness, or low maintenance cost.
 
 Cross-version maintenance work is deferred pending meaningful target changes.
-The current authorized task instead supplies optional reusable browser support:
+The delivered browser-support task supplies optional reusable browser support:
 single-action execution, supported fetch/XHR request association, bounded
 collection waits, and owned-resource cleanup. Existing YAML and core ports stay
 unchanged. Public Demo code and independent synthetic pages are its sources and
@@ -80,7 +82,36 @@ validated unchanged. The Demo now uses the shared helper, while core files,
 ports, declarations, and the Demo application remain unchanged. Supported and
 unsupported browser behavior is documented in the [usage guide](browser-support.md).
 
-Graphical Scenario authoring, Scenario composition, intent hierarchies,
+The bounded Scenario inclusion task is locally accepted: one-level static
+composition with identical actors, explicit parameter wiring, and parent-sidecar
+content pins. The child executes in the current run; a pin is not proof of human
+approval, and child review does not approve arbitrary caller arguments or whole
+parent requirements. Public demo controls compare included and independently
+authored flat flows. Final regression passed 1009 tests with real Chromium and
+one existing dependency warning; the isolated dev-only environment passed 896
+tests with optional Demo collection skipped. Independent audit passed, including
+runtime value-use checks and failure blocking. All three frozen backend faults
+were detected by baseline flat, candidate flat, and candidate include controls.
+See the [local acceptance record](tasks/scenario-include-acceptance.md) for commands,
+file scope, observations, and limits. Human review-cost improvements remain
+unmeasured. This has not been committed, pushed, or released.
+
+The subsequent named-results slice is also locally accepted. Children explicitly
+name observed response fields under `results`; callers use `result` and no longer
+depend on child-internal step names. It compiles into the same response bindings,
+with no extra runtime call layer or new adapter/port behavior. One-level,
+same-actor, exact sidecar pinning remains. A child internal rename still changes
+its pin even when caller YAML stays unchanged. Full regression passed 1101 tests
+with real Chromium and one existing dependency warning; isolated core-only
+verification passed 987 tests with optional Demo collection skipped. Independent
+audit passed 228 focused and 10 real Demo tests, plus adversarial probes. The
+three fixed backend faults and their passing neighbors retain the original
+observations; historical measurements were not overwritten. See the
+[named-results acceptance record](tasks/scenario-named-results-acceptance.md).
+No review-cost or real-product adoption improvement is claimed, and no private
+Scenario migration or multilevel inclusion is authorized.
+
+Graphical Scenario authoring, deeper or dynamic Scenario composition, intent hierarchies,
 cryptographic approval infrastructure, automatic approval propagation, and
 general-purpose temporal or schema engines
 remain deferred ideas, not queued implementation tasks. Reconsider only when a
