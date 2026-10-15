@@ -1,0 +1,43 @@
+schema_version: 1
+scenario: demo.include_create_item_ui
+actor: user
+description: Open the Demo page and create one item using four visible UI primitives.
+parameters:
+  item_name: included item
+steps:
+  - id: open_page
+    do: open
+    target: items.page
+  - id: open_form
+    do: click
+    target: items.new_button
+  - id: fill_name
+    do: fill
+    target: items.name_input
+    value: {from_parameter: item_name}
+  - id: create
+    do: click
+    target: items.submit_button
+    expect:
+      request:
+        method: POST
+        path: [items]
+        body:
+          name: {from_parameter: item_name}
+          rows: [1, 2, 3]
+      response:
+        - {check: success}
+        - {check: has, field: itemKey}
+        - check: field_equals
+          field: name
+          value: {from_parameter: item_name}
+      ui:
+        - check: objects_matching_count
+          anchor: items.rows
+          field: name
+          value: {from_parameter: item_name}
+          count: 1
+results:
+  record_id: {from_step: create, response_field: itemId}
+  record_key: {from_step: create, response_field: itemKey}
+  record_name: {from_step: create, response_field: name}

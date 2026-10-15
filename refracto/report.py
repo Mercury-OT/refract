@@ -90,6 +90,7 @@ class RunReport:
     scenario_id: str
     domains: list = field(default_factory=list)
     selected: bool = True
+    source_lookup: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
 
     @property
     def status(self):

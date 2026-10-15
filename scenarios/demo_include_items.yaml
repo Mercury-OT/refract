@@ -1,0 +1,49 @@
+schema_version: 1
+scenario: demo.include_items
+actor: user
+description: Create twice, pass an actual response value, update the second item, and read both.
+parameters:
+  first_name: included-first
+  updated_name: included-updated
+steps:
+  - id: first
+    do: {include: demo.include_create_item}
+    with:
+      item_name: {from_parameter: first_name}
+  - id: second
+    do: {include: demo.include_create_item}
+    with:
+      item_name: {from_step: first, result: record_key}
+  - id: update
+    do:
+      request:
+        method: PUT
+        path: [items, {from_step: second, result: record_id}]
+        body:
+          name: {from_parameter: updated_name}
+    expect:
+      response:
+        - {check: success}
+        - check: field_equals
+          field: itemId
+          value: {from_step: second, result: record_id}
+      backend_state:
+        - {check: span_exists, span: item.update}
+  - id: read
+    do:
+      request: {method: GET, path: [items]}
+    expect:
+      response:
+        - {check: success}
+        - check: collection_matching_count
+          field: items
+          matching:
+            id: {from_step: first, result: record_id}
+            name: {from_step: first, result: record_name}
+          count: 1
+        - check: collection_matching_count
+          field: items
+          matching:
+            id: {from_step: second, result: record_id}
+            name: {from_parameter: updated_name}
+          count: 1

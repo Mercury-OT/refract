@@ -6,6 +6,7 @@ projection consumes provider recordings produced by the backend projection, so
 it may only be requested together with `backend`.
 """
 from dataclasses import dataclass
+import copy
 import math
 from refracto.declaration.loader import load_scenario
 from refracto import grid
@@ -54,7 +55,8 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
                  mock_plan=None):
     poll_config = poll_config or PollConfig()
     scenario = load_scenario(path)
-    report = RunReport(scenario_id=scenario.id)
+    report = RunReport(scenario_id=scenario.id,
+                       source_lookup=copy.deepcopy(scenario.source_lookup))
 
     unknown = set(projections) - _VALID_PROJECTIONS
     if unknown:

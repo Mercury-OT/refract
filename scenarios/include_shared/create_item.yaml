@@ -1,0 +1,30 @@
+schema_version: 1
+scenario: demo.include_create_item
+actor: user
+description: Create one item with an explicitly declared name and check the real response.
+parameters:
+  item_name: included item
+steps:
+  - id: create
+    do:
+      request:
+        method: POST
+        path: [items]
+        body:
+          name: {from_parameter: item_name}
+          rows: [1, 2, 3]
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: itemId}
+        - {check: has, field: itemKey}
+        - check: field_equals
+          field: name
+          value: {from_parameter: item_name}
+      backend_state:
+        - {check: span_exists, span: item.create}
+        - {check: span_attr, span: item.create, attr: row_count, op: '==', value: 3}
+results:
+  record_id: {from_step: create, response_field: itemId}
+  record_key: {from_step: create, response_field: itemKey}
+  record_name: {from_step: create, response_field: name}

@@ -22,6 +22,7 @@ fields are rejected; no silent conversion or compatibility mode is provided.
 | `parameters` | no | mapping of declared data values |
 | `grid` | no | organizational selector `{level, module}` |
 | `steps` | yes | nonempty ordered list with unique step IDs |
+| `results` | no | named aliases of this Scenario's own observed response fields |
 
 Parameters contain finite JSON-like data, not scripts or generators. Unknown
 fields, duplicate mapping keys, and invalid reference shapes fail validation.
@@ -29,8 +30,10 @@ A requested grid filter does not silently match a Scenario without that grid.
 
 ## One action per step
 
-There is no `action`, `type`, or `sequence` wrapper. A step has one `id`, one `do`,
-the applicable action fields below, and optionally `expect`.
+There is no `action`, `type`, or `sequence` wrapper. An executable leaf step has
+one `id`, one `do`, the applicable action fields below, and optionally `expect`.
+A static include is a composition node expanded into these same leaves before
+execution, not a multi-action adapter primitive.
 
 | Action | Declaration | Meaning |
 | --- | --- | --- |
@@ -201,8 +204,9 @@ State assertions still require actual StateProbe facts, not this fallback alone.
 
 ## Parameters and prior response values
 
-The reference forms are `{from_parameter: record_name}` and
-`{from_step: submit, response_field: id}`. They can occur in action values, path
+The local reference forms are `{from_parameter: record_name}` and
+`{from_step: submit, response_field: id}`. An included Scenario's public result
+uses `{from_step: setup, result: record_id}` as described below. They can occur in action values, path
 segments, body values, and supported assertion values. A response reference names
 an earlier request-bearing step and reads its actual normalized runtime response,
 never its expected value. A source step need not assert `has`: preparation
@@ -213,6 +217,148 @@ resolved mapping. Zero, false, and empty strings remain valid. No user-managed
 binding aliases, expressions, arithmetic, concatenation, JSONPath, reference-valued
 mapping keys, or coercion are supported. Frontend references read mock responses,
 which remain distinguishable from live responses.
+
+## Including a pinned, reviewed Scenario
+
+A Scenario may include all steps of a local child with the same `actor`. The
+child must independently validate, contain an effective assertion, and have no
+include of its own. No recursion, dynamic target, partial inclusion, assertion
+override, actor switch, or execution cache is supported.
+
+The include step accepts only `id`, `do: {include: <literal Scenario ID>}`, and
+optional `with`. For example, in a parent declaring a `record_name` parameter:
+
+```yaml
+- id: setup
+  do:
+    include: demo.create_record
+  with:
+    record_name: {from_parameter: record_name}
+```
+
+`with` may override only parameters already declared by the child. Omitted names
+use child defaults; null is an ordinary value, not a required-parameter marker.
+Values use the existing literal, `from_parameter`, and earlier `from_step` forms.
+Caller references are checked at the include position, while child-internal
+references remain local. Runtime responses are not read during loading. Each
+invocation has isolated parameters and steps; literal objects resembling reference
+syntax remain data. No additional parameterized positions are introduced.
+
+### Named results
+
+A child explicitly names the observed values it offers to callers:
+
+```yaml
+results:
+  record_id:
+    from_step: create_request
+    response_field: itemId
+  record_name:
+    from_step: create_request
+    response_field: name
+```
+
+This is a top-level mapping in the child. Each source has exactly `from_step`
+and `response_field`, both non-blank strings. It names a local request-bearing
+step, including a UI step with `expect.request`, and an actual normalized response
+field. Different names may refer to the same or different local steps. Unknown,
+requestless, include, expanded child, and other result sources are rejected.
+`results` may be omitted or empty. Names are unique non-blank strings interpreted
+literally, not paths. Results are aliases, not executable return actions.
+
+A later parent step uses `{from_step: setup, result: record_id}`. `setup` is the
+earlier include step; `record_id` is a declared child result. This form works in
+every existing value position, including another include's `with`. Unknown names,
+forward/self references, `result` on an ordinary step, or mixing `result` with
+`response_field` are errors. An ordinary object `{result: ok}` remains literal
+data; `result` alone is not a reference marker. Literal parameter objects are
+never reinterpreted as references after substitution.
+
+The caller cannot access `{from_step: setup/create_request, response_field: itemId}`
+or other internal child fields directly. Ordinary local response references
+remain supported. Qualified IDs such as `setup/create_request` are retained only
+for execution, reports, and the explicit expanded review view. Ordinary source
+step IDs within a composition may not contain `/`.
+
+The loader translates result references to existing response bindings. There is
+no extra runtime result store, computation, re-export, or deeper inclusion. An
+internal step can be renamed without editing caller YAML when its result mapping
+is updated, but the changed child still needs a reviewed sidecar pin update.
+Removing or renaming a public result requires caller changes and review.
+
+Results never count as assertions or manufacture evidence. Unused results are
+not read or checked implicitly. A consumed missing/null field causes the existing
+atomic binding `ERROR` before the consuming action; falsy values survive subject
+to that position's type rules. Even if the source already ran successfully,
+FAILED/ERROR/SKIPPED in any later child step blocks the parent consumer. Every
+invocation reads its own current-run responses; frontend mock values remain mock
+values. No values are borrowed across projections or prior runs.
+
+### Dependency sidecar
+
+For a parent `create_read.yaml`, dependencies are pinned in the regular local
+file `create_read.includes.json` beside it. The JSON object has exactly
+`manifest_version` (integer `1`) and `scenarios` (a mapping). Each mapping key is
+an included Scenario ID; its value has exactly `path` and `sha256` strings.
+The ID must equal the child file's declared `scenario`. Entries must exactly
+match the parent's distinct include targets. Duplicate keys, unknown fields,
+missing/unused entries, and multiple IDs aliasing one file are errors.
+
+`path` is a literal relative file path inside the parent's directory, independent
+of the current working directory. Absolute paths, parent traversal, URI schemes,
+symlinks, globs, and variable expansion are rejected. There is no repository scan,
+network resolution, inline pin alternative, or version fallback. Non-include
+Scenarios do not consult sidecars.
+
+`sha256` is 64 lowercase hexadecimal digits hashing the entire child file bytes,
+including comments and line endings. Hashing and parsing use the same read buffer.
+A change requires an explicit reviewed pin update; it cannot be silently accepted.
+All dependencies are validated before any authentication, waits, requests, or UI
+actions. Limits are 64 distinct child files and 1,000 expanded leaves, inclusive;
+exceeding a limit fails rather than truncating the plan.
+
+A hash proves content agreement, not human approval. The existing review process
+must cover the child, parent, and sidecar together. Unchanged child internals can
+reuse prior review, but caller parameters can change assertion expectations and
+still need review, as do the parent's order, purpose, and overall obligations.
+Every include executes anew; prior passing evidence is not reused as a result.
+
+### Execution and review view
+
+Inclusion expands symbolically into the existing ordered execution model. The
+parent retains its actor, metadata, grid selection, adapters, and projections.
+Child grid metadata cannot silently filter steps. Each UI projection retains one
+session/context. All child actions and checks remain present; unsupported expanded
+flows still fail the existing projection checks before side effects.
+
+FAILED, ERROR, and SKIPPED block later child and parent leaves. Inclusion is not
+a transaction: a runtime-only argument error occurs before its consuming action,
+and earlier actions may already have run. There is no rollback or hidden setup.
+No parent-only assertion is mechanically required when the child already supplies
+effective checks, but that does not establish the parent's complete business goal.
+
+`refracto validate <parent.yaml> --expand` explicitly prints the verified flat
+review plan and its sources. It preserves symbolic response references and shows
+declared public result names and their source mappings. It never runs adapters,
+and emits no partial plan when validation fails. This is a review
+view, not another authoring format. It can display literal declaration data,
+including `with` values; its confidentiality matches the source files. It never
+contains runtime response values. Default validation remains a concise summary.
+
+Qualified leaf IDs remain in reports and contract identity. The loaded Scenario
+and RunReport expose `source_lookup`, a diagnostic map with source Scenario ID, original
+step ID, include step ID, and source-byte SHA-256. This does not affect equality,
+status, or execution and is hidden from default repr. `localize()` still returns
+failed checks in its existing tuple shape; ERROR/BLOCKED are inspected through
+StepResult, with the same source lookup. No approval status is inferred.
+
+Maintained executable examples are the [API parent](scenarios/demo_include_items.yaml)
+with its [pin file](scenarios/demo_include_items.includes.json) and the
+[UI parent](scenarios/demo_include_items_ui.yaml) with its
+[pin file](scenarios/demo_include_items_ui.includes.json). Their children live in
+`scenarios/include_shared/`. The API example runs backend plus contract; the UI
+example runs frontend with explicit mocks or live e2e. The selected projection
+does not change which child bytes were pinned.
 
 ## Polling and outcomes
 
