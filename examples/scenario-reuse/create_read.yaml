@@ -1,0 +1,33 @@
+schema_version: 1
+scenario: demo.create_read
+actor: user
+
+# Caller review: is this the intended input for this scenario?
+parameters:
+  record_name: Test record
+
+steps:
+  # Caller review: choose the child and check its parameter wiring.
+  - id: setup
+    do:
+      include: shared.create_item
+    with:
+      item_name: {from_parameter: record_name}
+
+  - id: read
+    do:
+      request:
+        method: GET
+        path: [items]
+    expect:
+      response:
+        - {check: success}
+        - check: collection_matching_count
+          field: items
+          matching:
+            # Use the ID returned by this run, not a guessed list position.
+            id: {from_step: setup, result: record_id}
+            # Compare with the intended input, not just another observed value.
+            name: {from_parameter: record_name}
+          # Exactly one matching member; other collection members may exist.
+          count: 1

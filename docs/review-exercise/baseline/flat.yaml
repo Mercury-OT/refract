@@ -1,0 +1,55 @@
+schema_version: 1
+scenario: review.item_lifecycle_flat
+actor: user
+description: Create a draft item, update the same item, and read its final name.
+parameters:
+  draft_name: review-draft
+  final_name: review-final
+steps:
+  - id: create
+    do:
+      request:
+        method: POST
+        path: [items]
+        body:
+          name: {from_parameter: draft_name}
+          rows: [1, 2, 3]
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: itemId}
+        - check: field_equals
+          field: name
+          value: {from_parameter: draft_name}
+      backend_state:
+        - {check: span_exists, span: item.create}
+        - {check: span_attr, span: item.create, attr: row_count, op: '==', value: 3}
+  - id: update
+    do:
+      request:
+        method: PUT
+        path: [items, {from_step: create, response_field: itemId}]
+        body:
+          name: {from_parameter: final_name}
+    expect:
+      response:
+        - {check: success}
+        - check: field_equals
+          field: itemId
+          value: {from_step: create, response_field: itemId}
+      backend_state:
+        - {check: span_exists, span: item.update}
+  - id: read
+    do:
+      request:
+        method: GET
+        path: [items]
+    expect:
+      response:
+        - {check: success}
+        - check: collection_matching_count
+          field: items
+          matching:
+            id: {from_step: create, response_field: itemId}
+            name: {from_parameter: final_name}
+          count: 1

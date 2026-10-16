@@ -1,0 +1,9 @@
+{
+  "manifest_version": 1,
+  "scenarios": {
+    "shared.create_item": {
+      "path": "shared/create_item.yaml",
+      "sha256": "e13f1416cac5a6b6ea4bdebe92bf134dcddc23450d5e1fe919de15fcc758819b"
+    }
+  }
+}

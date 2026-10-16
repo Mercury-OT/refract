@@ -1,0 +1,9 @@
+{
+  "manifest_version": 1,
+  "scenarios": {
+    "review.create_item": {
+      "path": "child.yaml",
+      "sha256": "3b955c1eb9f0851e322f47607d12a1cdfb5ef201d722f79821fa9e9e3b62c220"
+    }
+  }
+}
