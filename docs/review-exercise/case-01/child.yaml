@@ -1,0 +1,27 @@
+schema_version: 1
+scenario: review.create_item
+actor: user
+description: Create one item and check its response and creation span.
+parameters:
+  item_name: review-draft
+steps:
+  - id: persist
+    do:
+      request:
+        method: POST
+        path: [items]
+        body:
+          name: {from_parameter: item_name}
+          rows: [1, 2, 3]
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: itemId}
+        - check: field_equals
+          field: name
+          value: {from_parameter: item_name}
+      backend_state:
+        - {check: span_exists, span: item.create}
+        - {check: span_attr, span: item.create, attr: row_count, op: '==', value: 3}
+results:
+  record_id: {from_step: persist, response_field: itemId}

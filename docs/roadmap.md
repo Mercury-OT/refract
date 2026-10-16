@@ -23,16 +23,17 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Named Scenario results](tasks/scenario-named-results.md) | Locally accepted: multiple explicit result names, one-level inclusion. | Separate maintainer submission authorization; no commit, push, or hosted CI yet. |
-| 2 | [Scenario inclusion](tasks/scenario-include.md) | Earlier slice locally accepted: one level, identical actors, parent sidecar pins. | Named results replace the exposed child-step interface before separate submission. |
-| 3 | [Browser adapter support](tasks/browser-adapter-support.md) | Delivered on main in `9bebfa7`. | Preserve the accepted support and evidence boundaries. |
-| 4 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
-| 5 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
+| 1 | [Scenario reuse walkthrough](tasks/scenario-review-exercise.md#follow-up-minimal-reuse-walkthrough) | Example and review guidance locally accepted. Review-cost comparison remains optional and unmeasured. | Separate submission authorization; no new language feature implied. |
+| 2 | [Named Scenario results](tasks/scenario-named-results.md) | Delivered on main in `f5d258a`: multiple explicit result names, one-level inclusion. | Measure review friction without expanding the language. |
+| 3 | [Scenario inclusion](tasks/scenario-include.md) | Delivered with named results in `f5d258a`: one level, identical actors, parent sidecar pins. | Preserve pin and caller-review boundaries. |
+| 4 | [Browser adapter support](tasks/browser-adapter-support.md) | Delivered on main in `9bebfa7`. | Preserve the accepted support and evidence boundaries. |
+| 5 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
+| 6 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
 
 The maintainer approved the explicit do.request and polling form, and subsequently
 the bounded collection expression. Those two tasks have been delivered on main.
-Browser support has subsequently been merged. The current inclusion task has
-implementation-only authorization, not submission authorization. The approved expression remains the basis of execution;
+Browser support, inclusion, and named results have subsequently been merged.
+The approved expression remains the basis of execution;
 implementation convenience must not silently change its meaning.
 
 The retained local cutover includes core execution, reference adapters,
@@ -82,7 +83,7 @@ validated unchanged. The Demo now uses the shared helper, while core files,
 ports, declarations, and the Demo application remain unchanged. Supported and
 unsupported browser behavior is documented in the [usage guide](browser-support.md).
 
-The bounded Scenario inclusion task is locally accepted: one-level static
+The bounded Scenario inclusion task was locally accepted and is now delivered: one-level static
 composition with identical actors, explicit parameter wiring, and parent-sidecar
 content pins. The child executes in the current run; a pin is not proof of human
 approval, and child review does not approve arbitrary caller arguments or whole
@@ -94,9 +95,12 @@ runtime value-use checks and failure blocking. All three frozen backend faults
 were detected by baseline flat, candidate flat, and candidate include controls.
 See the [local acceptance record](tasks/scenario-include-acceptance.md) for commands,
 file scope, observations, and limits. Human review-cost improvements remain
-unmeasured. This has not been committed, pushed, or released.
+unmeasured. Inclusion and named results were delivered together through PR #16
+in main commit `f5d258aa68af64c7792b7e09d583292fd482788c`. All eight branch/PR
+checks and all four post-merge main jobs passed. Historical local acceptance
+records retain their original pre-submission status.
 
-The subsequent named-results slice is also locally accepted. Children explicitly
+The subsequent named-results slice is also delivered. Children explicitly
 name observed response fields under `results`; callers use `result` and no longer
 depend on child-internal step names. It compiles into the same response bindings,
 with no extra runtime call layer or new adapter/port behavior. One-level,
@@ -110,6 +114,26 @@ observations; historical measurements were not overwritten. See the
 [named-results acceptance record](tasks/scenario-named-results-acceptance.md).
 No review-cost or real-product adoption improvement is claimed, and no private
 Scenario migration or multilevel inclusion is authorized.
+
+The bounded exercise prepared three independent changes to the same public
+Demo create/update/read flow, with paired flat and included declarations. It
+checks the review materials technically before asking a person to review them.
+Normal execution, fault-control results, human review correctness, and human
+effort remain separate observations. No private product evidence, deeper nesting,
+new YAML syntax, or review UI is part of this exercise. Independent focused checks passed
+45 tests; full regression passed 1146 with one existing warning and no skips.
+See the [preparation acceptance](tasks/scenario-review-exercise-acceptance.md).
+The [human review packet](review-exercise/README.md) remains an optional,
+unmeasured comparison, not a blocker to further work. Its original cases and
+technical evidence are preserved; no review answers or timings are inferred.
+The accepted follow-up is a [minimal create/read reuse walkthrough](../examples/scenario-reuse/README.md)
+using the approved expression and existing Demo. It explains which unchanged
+child review can be reused across callers and which caller decisions still need
+review. Its exact approved YAML/pin and real Demo execution passed six added
+checks; independent combined verification passed 51 tests, and full regression
+passed 1152 with one existing warning and no skips. No general human-effort
+saving is established by that walkthrough. All pending changes remain local,
+unstaged, and unsubmitted; no private workspace was accessed.
 
 Graphical Scenario authoring, deeper or dynamic Scenario composition, intent hierarchies,
 cryptographic approval infrastructure, automatic approval propagation, and

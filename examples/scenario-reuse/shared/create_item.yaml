@@ -1,0 +1,35 @@
+schema_version: 1
+scenario: shared.create_item
+actor: user
+
+# Reusable input: callers choose the name without changing the child checks.
+parameters:
+  item_name: Default record
+
+steps:
+  - id: create_request
+    do:
+      request:
+        method: POST
+        path: [items]
+        body:
+          name: {from_parameter: item_name}
+
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: itemId}
+        - check: field_equals
+          field: name
+          value: {from_parameter: item_name}
+      backend_state:
+        - {check: span_exists, span: item.create}
+
+# Public names let callers avoid depending on the internal step name.
+results:
+  record_id:
+    from_step: create_request
+    response_field: itemId
+  record_name:
+    from_step: create_request
+    response_field: name
