@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 import yaml
 from refracto.declaration import vocabulary as vocab
+from refracto.declaration import http_status
 from refracto.declaration.collections import is_scalar
 from refracto.declaration.model import (
     Scenario, Grid, Input, Assertion, Expect, RequestTemplate, Binding,
@@ -162,6 +163,14 @@ def _assertions(point, raw, parameters, prior, bindings):
         if missing:
             raise DeclarationError(f"{point}.{check}: missing required param {sorted(missing)}")
         params = {k: v for k, v in item.items() if k != "check"}
+        if check == "status_equals" and not http_status.valid(params["value"]):
+            raise DeclarationError("status_equals.value must be a literal integer from 100 through 599")
+        if check == "status_in":
+            statuses = params["values"]
+            if (not isinstance(statuses, list) or not statuses
+                    or not all(http_status.valid(value) for value in statuses)
+                    or len(statuses) != len(set(statuses))):
+                raise DeclarationError("status_in.values must be a nonempty list of distinct literal integers from 100 through 599")
         for key in set(params) & {"anchor", "field", "span", "attr"}:
             _string(params[key], f"{point}.{check}.{key}")
         if check in {"objects_matching_count", "collection_matching_count", "count_gt"}:
@@ -207,6 +216,8 @@ def _assertions(point, raw, parameters, prior, bindings):
 
 def _response_constraints(assertions):
     checks = {a.check for a in assertions}
+    if sum(a.check in http_status.CHECKS for a in assertions) > 1:
+        raise DeclarationError("at most one HTTP status constraint is allowed per step")
     if {"success", "failure"} <= checks:
         raise DeclarationError("response success and failure are mutually exclusive")
     for check in ("field_equals", "field_absent"):

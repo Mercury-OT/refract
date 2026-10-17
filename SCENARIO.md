@@ -120,16 +120,50 @@ undeclared business inputs to satisfy the constraint.
 | --- | --- |
 | `success` | none |
 | `failure` | none |
+| `status_equals` | `value` |
+| `status_in` | `values` |
 | `has` | `field` |
 | `field_equals` | `field`, `value` |
 | `field_absent` | `field` |
 | `collection_matching_count` | `field`, `matching`, `count` |
 
 `success` and `failure` check the normalized success indicator and cannot coexist
-in a step. `failure` is a complete rejection assertion; add field checks for an
-expected rejection reason. `has` checks presence. `field_equals` checks presence
+in a step. `failure` means that indicator is false; it does not establish why a
+request was rejected or whether an authorization decision was reached. Add the
+actual response and state requirements needed for the intended obligation.
+`has` checks presence. `field_equals` checks presence
 plus exact type and value, using a scalar literal or reference. These are
 normalized fields, not arbitrary raw JSON paths.
+
+`status_equals` checks one exact HTTP status; `status_in` checks membership in an
+explicit set. `value` is a literal integer from 100 through 599. `values` is a
+nonempty list of distinct literal integers in the same range. Booleans, floats,
+strings, null, references, and extra parameters are invalid. List order is kept
+for review but does not affect membership. Each step may have at most one of
+these HTTP-status checks, with no duplicates. Other response checks may coexist;
+HTTP status is not used to infer the normalized success indicator.
+
+These are alternative fragments inside a request-bearing step's
+`expect.response` list:
+
+```yaml
+- check: status_equals
+  value: 201
+```
+
+```yaml
+- check: status_in
+  values: [200, 204]
+```
+
+The observed value is captured from the selected recording before normalization,
+not taken from a normalizer's status, raw-response alias, or field map. Missing
+or malformed status evidence cannot pass. Frontend checks use explicit mock
+responses; backend and live e2e use their actual associated responses. Polling
+checks each attempt and keeps its existing final/timeout rules. A matching HTTP
+status alone does not prove a rejection mechanism or complete business success.
+See the executable [create/delete example](examples/documents/scenarios/http_status_create_delete.yaml)
+for 201 creation and an empty 204 deletion without a synthetic status field.
 
 `field_absent` checks membership, not truthiness: a present null, zero, false,
 empty string, list, or mapping fails. Failure details name the field, not its
@@ -468,11 +502,16 @@ completeness of the human-approved baseline.
 Contract consumes backend recordings without sending requests. Its identity is
 `(step_id, method, declared template_path)`; bound and actual paths remain
 evidence, not replacements for declared identity. Only final polling recordings
-contribute. Response requirements retain success/failure/don't-care, required
+contribute. Response requirements retain success/failure/don't-care, an optional
+exact HTTP status or allowed status set, required
 fields, expected values, forbidden fields, and all collection matching
 constraints. Collection checks evaluate final provider collections with the
 same strict matching rules and actual provider-reference values; contract does
-not reduce them to presence checks. Empty consumer checks do not
+not reduce them to presence checks. HTTP-status requirements use the original
+recording status, independently of normalized success/failure; missing, malformed,
+or nonmatching required status is a mismatch. Normalization receives an independent
+copy, so it cannot rewrite the source recording's status or identity. Contract
+uses the same backend evidence, not an independent source. Empty consumer checks do not
 produce a passing contract. Compatibility does not prove UI or full business
 acceptance.
 

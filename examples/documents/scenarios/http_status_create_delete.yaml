@@ -1,0 +1,39 @@
+schema_version: 1
+scenario: documents.http_status_create_delete
+actor: editor
+description: Create a document with HTTP 201, then delete it with an empty HTTP 204 response.
+parameters:
+  document_title: status-example
+steps:
+  - id: create
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: document_title}
+          category: guide
+    expect:
+      response:
+        # The actual HTTP status is separate from normalized business success.
+        - check: status_equals
+          value: 201
+        - check: success
+        - check: has
+          field: document_id
+        - check: field_equals
+          field: title
+          value: {from_parameter: document_title}
+  - id: delete
+    do:
+      request:
+        method: DELETE
+        path:
+          - documents
+          - {from_step: create, response_field: document_id}
+    expect:
+      response:
+        # An empty response body still provides an observable HTTP status.
+        - check: status_equals
+          value: 204
+        - check: success

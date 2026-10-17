@@ -22,6 +22,8 @@ _TERMS = {
     "response": {
         "success": (),
         "failure": (),
+        "status_equals": ("value",),
+        "status_in": ("values",),
         "has": ("field",),
         "field_equals": ("field", "value"),
         "field_absent": ("field",),

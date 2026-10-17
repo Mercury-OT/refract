@@ -6,10 +6,12 @@
   satisfied by the provider.
 """
 from dataclasses import dataclass, field
+import copy
 from typing import Literal
 
 from refracto.declaration import values
 from refracto.declaration import collections
+from refracto.declaration import http_status
 
 StatusExpectation = Literal["requires_success", "requires_failure", "dont_care"]
 
@@ -30,6 +32,8 @@ class EndpointShape:
     )
     collection_constraints: list = field(
         default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
+    allowed_http_statuses: frozenset[int] | None = field(default=None, kw_only=True)
+    http_status: int | None = field(default=None, kw_only=True)
 
 
 @dataclass
@@ -58,7 +62,9 @@ def consumer_contract(scenario) -> Contract:
     `(step.id, step.request.method, step.request.path)`.
 
     * `status_expectation` is derived from a declared `success` or `failure`
-      response assertion; without either assertion, status is not constrained.
+      response assertion; without either assertion, normalized success is not
+      constrained. `allowed_http_statuses` independently constrains the recorded
+      HTTP status when `status_equals` or `status_in` is declared.
     * `response_fields` comes from declared presence, equality, and collection
       assertions.
     * `response_values` retains the value side of `field_equals` assertions.
@@ -100,11 +106,13 @@ def consumer_contract(scenario) -> Contract:
                  "count": a.params["count"]}
                 for a in step.expect.response if a.check == "collection_matching_count"
             ],
+            allowed_http_statuses=next((http_status.allowed(a) for a in step.expect.response
+                                       if a.check in http_status.CHECKS), None),
         )
     return Contract(entries=entries)
 
 
-def provider_contract(recordings, normalizer) -> Contract:
+def provider_contract(recordings, normalizer, *, required_status_keys=frozenset()) -> Contract:
     """Build the provider-side contract from real recordings.
 
     Provider entries are keyed on `(step_id, method, template_path)`, not the
@@ -112,19 +120,28 @@ def provider_contract(recordings, normalizer) -> Contract:
     transport identity.
 
     Non-final recordings are skipped. Only the final recording for a step and
-    endpoint contributes to the provider contract.
+    endpoint contributes to the provider contract. For endpoints requiring HTTP
+    status evidence, invalid or missing status is unavailable evidence, without
+    asking a normalizer to interpret that malformed transport value.
     """
     entries = {}
     for r in recordings:
         if getattr(r, "is_final", True) is False:
             continue
-        norm = normalizer.normalize(r)
         step_id = getattr(r, "step_id", None)
         template = getattr(r, "template_path", None) or r.request.path
-        entries[(step_id, r.request.method, template)] = EndpointShape(
+        key = (step_id, r.request.method, template)
+        observed_status = getattr(r, "status", None)
+        observed_status = observed_status if http_status.valid(observed_status) else None
+        if observed_status is None and key in required_status_keys:
+            entries[key] = EndpointShape(response_fields=frozenset())
+            continue
+        norm = normalizer.normalize(copy.deepcopy(r))
+        entries[key] = EndpointShape(
             response_fields=frozenset(norm.fields.keys()),
             response_values=dict(norm.fields),
             succeeded=norm.succeeded,
+            http_status=observed_status,
         )
     return Contract(entries=entries)
 
@@ -197,6 +214,10 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
             status_note = "status mismatch"
         elif want.status_expectation == REQUIRES_FAILURE and have.succeeded:
             status_note = "expected failure, provider succeeded"
+        if want.allowed_http_statuses is not None and (
+                not http_status.valid(have.http_status) or have.http_status not in want.allowed_http_statuses):
+            status_note = "; ".join(filter(None, [status_note,
+                http_status.mismatch(want.allowed_http_statuses, have.http_status)]))
         if missing or unexpected or status_note or wrong_values or value_errors or collection_errors:
             out.append(ContractMismatch(
                 endpoint=key,
