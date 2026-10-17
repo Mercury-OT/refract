@@ -23,12 +23,13 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Scenario reuse walkthrough](tasks/scenario-review-exercise.md#follow-up-minimal-reuse-walkthrough) | Example and review guidance locally accepted. Review-cost comparison remains optional and unmeasured. | Separate submission authorization; no new language feature implied. |
-| 2 | [Named Scenario results](tasks/scenario-named-results.md) | Delivered on main in `f5d258a`: multiple explicit result names, one-level inclusion. | Measure review friction without expanding the language. |
-| 3 | [Scenario inclusion](tasks/scenario-include.md) | Delivered with named results in `f5d258a`: one level, identical actors, parent sidecar pins. | Preserve pin and caller-review boundaries. |
-| 4 | [Browser adapter support](tasks/browser-adapter-support.md) | Delivered on main in `9bebfa7`. | Preserve the accepted support and evidence boundaries. |
-| 5 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
-| 6 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
+| 1 | [Shared Scenario change-impact review](tasks/scenario-impact-review.md) | Independently audited and locally accepted; current YAML and execution unchanged. | Separate submission authorization; no submission performed. |
+| 2 | [Scenario reuse walkthrough](tasks/scenario-review-exercise.md#follow-up-minimal-reuse-walkthrough) | Delivered in `967af3c`; review-cost comparison remains optional and unmeasured. | Use existing expression; no new language feature implied. |
+| 3 | [Named Scenario results](tasks/scenario-named-results.md) | Delivered on main in `f5d258a`: multiple explicit result names, one-level inclusion. | Measure review friction without expanding the language. |
+| 4 | [Scenario inclusion](tasks/scenario-include.md) | Delivered with named results in `f5d258a`: one level, identical actors, parent sidecar pins. | Preserve pin and caller-review boundaries. |
+| 5 | [Browser adapter support](tasks/browser-adapter-support.md) | Delivered on main in `9bebfa7`. | Preserve the accepted support and evidence boundaries. |
+| 6 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
+| 7 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
 
 The maintainer approved the explicit do.request and polling form, and subsequently
 the bounded collection expression. Those two tasks have been delivered on main.
@@ -132,8 +133,23 @@ child review can be reused across callers and which caller decisions still need
 review. Its exact approved YAML/pin and real Demo execution passed six added
 checks; independent combined verification passed 51 tests, and full regression
 passed 1152 with one existing warning and no skips. No general human-effort
-saving is established by that walkthrough. All pending changes remain local,
-unstaged, and unsubmitted; no private workspace was accessed.
+saving is established by that walkthrough. The 28-file delivery was submitted
+through PR #17 and merged in `967af3c4f96a8b5ebbf1e12f624aa1b789698b2b`.
+All eight branch/PR checks and all four post-merge main jobs passed; task branches
+were removed and main synchronized. No private workspace was accessed.
+Historical local acceptance retains its original pre-submission statements.
+
+Read-only shared-child impact inspection is now locally accepted: explicit
+old/current child inputs, a bounded caller directory, structural differences,
+caller wiring and named-result use, with unknown evidence shown explicitly.
+The command does not refresh pins, infer approval, change YAML or runtime
+semantics, or claim review-cost savings. Independent verification passed 90
+focused and adversarial checks; final full regression passed 1217 tests with
+real Demo execution, no skips and one existing dependency warning. A deep-tree
+inspection failure found by audit was repaired and independently rechecked.
+See the [usage guide](impact-review.md) and
+[acceptance record](tasks/scenario-impact-review-acceptance.md). These changes
+remain unstaged and uncommitted; their submission requires separate authorization.
 
 Graphical Scenario authoring, deeper or dynamic Scenario composition, intent hierarchies,
 cryptographic approval infrastructure, automatic approval propagation, and

@@ -47,7 +47,21 @@ def main(argv=None) -> int:
     v.add_argument("--expand", action="store_true", help=(
         "print the complete symbolic review plan; reveals declaration literals/defaults "
         "at source confidentiality level, never actual runtime bindings; do not publish by default"))
+    impact = sub.add_parser("impact", help="inspect shared Scenario changes and current callers, without execution or approval")
+    impact.add_argument("--before", required=True, help="explicit old leaf Scenario snapshot")
+    impact.add_argument("--after", required=True, help="current child file within --parents")
+    impact.add_argument("--parents", required=True, help="bounded Scenario directory to inspect recursively")
+    impact.add_argument("--json", action="store_true", help="emit the deterministic versioned review report")
+    impact.add_argument("--show-values", action="store_true", help=(
+        "reveal authored literals/defaults at source confidentiality level, never runtime bindings; "
+        "identifiers and paths remain visible without this option; do not publish by default"))
     args = parser.parse_args(argv)
     if args.cmd == "validate":
         return _validate(args.path, expand=args.expand)
+    if args.cmd == "impact":
+        from refracto.declaration.impact import exit_code, inspect_impact, render_text
+        report = inspect_impact(args.before, args.after, args.parents, show_values=args.show_values)
+        print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
+              if args.json else render_text(report, show_values=args.show_values))
+        return exit_code(report)
     return 1

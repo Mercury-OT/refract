@@ -525,6 +525,10 @@ steps:
 
 ## Validation and review
 
+For read-only comparison of a changed child and its current callers, see the
+[shared Scenario impact review guide](docs/impact-review.md). This does not
+change declaration syntax, approve changes, update pins, or execute Scenarios.
+
 `refracto validate` checks declarations, not product behavior or human approval.
 Missing actions, invalid references, unsupported vocabulary, duplicate identities,
 and assertion-free Scenarios fail loudly. Review and approve the actual YAML;
