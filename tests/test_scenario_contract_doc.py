@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 from refracto.declaration import vocabulary as vocab
 from refracto.declaration.loader import load_scenario
@@ -68,3 +69,24 @@ def test_doc_worked_examples_load(index):
         path = Path(tmp) / "doc_example.yaml"
         path.write_text(block, encoding="utf-8")
         load_scenario(str(path))
+
+
+def test_documented_explicit_stop_fragment_loads_in_its_stated_context(tmp_path):
+    blocks = _FENCED_YAML_RE.findall(DOC.read_text(encoding="utf-8"))
+    fragments = [block for block in blocks if "on_failure: stop" in block]
+    assert len(fragments) == 1
+    fragment = yaml.safe_load(fragments[0])
+    data = {
+        "schema_version": 1,
+        "scenario": "demo.documented_stop",
+        "actor": "editor",
+        "steps": [{
+            "id": "create",
+            "do": {"request": {"method": "POST", "path": ["records"]}},
+        }, *fragment],
+    }
+    path = tmp_path / "documented_stop.yaml"
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    scenario = load_scenario(str(path))
+    assert scenario.steps[0].on_failure == "continue"
+    assert scenario.steps[1].on_failure == "stop"

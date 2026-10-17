@@ -112,9 +112,9 @@ def test_direct_refs_atomic_failure_and_no_partial_action(tmp_path):
     scenario = load(tmp_path, [source, target, request("blocked")])
     api = FakeApi({("POST", "records"): {"json": {"success": True, "data": {"id": "secret"}}}})
     result = execute(scenario, api)
-    assert [s.status for s in result.steps] == ["COMPLETED", "ERROR", "BLOCKED"]
+    assert [s.status for s in result.steps] == ["COMPLETED", "BLOCKED", "PASSED"]
     assert result.steps[1].resolved_bindings == {}
-    assert len(api.sent) == 1
+    assert len(api.sent) == 2
 
 
 def test_references_in_fill_and_recursive_body_and_assertion(tmp_path):

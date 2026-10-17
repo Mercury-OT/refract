@@ -279,7 +279,7 @@ def test_every_state_poll_revalidates_identity_and_empty_final_state_fails():
     clock = Clock()
     result = run(scenario(state=True), ScriptedUi(), state=LiveState("empty"),
                  poll_config=PollConfig(timeout=1, interval=1), now=clock.now, sleep=clock.sleep)
-    assert [r.status for r in result.steps] == ["FAILED", "BLOCKED"]
+    assert [r.status for r in result.steps] == ["FAILED", "FAILED"]
 
 
 @pytest.mark.parametrize("kind", ["frontend", "request", "response"])
@@ -289,7 +289,7 @@ def test_assertion_failure_is_failed_not_protocol_error(kind):
     elif kind == "request": ui.requests[0][0].body = {"name": "wrong"}
     else: ui.payloads[0] = {"success": False}
     result = run(s, ui)
-    assert [r.status for r in result.steps] == ["FAILED", "BLOCKED"]
+    assert [r.status for r in result.steps] == ["FAILED", "PASSED"]
 
 
 def test_explicit_api_e2e_needs_no_ui_and_poll_uses_actual_attempts():
@@ -408,10 +408,10 @@ def test_live_c5_all_post_resolution_terminal_states_keep_bindings(terminal, exp
     ui = ScriptedUi(3, terminal=(1, terminal))
     if terminal == "failed": ui.renders[1] = {}
     result = run(scenario(count=3, references=True), ui)
-    assert [r.status for r in result.steps] == ["PASSED", expected, "BLOCKED"]
+    assert [r.status for r in result.steps] == ["PASSED", expected, "PASSED" if terminal == "failed" else "BLOCKED"]
     assert result.steps[1].resolved_bindings == {"previous": "1"}
     assert result.steps[1].resolved_bindings is not ui.permits[1].resolved_bindings
-    assert result.steps[2].resolved_bindings == {}
+    assert result.steps[2].resolved_bindings == ({"previous": "1"} if terminal == "failed" else {})
     assert ui.close_calls == 1
 
 
@@ -420,9 +420,10 @@ def test_live_c5_atomic_failure_blocked_and_falsy_values():
     s.steps[1].bind.append(Binding("other", "s0", "missing"))
     ui = ScriptedUi(3)
     result = run(s, ui)
-    assert [r.status for r in result.steps] == ["PASSED", "ERROR", "BLOCKED"]
-    assert result.steps[1].resolved_bindings == result.steps[2].resolved_bindings == {}
-    assert len(ui.permits) == 1
+    assert [r.status for r in result.steps] == ["PASSED", "BLOCKED", "PASSED"]
+    assert result.steps[1].resolved_bindings == {}
+    assert result.steps[2].resolved_bindings == {"previous": "1"}
+    assert len(ui.permits) == 2
     for value in (False, 0, ""):
         result = run(scenario(references=True), ScriptedUi(payloads=[response({"id": value}), response()]))
         assert result.status == "PASSED"

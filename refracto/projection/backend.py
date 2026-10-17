@@ -10,11 +10,13 @@ import copy
 import secrets
 import time
 from refracto import asyncwait
+from refracto.normalization import normalize_response
 from refracto.declaration import binding
 from refracto.declaration import values
 from refracto.declaration import collections
 from refracto.declaration import http_status
-from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
+from refracto.report import CheckResult, DomainResult, StepResult, ResponseOrigin, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
+from refracto.projection.continuation import FlowState
 
 _NO_SESSION = object()
 
@@ -157,7 +159,7 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
     try:
         res = asyncwait.wait_until(_poll, timeout=state_timeout, interval=interval,
                                    on_timeout=asyncwait.FAIL, now=now, sleep=sleep)
-    except TimeoutError:
+    except asyncwait.WaitTimeout:
         # On timeout, report the specific failing assertions against the most
         # recent observation rather than a generic timeout marker.
         facts = state.observe(trace_id)
@@ -230,7 +232,7 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         resp.actual_path = attempt_spec.path
         try:
             observed_status = _capture_status(step, resp)
-            norm = normalizer.normalize(copy.deepcopy(resp))
+            norm = normalize_response(normalizer, resp)
             ok = all(_eval_response(a, norm, bound_values, inputs, observed_status=observed_status).ok
                      for a in step.expect.response)
         except Exception:
@@ -250,7 +252,7 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
     try:
         result = asyncwait.wait_until(_attempt, timeout=timeout, interval=interval,
                                        on_timeout=on_timeout, now=now, sleep=sleep)
-    except TimeoutError:
+    except asyncwait.WaitTimeout:
         resp, norm, traceparent = last["resp"], last["norm"], last["traceparent"]
         response_checks = [
             _eval_response(a, norm, bound_values, inputs, observed_status=last["status"])
@@ -260,13 +262,15 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
             c.step = step.id
         trace_id = resp.trace_id or traceparent.split("-")[1]
         return StepResult(step.id, FAILED, checks=response_checks,
-                          attempts=attempts["n"], trace_id=trace_id), norm
+                          attempts=attempts["n"], trace_id=trace_id,
+                          response_origin=ResponseOrigin(step.id, attempts["n"] - 1, False, True)), norm
 
     if result.skipped:
         resp, norm, traceparent = last["resp"], last["norm"], last["traceparent"]
         trace_id = resp.trace_id or traceparent.split("-")[1]
         return StepResult(step.id, SKIPPED, skipped=["poll timed out (SKIP)"],
-                          attempts=attempts["n"], trace_id=trace_id), norm
+                          attempts=attempts["n"], trace_id=trace_id,
+                          response_origin=ResponseOrigin(step.id, attempts["n"] - 1, False, True)), norm
 
     winning_resp, winning_norm, winning_traceparent, winning_status = result.value
     winning_resp.is_final = True
@@ -314,7 +318,7 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
     recorder.record(copy.deepcopy(resp))
 
     observed_status = _capture_status(step, resp)
-    norm = normalizer.normalize(copy.deepcopy(resp))
+    norm = normalize_response(normalizer, resp)
 
     response_checks = [
         _eval_response(a, norm, bound_values, inputs, observed_status=observed_status)
@@ -380,7 +384,7 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
 
     step_results = []
     prior_norms = {}
-    stopped = False
+    flow = FlowState()
     session = _NO_SESSION
     # Validate the complete flow before authentication, waits, mapping or sends.
     # A later unsupported step must not allow earlier steps to have side effects.
@@ -390,13 +394,14 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
     elif any(s.request is None and (s.expect.backend_state or s.expect.response) for s in scenario.steps):
         unsupported = "requestless backend_state has no correlation source"
     for step in scenario.steps:
-        if stopped:
-            step_results.append(StepResult(step.id, BLOCKED,
-                detail="a prior step stopped the flow"))
+        blocked = flow.blocked(step)
+        if blocked is not None:
+            step_results.append(blocked)
             continue
         norm = None
         bound_values = {}
         resolved_bindings = {}
+        prepared_ok = False
         try:
             if unsupported:
                 raise ValueError(unsupported)
@@ -404,14 +409,17 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
                 (sleep or time.sleep)(step.duration / 1000)
                 sr = StepResult(step.id, "COMPLETED", not_checked=(
                     ["UI checks are outside backend projection"] if step.expect.frontend else []))
+                flow.finish(step, sr)
                 step_results.append(sr)
                 continue
             if step.request is None:
                 sr = StepResult(step.id, "NOT_APPLICABLE",
                     not_checked=["UI action/checks are outside backend projection"])
+                flow.finish(step, sr)
                 step_results.append(sr)
                 continue
             prepared, bound_values = binding.prepare_step(step, scenario, prior_norms)
+            prepared_ok = True
             resolved_bindings = dict(bound_values)
             if session is _NO_SESSION:
                 if auth is None:
@@ -423,14 +431,18 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
                 bound_values=bound_values)
             if step.action != "request" or step.expect.frontend:
                 sr.not_checked.append("UI actions/checks are outside backend projection")
+        except binding.DependencyUnavailable as exc:
+            sr = (StepResult(step.id, ERROR, detail=str(exc)) if prepared_ok else
+                  StepResult(step.id, BLOCKED, detail=str(exc), blocked_by=exc.sources))
+            norm = None
         except Exception as exc:
             sr = StepResult(step.id, ERROR, detail=str(exc))
+            norm = None
         sr.resolved_bindings = resolved_bindings
+        flow.finish(step, sr, norm)
         step_results.append(sr)
         if norm is not None:
             prior_norms[step.id] = norm
-        if sr.status in (FAILED, ERROR, SKIPPED):
-            stopped = True
 
     try:
         recordings = recorder.responses()

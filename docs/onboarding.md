@@ -43,6 +43,14 @@ steps. API commands are under `do.request`; response checks are under
 See [SCENARIO.md](../SCENARIO.md) for the complete contract. Old unversioned and
 `version: 2` files are rejected, not silently upgraded.
 
+Ordinary assertion failures are retained while later steps continue by default.
+Put `on_failure: stop` on a leaf step when that failure should stop the remainder.
+A step needing an unavailable response value is BLOCKED before its action;
+independent later steps may run. Execution errors and explicit skips still stop
+the projection. A later successful deletion does not make an earlier failed
+check pass, and this is not guaranteed cleanup. The strict gate below remains
+unchanged. See [continuation and stopping](../SCENARIO.md#continuing-and-stopping).
+
 The example resolver translates the declaration's `records` path to the target's
 `/items` route. Keep this boundary explicit in a real integration: declarations
 describe logical requests, while `resolve_request` owns target routing, headers,

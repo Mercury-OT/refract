@@ -6,12 +6,12 @@
   satisfied by the provider.
 """
 from dataclasses import dataclass, field
-import copy
 from typing import Literal
 
 from refracto.declaration import values
 from refracto.declaration import collections
 from refracto.declaration import http_status
+from refracto.normalization import normalize_response
 
 StatusExpectation = Literal["requires_success", "requires_failure", "dont_care"]
 
@@ -136,7 +136,7 @@ def provider_contract(recordings, normalizer, *, required_status_keys=frozenset(
         if observed_status is None and key in required_status_keys:
             entries[key] = EndpointShape(response_fields=frozenset())
             continue
-        norm = normalizer.normalize(copy.deepcopy(r))
+        norm = normalize_response(normalizer, r)
         entries[key] = EndpointShape(
             response_fields=frozenset(norm.fields.keys()),
             response_values=dict(norm.fields),

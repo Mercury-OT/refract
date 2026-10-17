@@ -71,7 +71,7 @@ def test_documents_explicit_status_set_has_passing_neighbors(tmp_path, replaceme
     assert adapters.normalizer.normalize(first).succeeded is True
     status_check = next(check for check in report.domains[0].checks if check.check == "status_in")
     assert status_check.ok is passed
-    assert app.request_count == (2 if passed else 1)
+    assert app.request_count == 2
 
 
 @pytest.mark.parametrize("original,replacement", [(201, 202), (204, 200)])
@@ -147,17 +147,18 @@ def test_included_status_checks_and_named_results_execute_and_expand(tmp_path, c
     assert check == {"check": "status_equals", "value": {"kind": "literal", "value": 201}}
 
 
-def test_included_wrong_status_fails_at_child_source_and_blocks_result_consumer(tmp_path):
+def test_included_wrong_status_fails_at_child_source_but_usable_result_continues(tmp_path):
     parent, _ = _include_bundle(tmp_path)
     app = StatusOnlyMutation(201, 202)
     report = run_scenario(parent, build_adapters(app), projections=("backend", "contract"))
     assert report.status == "FAILED"
-    assert [step.status for step in report.domains[0].steps] == ["FAILED", "BLOCKED"]
+    assert [step.status for step in report.domains[0].steps] == ["FAILED", "PASSED"]
+    assert report.domains[0].steps[1].after_failures == ["setup/create"]
     assert report.domains[0].steps[0].step_id == "setup/create"
     located = [item for item in report.localize() if item[1] == "setup/create"]
     assert located
     assert report.source_lookup[located[0][1]]["scenario_id"] == "shared.create_document"
-    assert app.request_count == 1
+    assert app.request_count == 2
 
 
 @pytest.mark.parametrize("new_check", [{"check": "status_equals", "value": 202},

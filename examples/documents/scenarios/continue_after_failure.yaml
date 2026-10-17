@@ -1,0 +1,51 @@
+schema_version: 1
+scenario: documents.continue_after_failure
+actor: editor
+description: Create, inspect, and delete the current document while retaining every failed check.
+parameters:
+  document_title: continuation-example
+steps:
+  - id: create
+    # Assertion failure continues by default. Use on_failure: stop here only
+    # when a failed creation check must prevent every later action.
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: document_title}
+          category: guide
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+        - check: field_equals
+          field: title
+          value: {from_parameter: document_title}
+  - id: read
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: collection_matching_count
+          field: documents
+          matching:
+            document_id: {from_step: create, response_field: document_id}
+            title: {from_parameter: document_title}
+          count: 1
+  - id: delete
+    # This is an ordinary declared action, not guaranteed cleanup. Missing ID
+    # evidence blocks it; an earlier execution error stops the projection.
+    do:
+      request:
+        method: DELETE
+        path: [documents, {from_step: create, response_field: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 204}
+        - {check: success}

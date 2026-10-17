@@ -23,8 +23,9 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Exact HTTP response status assertions](tasks/http-status-assertions.md) | Independently audited and locally accepted; the maintainer approved both YAML checks and authorized submission on 2026-10-17. Existing structure and fail-fast behavior stay unchanged. | PR checks, merge, post-merge main checks and branch cleanup; submission evidence belongs to the task PR. |
-| 2 | Failure continuation and logical-user/session boundaries | Next specification discussion; no execution-policy or user-model change implemented by the status task. | Confirm a bounded decision table and annotated expression before implementation. |
+| 1 | [Continue after assertion failures](tasks/assertion-failure-continuation.md) | Independently audited and locally accepted on 2026-10-17; format 1, one-level same-actor inclusion. Submission separately authorized on 2026-10-17. | The task PR supplies publication, merge, and CI evidence; preserve the approved execution boundary. |
+| 2 | Logical-user/session boundaries | Deferred specification discussion; not part of failure continuation. | Confirm a separate bounded user/session design before implementation. |
+| Delivered | [Exact HTTP response status assertions](tasks/http-status-assertions.md) | Delivered through PR #19 in main `d2a5ed9`; eight branch/PR checks and four main jobs passed. | Preserve the approved `status_equals` / `status_in` expression. |
 | Delivered | [Shared Scenario change-impact review](tasks/scenario-impact-review.md) | Delivered on main in `67ce17f`; current YAML and execution unchanged. | Preserve read-only inspection, pin, and review boundaries. |
 | Delivered | [Scenario reuse walkthrough](tasks/scenario-review-exercise.md#follow-up-minimal-reuse-walkthrough) | Delivered in `967af3c`; review-cost comparison remains optional and unmeasured. | Use existing expression; no new language feature implied. |
 | Delivered | [Named Scenario results](tasks/scenario-named-results.md) | Delivered on main in `f5d258a`: multiple explicit result names, one-level inclusion. | Measure review friction without expanding the language. |
@@ -39,15 +40,32 @@ Browser support, inclusion, and named results have subsequently been merged.
 The approved expression remains the basis of execution;
 implementation convenience must not silently change its meaning.
 
-Exact recorded HTTP status is the next small capability slice. It addresses a
+Exact recorded HTTP status is now delivered. It addresses a
 publicly reproducible distinction between transport status and normalized
 business success. It does not identify why a request was rejected or establish
 authorization correctness. Public Demo and Documents examples supply independent
 synthetic consumers; no private source material or measurements are included.
-Broader execution-policy and multi-user changes require a separately confirmed
-specification. Runtime presentation work is deferred while these expression and
+The separately approved continuation task now changes ordinary assertion failure
+to continue by default, with optional leaf `on_failure: stop`; all execution
+errors and skips still stop this first slice. Missing response dependencies
+block their consumers, not unrelated steps. The maintainer explicitly retained
+`schema_version: 1`: unchanged declarations therefore require review against the
+new engine semantics, not a claim of behavioral compatibility. Multi-user work
+remains separate. Runtime presentation work is deferred while these expression and
 execution boundaries take priority. Each task is introduced with its intended
 use cases; changed YAML is shown to the maintainer before submission.
+
+Continuation acceptance passed 1426 full regression tests with real Chromium,
+no skips, and one existing dependency warning; the isolated dev-only suite passed
+1282 with one optional Demo collection skip. Independent review passed 571
+focused checks, including 27 additional probes. Malformed normalizer output and
+port/nested-wait timeouts cannot masquerade as ordinary failed assertions.
+Current examples remain format 1; historical declarations and measurements were
+not rewritten. See the [local acceptance record](tasks/assertion-failure-continuation-acceptance.md).
+The maintainer subsequently accepted the task and separately authorized
+submission on 2026-10-17. Historical local acceptance retains its pre-submission
+statements; the task PR supplies publication, merge, and CI evidence. This does
+not authorize expansion into multi-user behavior.
 
 The local status-assertion implementation passed independent audit, 1337 full
 regression tests with real Chromium and one existing dependency warning, and

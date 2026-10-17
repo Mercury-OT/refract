@@ -18,7 +18,7 @@ DEGRADED = "DEGRADED"        # no failures, but a declared point was skipped
 EMPTY = "EMPTY"              # selected/ran but asserted nothing
 NOT_SELECTED = "NOT_SELECTED"  # grid filtered this scenario out — it did not run
 SKIPPED = "SKIPPED"          # a step did not run as a tolerated outcome
-BLOCKED = "BLOCKED"          # a step could not run because a prior step stopped the flow
+BLOCKED = "BLOCKED"          # unavailable dependency or a prior step stopped the flow
 ERROR = "ERROR"              # a step raised/errored rather than failing a check
 COMPLETED = "COMPLETED"      # action completed; no assertion was evaluated
 NOT_APPLICABLE = "NOT_APPLICABLE"  # action outside the selected projection
@@ -33,6 +33,21 @@ class CheckResult:
     step: str = ""
 
 
+@dataclass(frozen=True)
+class ResponseOrigin:
+    """Value-free identity of an actual response, not a readiness claim."""
+    step_id: str
+    attempt_index: int
+    is_final: bool
+    timed_out: bool = False
+
+
+@dataclass(frozen=True)
+class BindingSource:
+    response_field: str
+    origin: ResponseOrigin
+
+
 @dataclass
 class StepResult:
     step_id: str
@@ -43,6 +58,10 @@ class StepResult:
     trace_id: object = None
     detail: str = field(default="", repr=False)
     not_checked: list[str] = field(default_factory=list, kw_only=True)
+    after_failures: list[str] = field(default_factory=list, kw_only=True, compare=False)
+    blocked_by: list[str] = field(default_factory=list, kw_only=True, compare=False)
+    response_origin: ResponseOrigin | None = field(default=None, kw_only=True, compare=False)
+    binding_sources: dict[str, BindingSource] = field(default_factory=dict, kw_only=True, compare=False)
     resolved_bindings: dict[str, object] = field(
         default_factory=dict,
         repr=False,
@@ -74,7 +93,7 @@ class DomainResult:
         sts = [s.status for s in self.steps]
         if ERROR in sts or FAILED in sts:
             return FAILED
-        if SKIPPED in sts or any(s.skipped for s in self.steps) or self.skipped:
+        if SKIPPED in sts or BLOCKED in sts or any(s.skipped for s in self.steps) or self.skipped:
             return DEGRADED
         if any(s.checks for s in self.steps):
             return PASSED
@@ -112,7 +131,7 @@ class RunReport:
         return self.status in (PASSED, DEGRADED)
 
     def degradations(self):
-        """Return ``(projection, step_id, reason)`` for every skipped item.
+        """Return ``(projection, step_id, reason)`` for skipped or blocked work.
 
         Domain-level reasons have no owning step and therefore use ``None`` as
         their step id.
@@ -124,6 +143,9 @@ class RunReport:
                 for reason in domain.skipped
             )
             for step in domain.steps:
+                if step.status == BLOCKED:
+                    out.append((domain.projection, step.step_id,
+                                "step was blocked" + (": " + ", ".join(step.blocked_by) if step.blocked_by else "")))
                 out.extend(
                     (domain.projection, step.step_id, reason)
                     for reason in step.skipped
@@ -137,8 +159,3 @@ class RunReport:
                 if not c.ok:
                     out.append((d.projection, c.step, c.point, c.check, c.detail))
         return out
-
-
-# BLOCKED steps always co-occur with the prior FAILED/SKIPPED cause that
-# stopped the flow, so DomainResult.status does not need a separate BLOCKED
-# branch.

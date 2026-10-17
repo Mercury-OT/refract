@@ -312,7 +312,7 @@ def test_ui_include_reuses_one_context_and_matches_flat_runtime(demo_server, fla
     assert httpx.get(demo_server + "/items").json() == httpx.get(flat_demo_server + "/items").json()
 
 
-def test_ui_child_failure_blocks_second_include_without_another_action(demo_server):
+def test_ui_child_failure_continues_second_include_with_observed_named_result(demo_server):
     driver = ObservedUi(DemoConfig(base_url=demo_server))
     plan = _ui_plan()
     # A real intercepted response carries an incorrect name. The declaration
@@ -322,13 +322,21 @@ def test_ui_child_failure_blocks_second_include_without_another_action(demo_serv
                           projections=("frontend",), mock_plan=plan)
     domain = report.domains[0]
     assert report.status == "FAILED"
-    assert [step.status for step in domain.steps] == ["COMPLETED"] * 3 + ["FAILED"] + ["BLOCKED"] * 4
+    assert [step.status for step in domain.steps] == ["COMPLETED"] * 3 + ["FAILED"] + ["COMPLETED"] * 3 + ["PASSED"]
     assert driver.opens == driver.closes == 1
-    assert len(driver.permits) == 4
-    assert all(permit.step_id.startswith("first/") for permit in driver.permits)
+    assert len(driver.permits) == 8
+    assert all(context is driver.contexts[0] for context in driver.contexts)
+    assert all(permit.step_id.startswith("first/") for permit in driver.permits[:4])
+    assert all(permit.step_id.startswith("second/") for permit in driver.permits[4:])
+    assert [step.after_failures for step in domain.steps[4:]] == [["first/create"]] * 4
+    assert list(domain.steps[6].resolved_bindings.values()) == ["1"]
     assert any(projection == "frontend" and step == "first/create" and check == "field_equals"
                for projection, step, point, check, detail in report.localize())
     assert report.source_lookup["first/create"]["scenario_id"] == "demo.include_create_item_ui"
     assert report.source_lookup["first/create"]["include_step_id"] == "first"
-    assert not any(entry["fixture_id"] == "create-2" for entry in domain.mock_consumption)
+    assert [entry["fixture_id"] for entry in domain.mock_consumption] == [
+        "initial-list", "create-1", "list-1", "second-open-list", "create-2", "list-2"]
+    assert [(check.step, check.check) for check in domain.checks if not check.ok] == [
+        ("first/create", "field_equals")]
+    assert not domain.provider_recordings  # Mock traffic is not live provider evidence.
     assert httpx.get(demo_server + "/items").json()["data"]["items"] == []

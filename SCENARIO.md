@@ -13,6 +13,12 @@ format, not a Scenario's content revision or approval. Unversioned declarations,
 `version: 2`, and the former `inputs`, `intent`, `precondition`, and `bind` YAML
 fields are rejected; no silent conversion or compatibility mode is provided.
 
+Format 1 now continues after ordinary assertion failure by default. This is an
+explicitly approved execution-behavior change, not a claim that unchanged YAML
+has unchanged behavior across engine revisions. Review existing stopping intent
+and retain the engine revision with execution evidence. An include byte hash
+alone does not pin engine semantics or renew approval.
+
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `schema_version` | yes | strict integer `1` |
@@ -31,7 +37,8 @@ A requested grid filter does not silently match a Scenario without that grid.
 ## One action per step
 
 There is no `action`, `type`, or `sequence` wrapper. An executable leaf step has
-one `id`, one `do`, the applicable action fields below, and optionally `expect`.
+one `id`, one `do`, the applicable action fields below, and optionally `expect`
+and `on_failure: stop`.
 A static include is a composition node expanded into these same leaves before
 execution, not a multi-action adapter primitive.
 
@@ -197,9 +204,10 @@ separately. `count` is an exact nonnegative integer, not a boolean or reference.
 This fragment assumes an earlier request-bearing `create` step and a declared
 `record_name` parameter. References read actual responses, not expectations.
 Known nonscalar parameter values are invalid declarations; a runtime nonscalar
-response reference produces `ERROR` before executing the step. Literal null or
+response reference blocks the consuming step before its action. Literal null or
 a null parameter may be matched, but a missing member field is not null. Existing
-missing/null prior-response reference errors are unchanged.
+missing/null prior-response references likewise cause local `BLOCKED`, not a
+passing or silently omitted check.
 
 A missing field, non-list value, or any non-object list member fails, even when
 count is zero. Only an actual empty list can establish zero without inspecting
@@ -214,6 +222,12 @@ This is a normalized-only boundary. A normalizer can omit a raw response field;
 absence from its field map is not proof that raw HTTP data contains no leak.
 Trusted evidence, adapter conformance, and security verification remain separate.
 Retained raw recordings may still contain sensitive data.
+
+The normalizer must return a `NormalizedResponse` with a boolean `succeeded`
+and a string-keyed dictionary of fields. Malformed port output is an execution
+ERROR, not an ordinary assertion mismatch or a recoverable missing reference;
+contract also reports it as an error. This structural check does not certify the
+truth or completeness of the adapter's normalization.
 
 ### Backend-state vocabulary
 
@@ -246,8 +260,12 @@ an earlier request-bearing step and reads its actual normalized runtime response
 never its expected value. A source step need not assert `has`: preparation
 requests may supply values without inventing checks.
 
-Missing or null response fields produce `ERROR` atomically, with no partial
-resolved mapping. Zero, false, and empty strings remain valid. No user-managed
+Missing or null response fields, unavailable source steps, and response-derived
+values invalid for their use position produce local `BLOCKED` atomically, with
+no action or partial resolved mapping. Independent later steps can still run.
+A source step's failed assertion alone does not make its actual response
+unavailable. Zero, false, and empty strings remain valid where the position
+accepts them; an empty or boolean path segment is still invalid. No user-managed
 binding aliases, expressions, arithmetic, concatenation, JSONPath, reference-valued
 mapping keys, or coercion are supported. Frontend references read mock responses,
 which remain distinguishable from live responses.
@@ -321,10 +339,11 @@ is updated, but the changed child still needs a reviewed sidecar pin update.
 Removing or renaming a public result requires caller changes and review.
 
 Results never count as assertions or manufacture evidence. Unused results are
-not read or checked implicitly. A consumed missing/null field causes the existing
-atomic binding `ERROR` before the consuming action; falsy values survive subject
-to that position's type rules. Even if the source already ran successfully,
-FAILED/ERROR/SKIPPED in any later child step blocks the parent consumer. Every
+not read or checked implicitly. A consumed missing/null field causes atomic local
+`BLOCKED` before the consuming action; falsy values survive subject to that
+position's type rules. Ordinary child FAILED does not itself block a parent
+consumer of an available result. Child ERROR, SKIPPED, or FAILED with explicit
+`on_failure: stop` blocks all remaining leaves in that projection. Every
 invocation reads its own current-run responses; frontend mock values remain mock
 values. No values are borrowed across projections or prior runs.
 
@@ -365,7 +384,11 @@ Child grid metadata cannot silently filter steps. Each UI projection retains one
 session/context. All child actions and checks remain present; unsupported expanded
 flows still fail the existing projection checks before side effects.
 
-FAILED, ERROR, and SKIPPED block later child and parent leaves. Inclusion is not
+Ordinary FAILED continues by default. A child's explicit leaf `on_failure: stop`
+is preserved during expansion and stops later child and parent leaves; the parent
+include node cannot override it. ERROR and SKIPPED also stop the projection.
+Local unavailable-reference BLOCKED only prevents consumers that need unavailable
+evidence. Inclusion is not
 a transaction: a runtime-only argument error occurs before its consuming action,
 and earlier actions may already have run. There is no rollback or hidden setup.
 No parent-only assertion is mechanically required when the child already supplies
@@ -373,7 +396,8 @@ effective checks, but that does not establish the parent's complete business goa
 
 `refracto validate <parent.yaml> --expand` explicitly prints the verified flat
 review plan and its sources. It preserves symbolic response references and shows
-declared public result names and their source mappings. It never runs adapters,
+declared public result names, their source mappings, and each leaf's effective
+failure policy. It never runs adapters,
 and emits no partial plan when validation fails. This is a review
 view, not another authoring format. It can display literal declaration data,
 including `with` values; its confidentiality matches the source files. It never
@@ -430,10 +454,61 @@ single-step runs through the shared loop. The backend state helper retains its
 separate existing default observation budget; response polling does not imply
 that every projection shares one combined deadline.
 
-Steps run in order. `FAILED`, `ERROR`, and `SKIPPED` block later steps.
+### Continuing and stopping
+
+Steps run in order. By default, an ordinary assertion `FAILED` is recorded and
+later steps continue. A failed check is never erased by later success. Add
+`on_failure: stop` to an ordinary leaf step when its assertion failure must block
+the remainder of that projection. Omission is the only authored default; explicit
+values other than the literal `stop` are rejected. This policy is not allowed on
+an include-call node and cannot override a child's checks or stopping decision.
+
+This step fragment assumes an earlier `create` response. It checks the result of
+a read and explicitly stops after a failed assertion:
+
+```yaml
+- id: verify_before_next_action
+  on_failure: stop
+  do:
+    request:
+      method: GET
+      path: [records, {from_step: create, response_field: id}]
+  expect:
+    response:
+      - check: status_equals
+        value: 200
+```
+
+| Condition | Outcome and continuation |
+| --- | --- |
+| Assertion mismatch, default policy | FAILED; later steps may run |
+| Assertion mismatch with explicit stop | FAILED; all later leaves BLOCKED |
+| Missing/null/unusable referenced response value | Consumer BLOCKED before action; independent later steps may run |
+| Execution, normalization, protocol, session, or unknown exception | ERROR; all later leaves BLOCKED |
+| Adapter skip or polling SKIP timeout | SKIPPED; all later leaves BLOCKED |
+
+`on_failure` governs assertion failure only. It does not turn a locally blocked
+dependency into a global stop. Dependency blocking propagates when another step
+needs that blocked step's response. Arbitrary exceptions are not reclassified as
+missing values. Ordinary 401/403 responses are not automatically session errors.
+Other selected projections still execute independently.
+
+After poll FAIL timeout, later steps may use actual fields from the last response,
+with non-final, timed-out provenance. This is not a ready/success response; its
+recording remains non-final and cannot satisfy contract's final-only requirement.
+Explicit stop still stops on FAIL timeout. No cleanup step is guaranteed to run
+after ERROR, SKIPPED, explicit stop, or an unavailable dependency.
+
+See the runnable [Documents continuation example](examples/documents/scenarios/continue_after_failure.yaml)
+for creation, checking the list, and deleting by the observed ID. It demonstrates
+collecting more checks, not hiding earlier failures or proving that later failures
+are causally independent.
+
 A no-check action can be `COMPLETED`; a backend UI-only step is
 `NOT_APPLICABLE`. These have empty checks and are not assertion successes.
 Projection `PASSED` requires actual checks without failure or degradation.
+Any FAILED/ERROR makes the domain/run FAILED. BLOCKED without a failure makes the
+domain DEGRADED, even if another check passed, and is visible in `degradations()`.
 `EMPTY` and `NOT_SELECTED` cannot satisfy the strict gate.
 
 ## UI evidence and mock sources
@@ -463,6 +538,9 @@ and secondary routes. Source and consumption remain visible. Mocks are not
 synthesized from `expect`; unmatched traffic cannot silently reach a live server.
 Mock responses never become live provider recordings. Recorder failures are
 errors; returned live recordings are verified, not trusted by list order alone.
+A locally BLOCKED step issues no permit and consumes no mock. It does not discard
+or reorder fixtures: the next real request still has to match the next unconsumed
+entry, otherwise the existing protocol error stops execution.
 
 Rendered anchors contain `identified` objects with nonempty string IDs and field
 maps, and `anonymous` objects with field maps and no ID. Values are JSON scalars.
@@ -477,6 +555,21 @@ later failure/error, and empty on resolution failure or blocked steps. It does
 not affect equality, checks, status, or gates. It is a
 **top-level-container-isolated diagnostic view**, not an immutable snapshot:
 nested objects may remain shared.
+
+Defaulted keyword-only metadata explains continuation without copying values:
+
+- `after_failures` lists earlier FAILED qualified step IDs for subsequent executed
+  steps, including assertion-free actions; it does not diagnose causal failures.
+- `blocked_by` lists unavailable source IDs or the step that stopped the projection.
+- `response_origin` is either absent or a `ResponseOrigin` containing `step_id`,
+  zero-based `attempt_index`, `is_final`, and `timed_out`.
+- `binding_sources` maps internal binding names to `BindingSource` objects holding
+  `response_field` and the source `ResponseOrigin`. A timed-out, non-final source
+  remains distinguishable from a successful polling attempt.
+
+These diagnostic fields do not affect result equality or introduce another
+execution gate. They contain source identities, not referenced values; actual
+values retain the sensitive `resolved_bindings` boundary below.
 
 Refract does not automatically print or serialize this field. Default step and
 nested run representations hide it; provider recordings and sensitive

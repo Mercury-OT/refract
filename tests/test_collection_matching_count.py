@@ -181,14 +181,14 @@ def test_backend_actual_prior_response_and_parameter_resolution(tmp_path, value)
 
 
 @pytest.mark.parametrize("source", [{}, {"id": None}, {"id": []}, {"id": {}}, {"id": float("inf")}])
-def test_missing_null_or_nonscalar_source_errors_before_action_atomically(tmp_path, source):
+def test_missing_null_or_nonscalar_source_blocks_before_action_atomically(tmp_path, source):
     scenario = load(tmp_path, [request("create", checks=[]), request(checks=[check({
         "valid": {"from_step": "create", "response_field": "valid"},
         "id": {"from_step": "create", "response_field": "id"}})]), request("blocked")])
     result, api = execute(scenario, {"create": {"valid": "secret-first", **source}})
-    assert [s.status for s in result.steps] == ["COMPLETED", "ERROR", "BLOCKED"]
+    assert [s.status for s in result.steps] == ["COMPLETED", "BLOCKED", "FAILED"]
     assert result.steps[1].resolved_bindings == {}
-    assert len(api.sent) == 1
+    assert len(api.sent) == 2
     assert "secret-first" not in result.steps[1].detail
 
 
@@ -210,14 +210,14 @@ def test_ui_and_e2e_reuse_response_content_semantics(tmp_path, mode, correct):
         requests=[[ports.RequestSpec("POST", "records")], [ports.RequestSpec("GET", "records")], []])
     result = run_ui(scenario, ui, mode=mode)
     assert [s.status for s in result.steps] == (["PASSED", "PASSED", "COMPLETED"] if correct
-                                               else ["PASSED", "FAILED", "BLOCKED"])
-    assert len(ui.permits) == (3 if correct else 2)
+                                               else ["PASSED", "FAILED", "COMPLETED"])
+    assert len(ui.permits) == 3
     assert list(result.steps[1].resolved_bindings.values()) == [7]
     assert ui.open_calls == ui.close_calls == 1
 
 
 @pytest.mark.parametrize("mode", ["live", "mock"])
-def test_ui_nonscalar_reference_errors_before_second_action(tmp_path, mode):
+def test_ui_nonscalar_reference_blocks_only_second_action(tmp_path, mode):
     steps = [
         {"id": "source", "do": "click", "target": "source", "expect": {
             "request": {"method": "POST", "path": ["items"]}, "response": [{"check": "success"}]}},
@@ -230,8 +230,8 @@ def test_ui_nonscalar_reference_errors_before_second_action(tmp_path, mode):
     ui = ScriptedUi(payloads=[response({"id": ["sensitive"]}), response({"records": []})],
                     requests=[[ports.RequestSpec("POST", "items")]] * 2)
     result = run_ui(scenario, ui, mode=mode)
-    assert [s.status for s in result.steps] == ["PASSED", "ERROR", "BLOCKED"]
-    assert len(ui.permits) == 1 and result.steps[1].resolved_bindings == {}
+    assert [s.status for s in result.steps] == ["PASSED", "BLOCKED", "COMPLETED"]
+    assert len(ui.permits) == 2 and result.steps[1].resolved_bindings == {}
 
 
 class Clock:
@@ -257,7 +257,7 @@ def test_polling_real_attempts_and_terminal_semantics(tmp_path, projection, poli
         result = run_ui(scenario, None, api=api,
             resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path, t.body), **timing)
     assert [s.status for s in result.steps] == (["PASSED", "PASSED"] if ready else
-        ["FAILED" if policy == "FAIL" else "SKIPPED", "BLOCKED"])
+        (["FAILED", "PASSED"] if policy == "FAIL" else ["SKIPPED", "BLOCKED"]))
     records = [r for r in result.provider_recordings if r.step_id == "list"]
     assert len(records) == 2 and records[0].is_final is False
     assert records[-1].is_final is ready

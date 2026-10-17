@@ -175,7 +175,8 @@ def test_field_absent_does_not_guarantee_a_later_binding_source(tmp_path):
                          recorder=FakeRecorder(), resolve_request=_resolver,
                          normalizer=FakeNormalizer())
     assert result.steps[0].status == PASSED
-    assert result.steps[1].status == "ERROR"
+    assert result.steps[1].status == "BLOCKED"
+    assert result.status == "DEGRADED"
     assert result.steps[1].resolved_bindings == {}
     assert len(api.sent) == 1
 

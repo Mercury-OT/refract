@@ -78,7 +78,7 @@ def concrete_plan(version, form, returned_id):
     # Fail closed if the public model adds a new field this comparison ignores.
     assert {f.name for f in fields(Step)} == {
         "id", "request", "expect", "bind", "poll", "action", "target",
-        "value", "duration", "request_asserted"}
+        "value", "duration", "request_asserted", "on_failure"}
     assert {f.name for f in fields(Expect)} == {"frontend", "response", "backend_state"}
     prior, result = {}, []
     for step in scenario.steps:
@@ -89,6 +89,7 @@ def concrete_plan(version, form, returned_id):
             "target": prepared.target, "value": prepared.value,
             "duration": prepared.duration, "poll": prepared.poll,
             "request_asserted": prepared.request_asserted,
+            "on_failure": prepared.on_failure,
             "request": {"method": request.method, "path": request.path, "body": request.body},
             "expect": {point: [{"check": a.check, **a.params}
                                for a in getattr(prepared.expect, point)]

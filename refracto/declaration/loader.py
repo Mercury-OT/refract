@@ -299,7 +299,9 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                 if len(steps) > 1000:
                     raise DeclarationError("composition exceeds 1000 expanded leaves")
                 continue
-        _mapping(item, {"id", "do", "target", "value", "duration", "expect", "poll"}, "step")
+        _mapping(item, {"id", "do", "target", "value", "duration", "expect", "poll", "on_failure"}, "step")
+        if "on_failure" in item and (type(item["on_failure"]) is not str or item["on_failure"] != "stop"):
+            raise DeclarationError("on_failure must be the literal string stop; omit it to continue")
         sid = _string(item.get("id"), "step.id")
         if sid in execution_ids:
             raise DeclarationError(f"step id {sid!r} is duplicated")
@@ -347,7 +349,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
             if policy not in vocab.POLL_ON_TIMEOUT:
                 raise DeclarationError("poll.on_timeout must be FAIL or SKIP")
             poll = PollPolicy(policy)
-        step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted)
+        step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted,
+                    on_failure=item.get("on_failure", "continue"))
         steps.append(step)
         execution_ids.add(sid)
         prior[sid] = step
