@@ -36,6 +36,8 @@ def expansion_view(scenario):
             result["body"] = value(template.body)
         if template.query is not None:
             result["query"] = value(template.query)
+        if template.headers is not None:
+            result["headers"] = value(template.headers)
         return result
 
     steps = []

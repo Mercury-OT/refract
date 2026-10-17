@@ -95,7 +95,9 @@ class DomainResult:
     @property
     def status(self):
         sts = [s.status for s in self.steps]
-        if ERROR in sts or FAILED in sts:
+        # A polling timeout may retain SKIPPED control flow alongside a real
+        # request failure. Tolerating the timeout cannot erase that failure.
+        if ERROR in sts or FAILED in sts or any(not check.ok for check in self.checks):
             return FAILED
         if SKIPPED in sts or BLOCKED in sts or any(s.skipped for s in self.steps) or self.skipped:
             return DEGRADED

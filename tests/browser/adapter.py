@@ -43,6 +43,8 @@ class SyntheticUi(ports.UiDriver, ports.StepwiseUiDriver):
         return self.context
 
     def perform_step(self, scenario, step, context, permit):
+        if step.request is not None:
+            self.support.validate_request_headers(context, step.request.headers)
         self.actions.append(permit.action)
         if permit.action == "open":
             outcome = self.support.perform(context, permit, url=self.base_url + "/")

@@ -6,12 +6,14 @@
   satisfied by the provider.
 """
 from dataclasses import dataclass, field
+import copy
 from typing import Literal
 
 from refracto.declaration import values
 from refracto.declaration import collections
 from refracto.declaration import http_status
 from refracto.normalization import normalize_response
+from refracto import headers as header_ops
 
 StatusExpectation = Literal["requires_success", "requires_failure", "dont_care"]
 
@@ -34,6 +36,8 @@ class EndpointShape:
         default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
     allowed_http_statuses: frozenset[int] | None = field(default=None, kw_only=True)
     http_status: int | None = field(default=None, kw_only=True)
+    header_constraints: list = field(default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
+    header_items: list | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
@@ -53,6 +57,7 @@ class ContractMismatch:
         kw_only=True,
     )
     collection_errors: list[str] = field(default_factory=list, kw_only=True)
+    header_errors: list[str] = field(default_factory=list, kw_only=True)
 
 
 def consumer_contract(scenario) -> Contract:
@@ -108,6 +113,7 @@ def consumer_contract(scenario) -> Contract:
             ],
             allowed_http_statuses=next((http_status.allowed(a) for a in step.expect.response
                                        if a.check in http_status.CHECKS), None),
+            header_constraints=[copy.deepcopy(a) for a in step.expect.response if a.check in header_ops.CHECKS],
         )
     return Contract(entries=entries)
 
@@ -143,9 +149,10 @@ def provider_contract(recordings, normalizer, *, required_status_keys=frozenset(
         if required_users is not None and key in entries:
             raise ValueError("multiple final provider recordings have the same declared identity")
         observed_status = getattr(r, "status", None)
+        observed_headers = copy.deepcopy(r.header_items)
         observed_status = observed_status if http_status.valid(observed_status) else None
         if observed_status is None and key in required_status_keys:
-            entries[key] = EndpointShape(response_fields=frozenset())
+            entries[key] = EndpointShape(response_fields=frozenset(), header_items=observed_headers)
             continue
         norm = normalize_response(normalizer, r)
         entries[key] = EndpointShape(
@@ -153,6 +160,7 @@ def provider_contract(recordings, normalizer, *, required_status_keys=frozenset(
             response_values=dict(norm.fields),
             succeeded=norm.succeeded,
             http_status=observed_status,
+            header_items=observed_headers,
         )
     return Contract(entries=entries)
 
@@ -188,6 +196,8 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
     for key, want in consumer.entries.items():
         have = provider.entries.get(key)
         if have is None:
+            if want.header_constraints:
+                raise ValueError("response header evidence is unavailable for contract checking")
             out.append(ContractMismatch(endpoint=key, missing_fields=want.response_fields,
                                         note="endpoint not observed in provider recordings"))
             continue
@@ -196,7 +206,19 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
         wrong_values = {}
         value_errors = {}
         collection_errors = []
+        header_errors = []
         step_id = key[0]
+        for constraint in want.header_constraints:
+            expected = None
+            if constraint.check == "header_equals":
+                expected, error = values.resolve(constraint.params["value"],
+                    bound_values=bound_values_by_step.get(step_id), inputs=inputs)
+                if error is not None:
+                    raise ValueError("response header reference is unavailable for contract checking")
+            ok, detail = header_ops.evaluate(constraint.check, constraint.params["header"],
+                                             expected, have.header_items)
+            if not ok:
+                header_errors.append(detail)
         for constraint in want.collection_constraints:
             ok, detail = collections.evaluate(
                 have.response_values, constraint["field"], constraint["matching"],
@@ -229,7 +251,7 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
                 not http_status.valid(have.http_status) or have.http_status not in want.allowed_http_statuses):
             status_note = "; ".join(filter(None, [status_note,
                 http_status.mismatch(want.allowed_http_statuses, have.http_status)]))
-        if missing or unexpected or status_note or wrong_values or value_errors or collection_errors:
+        if missing or unexpected or status_note or wrong_values or value_errors or collection_errors or header_errors:
             out.append(ContractMismatch(
                 endpoint=key,
                 missing_fields=missing,
@@ -238,5 +260,6 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
                 value_errors=value_errors,
                 unexpected_fields=unexpected,
                 collection_errors=collection_errors,
+                header_errors=header_errors,
             ))
     return out

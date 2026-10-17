@@ -10,4 +10,5 @@ class DemoResolver:
 
     def resolve_request(self, scenario, step, template):
         return ports.RequestSpec(template.method, template.path, copy.deepcopy(template.body),
-                                 query=wire_query(template.query or {}))
+                                 query=wire_query(template.query or {}),
+                                 headers=copy.deepcopy(template.headers or {}))

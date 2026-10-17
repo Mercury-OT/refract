@@ -7,6 +7,7 @@ product-specific gateway logic.
 import httpx
 
 from refracto import ports
+from refracto.headers import business_headers
 from refracto.query import request_path
 from adapters.demo.config import DemoConfig
 
@@ -25,6 +26,10 @@ class DemoApiDriver(ports.ApiDriver):
         # trace attribution, including over mixed-case credential header names.
         headers = {name: value for name, value in dict(getattr(session, "headers", {})).items()
                    if name.lower() != "traceparent"} if session is not None else {}
+        declared = business_headers(spec.headers)
+        if set(declared) & {name.lower() for name in headers}:
+            raise ValueError("business header collides with session credential header")
+        headers.update(declared)
         if spec.traceparent:
             headers["traceparent"] = spec.traceparent
         with httpx.Client(base_url=self._config.base_url, timeout=30.0) as client:
@@ -41,4 +46,8 @@ class DemoApiDriver(ports.ApiDriver):
             text=r.text,
             trace_id=None,
             request=spec,
+            request_header_items=[(name.decode("ascii"), value.decode("latin-1"))
+                                  for name, value in r.request.headers.raw],
+            header_items=[(name.decode("ascii"), value.decode("latin-1"))
+                          for name, value in r.headers.raw],
         )

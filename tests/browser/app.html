@@ -18,6 +18,10 @@
 <button id="query-xhr">Query XHR</button>
 <button id="query-multi">Two query requests</button>
 <button id="query-timer">Unassigned query request</button>
+<button id="headers">Header fetch</button>
+<button id="headers-xhr">Header XHR</button>
+<button id="headers-multi">Multiple header requests</button>
+<button id="headers-timer">Unassigned header request</button>
 <button id="promise">Registered Promise</button>
 <button id="property">Property handler</button>
 <button id="inline" onclick="send('/api/inline')">Inline handler</button>
@@ -101,6 +105,26 @@ on('query-xhr', () => {
   xhr.addEventListener('load', () => show(JSON.parse(xhr.responseText)));
   xhr.send(JSON.stringify({value: value()}));
 });
+// Independent page inputs let tests observe real headers without consulting
+// Scenario expectations or asking the browser adapter to inject them.
+lab.headerRequests = [{path: '/api/headers', headers: {'X-Operation-Key': 'page-independent-key'}}];
+const sendHeaders = (request, xhr = false) => {
+  const headers = {'Content-Type': 'application/json', ...request.headers};
+  if (xhr) {
+    const transport = new XMLHttpRequest();
+    transport.open('POST', request.path, true);
+    for (const [name, supplied] of Object.entries(headers)) transport.setRequestHeader(name, supplied);
+    transport.addEventListener('load', () => show(JSON.parse(transport.responseText)));
+    transport.send(JSON.stringify({value: value()}));
+    return;
+  }
+  return fetch(request.path, {method: 'POST', headers, body: JSON.stringify({value: value()})})
+    .then(response => response.json()).then(show);
+};
+on('headers', () => sendHeaders(lab.headerRequests[0]));
+on('headers-xhr', () => sendHeaders(lab.headerRequests[0], true));
+on('headers-multi', () => { for (const request of lab.headerRequests) sendHeaders(request); });
+on('headers-timer', () => setTimeout(() => sendHeaders(lab.headerRequests[0]), 25));
 on('promise', () => Promise.resolve().then(() => send('/api/promise')));
 const propertyHandler = () => send('/api/property');
 document.querySelector('#property').onclick = propertyHandler;

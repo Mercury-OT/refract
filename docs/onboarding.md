@@ -71,8 +71,8 @@ unchanged. See [continuation and stopping](../SCENARIO.md#continuing-and-stoppin
 
 The example resolver translates the declaration's `records` path to the target's
 `/items` route. Keep this boundary explicit in a real integration: declarations
-describe logical requests, while `resolve_request` owns target routing, headers,
-and other transport details. Per-request filtering and pagination belong in an
+describe logical requests, while `resolve_request` owns target routing and
+mechanical transport mapping. Per-request filtering and pagination belong in an
 explicit `query` mapping under `do.request`; resolvers preserve those values
 without synthesizing business defaults from global parameters. `RequestSpec.query`
 holds decoded wire strings, and the driver encodes them at the transport boundary.
@@ -82,6 +82,18 @@ See [query rules](../SCENARIO.md#request-query-parameters) and the complete
 [filter and next-page example](../examples/documents/scenarios/filter_and_next_page.yaml).
 That example follows an observed cursor in a separate declared request; it needs
 a fresh isolated Documents target, not hidden adapter preparation.
+
+Business request headers belong in an optional `headers` mapping, not implicit
+resolver inputs. Drivers preserve those values and reject collisions with
+session-owned credentials. UI header requirements check actual browser traffic
+without supplying the expected values to the page. Response `header_equals` and
+`header_absent` use complete raw header observations, not normalized fields or
+an empty dictionary standing in for unavailable evidence. Names are
+case-insensitive; values are exact strings. See the
+[header contract](../SCENARIO.md#business-request-headers) and the complete
+[idempotent retry/read declaration](../examples/minimal/idempotent_create.yaml).
+The latter is a separate header-capable example; the introductory minimal
+driver below is not silently upgraded into a complete header recorder.
 
 `ResponseNormalizer` owns response-shape differences. A target may return a
 product envelope, bare JSON, or an empty 204 response; the adapter must convert

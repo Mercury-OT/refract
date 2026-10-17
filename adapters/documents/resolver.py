@@ -1,5 +1,7 @@
 """Map logical document requests to target routes without inventing values."""
 
+from copy import deepcopy
+
 from refracto import ports
 from refracto.query import wire_query
 
@@ -30,4 +32,5 @@ def resolve_request(scenario, step, template) -> ports.RequestSpec:
         )
 
     return ports.RequestSpec(method=method, path=target_path, body=template.body,
-                             query=wire_query(template.query or {}))
+                             query=wire_query(template.query or {}),
+                             headers=deepcopy(template.headers or {}))

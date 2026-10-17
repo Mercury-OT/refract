@@ -1,6 +1,7 @@
 """An offline REST target with server ids, envelopes, filtering, and rejection."""
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
@@ -22,6 +23,7 @@ class DocumentRestApp:
         self._documents: dict[str, dict] = {}
         self._owners: dict[str, str] = {}
         self._next_id = 1
+        self._idempotency: dict[tuple[str, str], tuple[dict, RestResponse]] = {}
         self.requests: list[tuple[str, str, dict | None, dict[str, str]]] = []
         self._accounts = {
             name: {"user_id": f"account-{name}",
@@ -61,7 +63,8 @@ class DocumentRestApp:
         headers = dict(headers or {})
         self.requests.append((method, path, body, headers))
 
-        session = self._sessions.get(headers.get("x-session-key", ""))
+        header_values = {name.lower(): value for name, value in headers.items()}
+        session = self._sessions.get(header_values.get("x-session-key", ""))
         if session is None:
             return self._rejection(401, "session_required", "a session is required")
         account = self._accounts[session["user"]]
@@ -72,7 +75,18 @@ class DocumentRestApp:
         if method == "GET" and route == "/v3/account/profile":
             return self._accepted("account", {name: account[name] for name in ("user_id", "role")})
         if method == "POST" and route == "/v3/documents":
-            return self._create(body, principal)
+            key = header_values.get("idempotency-key")
+            identity = (principal, key) if key is not None else None
+            previous = self._idempotency.get(identity) if identity is not None else None
+            if previous is not None:
+                previous_body, previous_response = previous
+                if body != previous_body:
+                    return self._rejection(409, "idempotency_conflict", "the key was already used for another request")
+                return RestResponse(200, deepcopy(previous_response.body), dict(previous_response.headers))
+            response = self._create(body, principal)
+            if identity is not None and response.status == 201:
+                self._idempotency[identity] = (deepcopy(body), deepcopy(response))
+            return response
         if method == "GET" and route == "/v3/documents":
             return self._list(parse_qs(parsed.query), principal)
 
@@ -132,11 +146,12 @@ class DocumentRestApp:
                 "receipt": {"state": "accepted", "operation": "create"},
                 "resource": {"document": document},
             },
-            {"content-type": "application/json"},
+            {"content-type": "application/json", "cache-control": "no-store"},
         )
 
     def _list(self, query: dict[str, list[str]], principal: str) -> RestResponse:
         category = query.get("category", [""])[0]
+        title = query.get("title", [""])[0]
         try:
             cursor = int(query.get("cursor", ["0"])[0])
             limit = int(query.get("limit", ["10"])[0])
@@ -150,6 +165,7 @@ class DocumentRestApp:
             for document in self._documents.values()
             if self._owners[document["identifier"]] == principal
             and (not category or document["properties"]["category"] == category)
+            and (not title or document["properties"]["title"] == title)
         ]
         page = matching[cursor:cursor + limit]
         next_cursor = cursor + limit if cursor + limit < len(matching) else None

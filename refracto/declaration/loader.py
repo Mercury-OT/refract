@@ -9,6 +9,7 @@ from refracto.declaration import vocabulary as vocab
 from refracto.declaration import http_status
 from refracto.declaration.collections import is_scalar
 from refracto.query import wire_query
+from refracto import headers as header_ops
 from refracto.declaration.model import (
     Scenario, Grid, Input, Assertion, Expect, RequestTemplate, Binding,
     PollPolicy, Step, ValueRef, ResultSource,
@@ -125,8 +126,21 @@ def _data(value, parameters, prior, bindings, where):
     return value
 
 
+def _header_value(declared, parameters, prior, bindings, where):
+    value = _reference(declared, parameters, prior, bindings, where)
+    if value is None:
+        value = declared
+    known = parameters[value.key] if isinstance(value, ValueRef) and value.source == "input" else value
+    if not isinstance(known, ValueRef):
+        try:
+            header_ops.validate_value(known)
+        except ValueError as exc:
+            raise DeclarationError(str(exc)) from None
+    return value
+
+
 def _request(raw, parameters, prior, bindings, where):
-    _mapping(raw, {"method", "path", "body", "query"}, where)
+    _mapping(raw, {"method", "path", "body", "query", "headers"}, where)
     method = _string(raw.get("method"), f"{where}.method").upper()
     if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
         raise DeclarationError(f"{where}: unsupported HTTP method")
@@ -162,8 +176,22 @@ def _request(raw, parameters, prior, bindings, where):
                 except ValueError as exc:
                     raise DeclarationError(str(exc)) from None
             query[key] = value
+    headers = None
+    if "headers" in raw:
+        if type(raw["headers"]) is not dict:
+            raise DeclarationError("request headers must be a mapping")
+        headers, names = {}, set()
+        for name, declared in raw["headers"].items():
+            try:
+                folded = header_ops.validate_name(name, business=True)
+            except ValueError as exc:
+                raise DeclarationError(str(exc)) from None
+            if folded in names:
+                raise DeclarationError("duplicate case-insensitive header name")
+            names.add(folded)
+            headers[name] = _header_value(declared, parameters, prior, bindings, "request header value")
     return RequestTemplate(method, template_path, body, path_segments=segments,
-                           declared_path=template_path, query=query)
+                           declared_path=template_path, query=query, headers=headers)
 
 
 def _assertions(point, raw, parameters, prior, bindings):
@@ -182,6 +210,14 @@ def _assertions(point, raw, parameters, prior, bindings):
         if missing:
             raise DeclarationError(f"{point}.{check}: missing required param {sorted(missing)}")
         params = {k: v for k, v in item.items() if k != "check"}
+        if check in header_ops.CHECKS:
+            try:
+                header_ops.validate_name(params["header"])
+            except ValueError as exc:
+                raise DeclarationError(str(exc)) from None
+            if check == "header_equals":
+                params["value"] = _header_value(params["value"], parameters, prior, bindings,
+                                                "response header value")
         if check == "status_equals" and not http_status.valid(params["value"]):
             raise DeclarationError("status_equals.value must be a literal integer from 100 through 599")
         if check == "status_in":
@@ -215,6 +251,8 @@ def _assertions(point, raw, parameters, prior, bindings):
                 resolved[key] = value
             params["matching"] = resolved
         for key in set(params) & {"value", "id"}:
+            if check == "header_equals":
+                continue
             value = _data(params[key], parameters, prior, bindings, f"{point}.{check}.{key}")
             if not isinstance(value, ValueRef) and isinstance(value, (list, dict)):
                 raise DeclarationError(f"{point}.{check}.{key} must be scalar or a reference")
@@ -235,6 +273,9 @@ def _assertions(point, raw, parameters, prior, bindings):
 
 def _response_constraints(assertions):
     checks = {a.check for a in assertions}
+    headers = [a.params["header"].lower() for a in assertions if a.check in header_ops.CHECKS]
+    if len(headers) != len(set(headers)):
+        raise DeclarationError("duplicate or contradictory response header constraint")
     if sum(a.check in http_status.CHECKS for a in assertions) > 1:
         raise DeclarationError("at most one HTTP status constraint is allowed per step")
     if {"success", "failure"} <= checks:

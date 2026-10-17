@@ -12,6 +12,8 @@ import secrets
 import time
 
 from refracto import asyncwait, ports
+from refracto import headers as header_ops
+from refracto.projection.recording import _evidence_equal
 from refracto.query import wire_query, require_wire_query, request_path
 from refracto.declaration import binding, values
 from refracto.projection import backend as backend_proj
@@ -47,15 +49,15 @@ def _require_equal(name, actual, expected):
 
 def _request_values_equal(actual, expected):
     return type(actual) is ports.RequestSpec and type(expected) is ports.RequestSpec and all(
-        _strict_equal(getattr(actual, name), getattr(expected, name))
-        for name in ("method", "path", "body", "traceparent", "query")
+        _evidence_equal(getattr(actual, item.name), getattr(expected, item.name))
+        for item in dataclasses.fields(ports.RequestSpec)
     )
 
 
 def _recording_values_equal(actual, expected):
     return type(actual) is ports.RecordedResponse and type(expected) is ports.RecordedResponse and all(
         _request_values_equal(actual.request, expected.request) if f.name == "request"
-        else _strict_equal(getattr(actual, f.name), getattr(expected, f.name))
+        else _evidence_equal(getattr(actual, f.name), getattr(expected, f.name))
         for f in dataclasses.fields(ports.RecordedResponse)
     )
 
@@ -96,6 +98,9 @@ def _validate_mock_plan(plan):
         request_path(item.path, {})
         if item.query is not None:
             require_wire_query(item.query)
+        for mapping in (item.request_headers, item.response_headers):
+            if mapping is not None:
+                header_ops.header_map(mapping)
 
 
 def _validate_rendered(rendered):
@@ -140,6 +145,24 @@ def _validate_diagnostic_request(request, accepted_traces):
     if len(parts) != 4 or not all(parts):
         raise ValueError("invalid diagnostic traceparent")
     _validate_diagnostic_identity(parts[1], accepted_traces, "trace")
+
+
+def _has_returned_headers(result):
+    """Recognize sensitive returned blocks before validating their evidence.
+
+    Later lifecycle callbacks may retain even rejected observations. Inspect
+    only the known port containers; ordinary validation still owns their shape.
+    """
+    if type(result) is not ports.UiActionResult or type(result.evidence) is not ports.UiActionEvidence:
+        return False
+    evidence = result.evidence
+    responses = ([item.response for item in evidence.traffic if type(item) is ports.UiTraffic]
+                 if type(evidence.traffic) is list else [])
+    for items in (evidence.diagnostic_recorded, evidence.mock_recordings):
+        if type(items) is list:
+            responses.extend(items)
+    return any(header_ops.recorded(response) for response in responses
+               if type(response) is ports.RecordedResponse)
 
 
 def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, seen_traces,
@@ -243,6 +266,12 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
                 _require_equal(name, actual, expected)
             if fixture.query is not None:
                 _require_equal("fixture query", response.request.query, fixture.query)
+            for expected, observed in ((fixture.request_headers, response.request_header_items),
+                                       (fixture.response_headers, response.header_items)):
+                if expected is not None:
+                    header_ops.require_header_items(observed)
+                    if not header_ops.match_headers(expected, observed):
+                        raise ValueError("mock fixture header evidence differs from supplied fixture")
             local_consumption.append(dict(fixture_id=fixture.fixture_id, source=fixture.source,
                                           step_id=permit.step_id, request_id=response.request_id))
     elif evidence.mock_recordings:
@@ -258,8 +287,9 @@ def _record_verified_primary(recorder, response, expected_recordings):
     if recorder is None:
         raise ValueError("e2e live execution requires a Recorder")
     expected = copy.deepcopy(response)
-    recorder.record(copy.deepcopy(expected))
-    observed = recorder.responses()
+    sensitive = header_ops.recorded(expected) or any(header_ops.recorded(item) for item in expected_recordings)
+    header_ops.call_port("Recorder", recorder.record, copy.deepcopy(expected), sensitive=sensitive)
+    observed = header_ops.call_port("Recorder", recorder.responses, sensitive=sensitive)
     wanted = [*expected_recordings, expected]
     if type(observed) is not list or len(observed) != len(wanted):
         raise ValueError("Recorder response count mismatch")
@@ -285,7 +315,8 @@ class _VerifiedRecorder:
         self.expected[:] = verified
 
     def responses(self):
-        observed = self.recorder.responses()
+        observed = header_ops.call_port("Recorder", self.recorder.responses,
+            sensitive=any(header_ops.recorded(item) for item in self.expected))
         if type(observed) is not list or len(observed) != len(self.expected):
             raise ValueError("Recorder response count mismatch")
         if not all(_recording_values_equal(a, b) for a, b in zip(observed, self.expected)):
@@ -389,6 +420,9 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     secret, execution_id = secrets.token_bytes(32), secrets.token_hex(16)
     accepted_tokens, seen_requests, seen_traces = set(), set(), set()
     retained_plan = copy.deepcopy(mock_plan) if mode == "mock" else None
+    sensitive_headers = (any(header_ops.declared(item) for item in scenario.steps)
+        or any(item.request_headers is not None or item.response_headers is not None
+               for item in (retained_plan or [])))
     consumed, results, recordings, prior = [], [], [], {}
     flow = FlowState()
     contexts = {}
@@ -398,16 +432,17 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         # Remove before calling the adapter so a failed close is never retried.
         existing = contexts.pop(user, None)
         if existing is not None:
-            ui.close_stepwise(existing[0])
+            header_ops.call_port("UI close", ui.close_stepwise, existing[0], sensitive=sensitive_headers)
 
     def context_for(lease):
         existing = contexts.get(lease.user)
         if existing is None:
             identity = secrets.token_hex(16)
-            context = ui.open_stepwise(
+            context = header_ops.call_port("UI open", ui.open_stepwise,
                 scenario, lease.credentials, mode=mode,
                 mock_plan=copy.deepcopy(retained_plan), mock_queue=mock_queue,
-                user=lease.user, session_generation=lease.generation, context_id=identity)
+                user=lease.user, session_generation=lease.generation, context_id=identity,
+                sensitive=sensitive_headers)
             existing = contexts[lease.user] = (context, lease.generation, identity)
         if existing[1] != lease.generation:
             raise ValueError("UI context belongs to an obsolete session")
@@ -451,12 +486,15 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                     evidence = None
                     if step.action == "wait":
                         (sleep or time.sleep)(step.duration / 1000)
-                        rendered = ui.snapshot(context_for(lease)[0]) if step.expect.frontend else {}
+                        rendered = header_ops.call_port("UI snapshot", ui.snapshot, context_for(lease)[0],
+                            sensitive=sensitive_headers) if step.expect.frontend else {}
                         _validate_rendered(rendered)
                     else:
                         context, context_id = context_for(lease)
                         permit = _issue_permit(secret, execution_id, step, bound, mode, lease, context_id)
-                        outcome = ui.perform_step(scenario, step, context, permit)
+                        outcome = header_ops.call_port("UI action", ui.perform_step,
+                            scenario, step, context, permit, sensitive=sensitive_headers)
+                        sensitive_headers = sensitive_headers or _has_returned_headers(outcome)
                         evidence = _validate_evidence(outcome, permit, secret, accepted_tokens,
                                                       seen_requests, seen_traces, retained_plan, consumed)
                         if evidence is None:
@@ -477,21 +515,27 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         if len(matches) > 1 and step.request.query is not None:
                             expected_query = wire_query(step.request.query)
                             matches = [t for t in matches if t.request.query == expected_query]
+                        if len(matches) > 1 and step.request.headers:
+                            matches = [t for t in matches if header_ops.match_headers(
+                                step.request.headers, t.response.request_header_items)]
                         if len(matches) != 1:
                             raise ValueError("declared UI request missing or ambiguous among associated traffic")
                         selected = matches[0]
-                        checks.append(eval_request_shape(step.request, [selected.request]))
+                        checks.append(eval_request_shape(step.request, [selected.request],
+                            request_header_items=selected.response.request_header_items))
                         protected = copy.deepcopy(selected.response)
                         protected.template_path = step.request.declared_path or declared.request.path
                         protected.bound_logical_path = step.request.path
                         observed_status = backend_proj._capture_status(step, protected)
+                        observed_headers = copy.deepcopy(protected.header_items)
                         norm = backend_proj.normalize_response(normalizer, protected)
                         trace_id = protected.trace_id
                         if mode == "live":
                             recordings = _record_verified_primary(recorder, protected, recordings)
                         checks.extend(backend_proj._eval_response(a, norm, bound_values=bound,
                                                                   inputs=scenario.inputs,
-                                                                  observed_status=observed_status)
+                                                                  observed_status=observed_status,
+                                                                  observed_headers=observed_headers)
                                       for a in step.expect.response)
                     if mode == "live":
                         extra, skipped = _assert_live_backend_state_for(

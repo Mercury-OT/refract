@@ -55,12 +55,15 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> D
     except Exception as exc:
         return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))])
     bound_values = store.provider_binding_values(scenario, provider)
-    mismatches = store.diff(
-        consumer,
-        provider,
-        inputs=scenario.inputs,
-        bound_values_by_step=bound_values,
-    )
+    try:
+        mismatches = store.diff(
+            consumer,
+            provider,
+            inputs=scenario.inputs,
+            bound_values_by_step=bound_values,
+        )
+    except Exception as exc:
+        return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))])
 
     if not mismatches:
         checks = [CheckResult("contract", "diff", True, "no drift", step="contract")]
@@ -82,6 +85,7 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> D
             for field_name, error in mismatch.value_errors.items():
                 details.append(f"field={field_name!r} {error}")
             details.extend(mismatch.collection_errors)
+            details.extend(mismatch.header_errors)
             checks.append(CheckResult(
                 "contract",
                 "diff",

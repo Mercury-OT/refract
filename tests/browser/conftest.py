@@ -18,6 +18,7 @@ class HttpPeer:
     release: threading.Event = field(default_factory=threading.Event)
     redirect_to: str | None = None
     base_url: str = ""
+    response_header_items: dict = field(default_factory=dict)
 
     @property
     def api_requests(self):
@@ -59,6 +60,7 @@ def start_peer():
                 body = raw.decode("utf-8", errors="replace")
             peer.requests.append(dict(path=path, url=self.path, method=self.command,
                                       headers=dict(self.headers), body=body,
+                                      header_items=list(self.headers.raw_items()),
                                       traceparents=self.headers.get_all("traceparent", [])))
             if path == "/favicon.ico":
                 self.send_response(204)
@@ -91,6 +93,8 @@ def start_peer():
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("X-Synthetic-Reply", "actual-http-peer")
+            for name, value in peer.response_header_items.get(path, []):
+                self.send_header(name, value)
             self.end_headers()
             try:
                 if path in {"/api/delayed", "/api/stale", "/api/hang"}:
