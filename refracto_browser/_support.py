@@ -76,6 +76,7 @@ class _Context:
     errors: list = field(default_factory=list)
     credential_header_names: frozenset = field(default_factory=frozenset)
     pending_mock_responses: dict = field(default_factory=dict)
+    mock_response_events: dict = field(default_factory=dict)
     traffic_cursor: int = 0
     diagnostic_cursor: int = 0
     mock_cursor: int = 0
@@ -182,18 +183,31 @@ class BrowserSupport:
             raise ValueError("business request headers collide with browser credentials")
 
     def _capture_mock_headers(self, context, response):
-        recording = context.pending_mock_responses.pop(response.request, None)
-        if recording is None:
-            return
-        try:
+        # Event callbacks do not yield while reading headers or remove the
+        # pending association. The action collector owns that finite work.
+        if response.request in context.pending_mock_responses:
+            context.mock_response_events[response.request] = response
+
+    def _collect_mock_headers(self, context, recordings):
+        requests = {id(recording): request for request, recording
+                    in context.pending_mock_responses.items()}
+        for recording in recordings:
+            if recording.header_items is not None:
+                continue
+            request = requests[id(recording)]
+            while request not in context.mock_response_events:
+                self._check(context)
+                context.page.wait_for_timeout(min(10, self._remaining(context)))
+            response = context.mock_response_events[request]
             # Observe the fulfilled browser response, including headers added by
             # Playwright (for example Content-Length), before claiming completeness.
             items = [(item["name"], item["value"]) for item in response.headers_array()]
             require_header_items(items)
             recording.header_items = items
             recording.headers = {name.lower(): value for name, value in items}
-        except Exception:
-            context.errors.append("browser response header recording failed")
+            context.pending_mock_responses.pop(request)
+            context.mock_response_events.pop(request)
+            self._remaining(context)
 
     def _remaining(self, context):
         remaining = self._timeout_ms if context.deadline is None else (context.deadline - time.monotonic()) * 1000
@@ -290,12 +304,19 @@ class BrowserSupport:
             if permit.action == "open":
                 self._settle(context, permit.action_id)
             self._check(context)
-            if any(recording.header_items is None for recording in context.mock_recordings[mock_start:]):
-                raise RuntimeError("browser mock response headers were not observed")
             rendered = self.snapshot(context)
+            # Snapshot and header reads pump browser events. Freeze a finite
+            # receipt boundary after the snapshot, then complete only its mock
+            # blocks; later arrivals remain queued for the next action.
+            traffic_end = len(context.traffic)
+            diagnostic_end = len(context.diagnostics)
+            mock_end = len(context.mock_recordings)
+            mock_recordings = list(context.mock_recordings[mock_start:mock_end])
+            self._collect_mock_headers(context, mock_recordings)
+            self._check(context)
             self._remaining(context)
-            current, diagnostics = [], list(context.diagnostics[diagnostic_start:])
-            for traffic in context.traffic[start:]:
+            current, diagnostics = [], list(context.diagnostics[diagnostic_start:diagnostic_end])
+            for traffic in context.traffic[start:traffic_end]:
                 if traffic.action_id == permit.action_id:
                     current.append(traffic)
                 else:
@@ -307,11 +328,11 @@ class BrowserSupport:
                 traffic=current, rendered=rendered,
                 diagnostic_outgoing=[recording.request for recording in diagnostics],
                 diagnostic_recorded=diagnostics,
-                mock_recordings=list(context.mock_recordings[mock_start:]),
+                mock_recordings=mock_recordings,
             ))
-            context.traffic_cursor = len(context.traffic)
-            context.diagnostic_cursor = len(context.diagnostics)
-            context.mock_cursor = len(context.mock_recordings)
+            context.traffic_cursor = traffic_end
+            context.diagnostic_cursor = diagnostic_end
+            context.mock_cursor = mock_end
             return result
         except Exception:
             self._fail(context, "browser action or evidence collection failed")

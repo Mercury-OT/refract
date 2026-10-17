@@ -49,10 +49,12 @@ and browser observations, and selected response headers against complete raw
 pair lists. It preserves duplicates and distinguishes unknown evidence from
 absence. The approved retry/read example and a separate Documents consumer catch
 duplicate creation even when a defective retry echoes the original ID. Final
-regression passed 2405 tests with real Chromium, no skips and one existing warning;
+regression passed 2408 tests with real Chromium, no skips and one existing warning;
 fresh dev-only regression passed 2073 with one optional collection skip. Two
 independent findings concerning polling aggregation and observed-header error
-privacy were fixed and retested. This is synthetic capability evidence, not
+privacy were fixed and retested. A subsequent CI failure exposed delayed mock
+response-header collection; deterministic regression, independent audit and full
+local reruns passed after correction. This is synthetic capability evidence, not
 production adoption or universal packet-level capture. The acceptance record
 does not substitute for the subsequent PR, merge and hosted CI checks.
 
