@@ -1,0 +1,78 @@
+schema_version: 1
+scenario: documents.owner_access
+
+# Logical users bind to distinct accounts; each step selects its user.
+users: [creator, peer]
+
+parameters:
+  document_title: Permission review document
+
+steps:
+  # Create a real document and retain its observed identifier.
+  - id: create
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: document_title}
+          category: guide
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+        - check: field_equals
+          field: title
+          value: {from_parameter: document_title}
+
+  # Positive control: the creator can read this same document.
+  - id: creator_reads
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path:
+          - documents
+          - {from_step: create, response_field: document_id}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: document_id
+          value: {from_step: create, response_field: document_id}
+
+  # This request confirms the peer's session now, not its future validity.
+  - id: peer_profile
+    user: peer
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [account, profile]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+
+  # Reuse that peer session. A 403 alone does not establish the reason.
+  - id: peer_reads
+    user: peer
+    do:
+      request:
+        method: GET
+        path:
+          - documents
+          - {from_step: create, response_field: document_id}
+    expect:
+      response:
+        - {check: status_equals, value: 403}
+        - {check: failure}
+        # This is the target's stated reason, not independent internal evidence.
+        - check: field_equals
+          field: error_code
+          value: owner_required

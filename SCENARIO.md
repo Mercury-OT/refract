@@ -84,6 +84,9 @@ and [old versus new sessions after permission revocation](examples/documents/sce
 Both reuse the same [single-user creation child](examples/documents/scenarios/shared/create_document.yaml).
 Their target really enforces account ownership and the selected permission policy;
 their 403 checks still do not prove an arbitrary product's rejection mechanism.
+For a stronger response-level example, see [checking the stated rejection reason](docs/rejection-evidence.md):
+it distinguishes an ownership code from login, input, missing, or conflicting
+reasons without claiming independent internal-decision evidence.
 
 ## One action per step
 
