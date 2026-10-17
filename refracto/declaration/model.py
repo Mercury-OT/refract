@@ -92,6 +92,7 @@ class Scenario:
     results: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     included_results: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     users: list[str] | None = field(default=None, kw_only=True)
+    include_user_mappings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
 
     def __post_init__(self):
         # Bounded Python-constructor migration only. The YAML loader never
@@ -99,10 +100,15 @@ class Scenario:
         if self.users is None:
             self.users = [self.actor] if self.actor else []
 
-    def effective_user(self, step):
+    def selected_user(self, step):
+        """The declaration's participant, before anonymous runtime translation."""
         if step.user is not None:
             return step.user
         return self.users[0] if type(self.users) is list and len(self.users) == 1 else None
+
+    def effective_user(self, step):
+        selected = self.selected_user(step)
+        return None if type(selected) is str and selected == "anonymous" else selected
 
     @property
     def parameters(self):

@@ -30,8 +30,10 @@ A scenario declares ordered actions and what should be true after them. Logical 
 
 Declare logical accounts under `users`, select the acting `user` when there is
 more than one, and use `session: new` when the same account must log in again.
-One-level inclusion can bind a reusable single-user child's local user to the
-selected parent user. See the [user/session contract](SCENARIO.md#users-and-current-sessions)
+Declare `anonymous` alongside named users to exercise unauthenticated actions
+without inheriting their sessions. One-level inclusion uses `with_users` to map
+a reusable child's participants explicitly to the parent's participants.
+See the [user/session contract](SCENARIO.md#users-and-current-sessions)
 for account, context, evidence, and reuse limits.
 
 ## Current Scope

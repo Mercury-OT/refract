@@ -1,0 +1,51 @@
+schema_version: 1
+scenario: documents.shared_access
+description: Create a document, verify its creator can read it, and deny another participant.
+users: [creator, reader]
+parameters:
+  document_title: Shared access document
+steps:
+  - id: create
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: document_title}
+          category: guide
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+        - {check: field_equals, field: title, value: {from_parameter: document_title}}
+  - id: creator_reads
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: create, response_field: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: document_id, value: {from_step: create, response_field: document_id}}
+  - id: reader_denied
+    user: reader
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: create, response_field: document_id}]
+    expect:
+      response:
+        # This shared obligation permits either login or ownership refusal.
+        # It does not distinguish those reasons; each parent does so explicitly.
+        - {check: status_in, values: [401, 403]}
+        - {check: failure}
+        - {check: has, field: error_code}
+results:
+  document_id: {from_step: create, response_field: document_id}
+  created_title: {from_step: create, response_field: title}

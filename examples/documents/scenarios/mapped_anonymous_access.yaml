@@ -1,0 +1,34 @@
+schema_version: 1
+scenario: documents.mapped_anonymous_access
+description: An unauthenticated request is refused without replacing the creator's session.
+users: [creator, anonymous]
+parameters:
+  document_title: Shared access document
+steps:
+  - id: access
+    do: {include: documents.shared_access}
+    with_users: {creator: creator, reader: anonymous}
+    with:
+      document_title: {from_parameter: document_title}
+  - id: exact_refusal
+    user: anonymous
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: access, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 401}
+        - {check: failure}
+        - {check: field_equals, field: error_code, value: session_required}
+  - id: creator_returns
+    user: creator
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: access, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: title, value: {from_step: access, result: created_title}}

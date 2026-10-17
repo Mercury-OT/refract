@@ -24,7 +24,7 @@ alone does not pin engine semantics or renew approval.
 | `schema_version` | yes | strict integer `1` |
 | `scenario` | yes | stable nonempty Scenario identifier |
 | `description` | no | human-readable intent |
-| `users` | yes | distinct logical user names; an empty list means no account binding |
+| `users` | yes | distinct logical account names or reserved `anonymous`; an empty list means no account binding |
 | `parameters` | no | mapping of declared data values |
 | `grid` | no | organizational selector `{level, module}` |
 | `steps` | yes | nonempty ordered list with unique step IDs |
@@ -36,8 +36,10 @@ A requested grid filter does not silently match a Scenario without that grid.
 
 ## Users and current sessions
 
-Users are logical account names, not roles, credentials, or declarations of
-permissions. Account bindings belong to the adapter configuration. A response
+Named users are logical account names, not roles, credentials, or declarations of
+permissions. Exact lowercase `anonymous` is reserved for execution without an
+account; it is never passed to the authenticator as an account name.
+Account bindings belong to the adapter configuration. A response
 field named `role` can still be checked when it is part of the business obligation;
 the Scenario does not configure a user's role or grant permissions.
 
@@ -45,11 +47,15 @@ the Scenario does not configure a user's role or grant permissions.
 | --- | --- |
 | `users: []` | Omit `user` and `session`; no authentication is performed. |
 | `users: [creator]` | Omitted `user` selects `creator`; an explicit value must match. |
-| `users: [creator, peer]` | Every step must name a declared `user`, including waits and include nodes. |
+| `users: [anonymous]` | Omitted `user` selects anonymous execution; `session` is forbidden. |
+| `users: [creator, anonymous]` or `[creator, peer]` | Every ordinary step must name a declared `user`, including waits. Include nodes select users through the rules below. |
 
 Null, duplicate or non-string names, dynamic user selection, and undeclared users
-are invalid. Before business actions, the authenticator resolves each declared
-user to a fixed principal. Different logical users must bind different principals.
+are invalid. In a nonempty list, `anonymous` must be declared before a step can
+select it. An explicit null or empty `user` is not anonymous shorthand. Before
+business actions, the authenticator resolves each declared named user to a fixed
+principal; anonymous participation has no principal or credentials. Different
+named users must bind different principals.
 This validates the adapter's declared identities, not the truth of a malicious
 adapter's claims. Missing identity capability is an error, never anonymous fallback.
 
@@ -59,7 +65,9 @@ account again and replace only its current session. It must supply a new
 authentication identity, not reuse the old one or select another account by role.
 Blocked steps do not authenticate. Poll attempts reuse one session. A 401/403
 response does not trigger automatic refresh or restoration of permissions.
-There is no facility to return to an earlier replaced session.
+There is no facility to return to an earlier replaced session. An anonymous leaf
+cannot request `session: new`, including when a child alias maps to anonymous;
+that declaration fails before any action rather than silently ignoring renewal.
 
 The authentication port exposes `identify(user)` and `session(user)`. The latter
 returns a `UserSession` with opaque `principal_id`, `authentication_id`, and
@@ -69,9 +77,13 @@ hidden from default representations; generic serialization is not safe.
 
 UI execution retains separate contexts for each user's current session. Switching
 users leaves other contexts open; a new session closes/replaces only that user's
-context. Every remaining context is closed on exit. Anonymous execution must not
-inherit credentials, authenticated storage, or an existing user's context.
-`users: []` is an execution instruction, not evidence that the target observed an
+context. Every remaining context is closed on exit. Anonymous execution uses its
+own context, reusable only within that projection, and must not inherit
+credentials, authenticated storage, or an existing user's context. Switching to
+anonymous does not log out another user; switching back reuses that user's
+retained session. Separate runs do not share anonymous contexts. No multiple
+anonymous identities or explicit anonymous-context renewal are introduced.
+Declaring anonymous execution is an instruction, not evidence that the target observed an
 anonymous request. Login-page behavior and permission changes require their own
 visible actions and assertions; authentication does not secretly perform them.
 
@@ -87,6 +99,12 @@ their 403 checks still do not prove an arbitrary product's rejection mechanism.
 For a stronger response-level example, see [checking the stated rejection reason](docs/rejection-evidence.md):
 it distinguishes an ownership code from login, input, missing, or conflicting
 reasons without claiming independent internal-decision evidence.
+The [named-peer caller](examples/documents/scenarios/mapped_peer_access.yaml) and
+[anonymous caller](examples/documents/scenarios/mapped_anonymous_access.yaml)
+reuse the same [two-participant child](examples/documents/scenarios/shared/access_document.yaml)
+with explicit mappings. Its shared refusal accepts 401 or 403 only; each parent
+adds its own exact status and response-code requirement. These are deliberately
+different approved obligations, not an automatic relaxation of a fixed 403 check.
 
 ## One action per step
 
@@ -398,16 +416,14 @@ which remain distinguishable from live responses.
 
 ## Including a pinned, reviewed Scenario
 
-A Scenario may include all steps of a local single-user child, mapping its
-local user to the include step's effective parent user. An anonymous child can
-only be included by an anonymous parent. A multi-user child cannot be included
-in this slice, even though it can run independently. The child must independently
+A Scenario may include all steps of a local single- or multi-user child, mapping
+its local participants to declared parent participants. The child must independently
 validate, contain an effective assertion, and have no include of its own.
 No recursion, dynamic target, partial inclusion, assertion override, or execution
 cache is supported.
 
 The include step accepts only `id`, `do: {include: <literal Scenario ID>}`, and
-optional `with` and `user` under the cardinality rules above. No session override
+optional `with`, `user`, or `with_users` under the selection rules below. No session override
 is allowed on the include node. For example, in a single-user parent declaring
 a `record_name` parameter:
 
@@ -433,6 +449,36 @@ bound to the selected parent user, not a separately authenticated account.
 Explicit and implicit child user selections map identically. A child's own
 `session: new` remains effective for that mapped user. Caller review includes
 this user choice; an unchanged child pin does not approve a new caller binding.
+
+A multi-user child requires a complete `with_users` mapping, even when parent
+and child names are identical. A single-user child may also use this explicit
+form instead of the shorthand. For a child declaring `users: [creator, reader]`,
+a parent declaring `users: [creator, anonymous]` can use this include fragment:
+
+```yaml
+- id: access
+  do: {include: documents.shared_access}
+  with_users:
+    creator: creator
+    reader: anonymous
+```
+
+Keys are exactly the child's declared participants; values are literal declared
+parent participants. No missing/extra keys, dynamic values, unknown targets,
+or duplicate targets are accepted. An include cannot combine `user` with
+`with_users`; ordinary steps cannot use `with_users`. A parent with `users: []`
+has only the implicit anonymous target. A child with `users: []` uses anonymous
+shorthand without an empty `with_users` mapping. An explicitly or implicitly
+anonymous child participant cannot map to a named account. A named child alias
+may map to anonymous only if all its unchanged session rules permit it.
+
+Each child leaf selects its own local participant before applying this mapping;
+one caller selection never overwrites all child users. Distinct child participants
+cannot collapse to one target, including anonymous. Named-account identity checks
+also reject two parent aliases configured as one principal. Mapping changes
+require caller review even when the child bytes and pin are unchanged. Mapping a
+fixed-403 child to anonymous does not make an actual 401 satisfy that assertion.
+No child action, expectation, failure policy, or session policy can be overridden.
 
 ### Named results
 
@@ -535,7 +581,8 @@ effective checks, but that does not establish the parent's complete business goa
 `refracto validate <parent.yaml> --expand` explicitly prints the verified flat
 review plan and its sources. It preserves symbolic response references and shows
 declared public result names, their source mappings, and each leaf's effective
-failure policy, effective user, session policy, and included local-user mapping.
+failure policy, explicit anonymous selection, effective user, session policy,
+and the complete included local-user mapping.
 It never runs adapters,
 and emits no partial plan when validation fails. This is a review
 view, not another authoring format. It can display literal declaration data,
@@ -714,8 +761,10 @@ Defaulted keyword-only metadata explains continuation without copying values:
 - `response_origin` is either absent or a `ResponseOrigin` containing `step_id`,
   zero-based `attempt_index`, `is_final`, `timed_out`, source `user`, and
   `session_generation`.
-- Step `user` identifies the effective logical user. `session_generation` records
-  the acquired session (1 onwards; 0 for anonymous); unexecuted work has none.
+- Step `user` identifies the effective logical account, or is `None` for anonymous
+  execution. Declaration/review views retain the explicit `anonymous` selection.
+  `session_generation` records the acquired session (1 onwards; 0 for anonymous);
+  unexecuted work has none.
 - `binding_sources` maps internal binding names to `BindingSource` objects holding
   `response_field` and the source `ResponseOrigin`. A timed-out, non-final source
   remains distinguishable from a successful polling attempt.

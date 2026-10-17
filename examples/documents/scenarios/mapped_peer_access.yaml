@@ -1,0 +1,34 @@
+schema_version: 1
+scenario: documents.mapped_peer_access
+description: A distinct account is refused access to the creator's document.
+users: [creator, peer]
+parameters:
+  document_title: Shared access document
+steps:
+  - id: access
+    do: {include: documents.shared_access}
+    with_users: {creator: creator, reader: peer}
+    with:
+      document_title: {from_parameter: document_title}
+  - id: exact_refusal
+    user: peer
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: access, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 403}
+        - {check: failure}
+        - {check: field_equals, field: error_code, value: owner_required}
+  - id: creator_returns
+    user: creator
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: access, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: title, value: {from_step: access, result: created_title}}

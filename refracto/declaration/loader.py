@@ -296,18 +296,20 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         raise DeclarationError("steps must be a non-empty list")
     steps, prior, assertion_count = [], _ReferenceScope(), 0
     execution_ids = set()
-    source_lookup, source_ids = {}, set()
+    source_lookup, source_ids, include_user_mappings = {}, set(), {}
     for item in raw["steps"]:
-        user = _step_user(item, users)
         if dependencies is not None:
-            from refracto.declaration.includes import instantiate, is_include
+            from refracto.declaration.includes import instantiate, is_include, participant_mapping
             sid = _string(item.get("id"), "step.id") if isinstance(item, dict) else None
             if sid is None or "/" in sid or sid in source_ids:
                 raise DeclarationError("composition source step IDs must be unique and contain no slash")
             source_ids.add(sid)
             if is_include(item):
-                expanded, sources = instantiate(item, dependencies, parameters, prior, user,
-                                                declared_parameters)
+                child = dependencies[item["do"]["include"]][0]
+                mapping = participant_mapping(item, child.users, users)
+                expanded, sources = instantiate(item, dependencies, parameters, prior, mapping,
+                                                declared_parameters, implicit_anonymous=not users)
+                include_user_mappings[sid] = dict(mapping)
                 for step in expanded:
                     if step.id in execution_ids:
                         raise DeclarationError("expanded step ID collision")
@@ -315,13 +317,13 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                     execution_ids.add(step.id)
                     assertion_count += int(step.request_asserted) + len(step.expect.frontend) + len(step.expect.response) + len(step.expect.backend_state)
                 source_lookup.update(sources)
-                child = dependencies[item["do"]["include"]][0]
                 prior.include_results[sid] = {
                     name: ResultSource(f"{sid}/{alias.from_step}", alias.response_field)
                     for name, alias in child.results.items()}
                 if len(steps) > 1000:
                     raise DeclarationError("composition exceeds 1000 expanded leaves")
                 continue
+        user = _step_user(item, users)
         _mapping(item, {"id", "do", "target", "value", "duration", "expect", "poll", "on_failure", "user", "session"}, "step")
         if "session" in item and (type(item["session"]) is not str or item["session"] != "new"):
             raise DeclarationError("session must be the literal string new; omit it to reuse")
@@ -402,7 +404,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                       source_lookup=source_lookup,
                       include_dependencies={key: {"path": value[2], "sha256": value[1]}
                                             for key, value in (dependencies or {}).items()},
-                      results=aliases, included_results=prior.include_results, users=list(users))
+                      results=aliases, included_results=prior.include_results, users=list(users),
+                      include_user_mappings=include_user_mappings)
     if dependencies is not None:
         from refracto.declaration.includes import validate_instantiated
         if len(steps) > 1000:
@@ -421,8 +424,11 @@ def _step_user(item, users):
     if "user" not in item:
         if len(users) > 1:
             raise DeclarationError("every step in a multi-user Scenario must declare user")
-        return users[0]
-    user = item["user"]
+        user = users[0]
+    else:
+        user = item["user"]
     if type(user) is not str or user not in users:
         raise DeclarationError("step.user must name a declared user")
+    if user == "anonymous" and "session" in item:
+        raise DeclarationError("anonymous steps must omit session")
     return user
