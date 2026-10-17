@@ -54,8 +54,8 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> D
             required_sessions=generations)
     except Exception as exc:
         return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))])
-    bound_values = store.provider_binding_values(scenario, provider)
     try:
+        bound_values = store.provider_binding_values(scenario, provider)
         mismatches = store.diff(
             consumer,
             provider,
@@ -86,6 +86,7 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> D
                 details.append(f"field={field_name!r} {error}")
             details.extend(mismatch.collection_errors)
             details.extend(mismatch.header_errors)
+            details.extend(mismatch.field_errors)
             checks.append(CheckResult(
                 "contract",
                 "diff",

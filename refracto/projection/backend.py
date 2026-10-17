@@ -17,6 +17,7 @@ from refracto.declaration import binding
 from refracto.declaration import values
 from refracto.declaration import collections
 from refracto.declaration import http_status
+from refracto.declaration import field_comparison
 from refracto.report import CheckResult, DomainResult, StepResult, ResponseOrigin, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
 from refracto.projection.continuation import FlowState
 from refracto.projection.sessions import SessionManager
@@ -75,22 +76,14 @@ def _eval_response(assertion, norm, bound_values=None, inputs=None, *, observed_
             absent,
             "" if absent else f"unexpected field {field!r} present",
         )
-    if assertion.check == "field_equals":
+    if assertion.check in field_comparison.CHECKS:
         field = assertion.params["field"]
-        expected, ref_error = values.resolve(
+        expected, ref_error = field_comparison.resolve_expected(
             assertion.params["value"], bound_values=bound_values, inputs=inputs)
         if ref_error is not None:
-            return CheckResult("response", "field_equals", False, ref_error)
-        present = field in norm.fields
-        observed = norm.fields.get(field)
-        ok = present and values.equal(observed, expected)
-        if ok:
-            detail = ""
-        elif present:
-            detail = f"field={field!r} expected={expected!r} observed={observed!r}"
-        else:
-            detail = f"field={field!r} expected={expected!r} observed=<missing>"
-        return CheckResult("response", "field_equals", ok, detail)
+            return CheckResult("response", assertion.check, False, ref_error)
+        ok, detail = field_comparison.evaluate(assertion.check, norm.fields, field, expected)
+        return CheckResult("response", assertion.check, ok, detail)
     return CheckResult("response", assertion.check, False, "unknown response check")
 
 

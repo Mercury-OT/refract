@@ -101,7 +101,7 @@ class DocumentRestApp:
                 return self._rejection(400, "permissions_invalid", "read_documents must be a boolean")
             target["read_documents"] = body["read_documents"]
             return self._accepted("permissions", {"user_id": target["user_id"], "read_documents": target["read_documents"]})
-        if method in {"GET", "DELETE"} and len(parts) == 3 and parts[:2] == ["v3", "documents"]:
+        if method in {"GET", "PATCH", "DELETE"} and len(parts) == 3 and parts[:2] == ["v3", "documents"]:
             document_id = parts[2]
             if document_id not in self._documents:
                 return self._rejection(404, "document_missing", "document was not found")
@@ -111,7 +111,14 @@ class DocumentRestApp:
                 can_read = account["read_documents"] if self.permission_policy == "live" else session["read_documents"]
                 if not can_read:
                     return self._rejection(403, "read_permission_required", "document reading is not permitted")
-                return self._accepted("document", self._documents[document_id])
+                return self._accepted("document", deepcopy(self._documents[document_id]))
+            if method == "PATCH":
+                if not isinstance(body, dict) or set(body) != {"content"}:
+                    return self._rejection(400, "content_required", "content is required")
+                if not isinstance(body["content"], (dict, list)):
+                    return self._rejection(400, "content_invalid", "content must be an object or list")
+                self._documents[document_id]["content"] = deepcopy(body["content"])
+                return self._accepted("document", deepcopy(self._documents[document_id]))
             del self._documents[document_id]
             del self._owners[document_id]
             return RestResponse(204, None)
@@ -125,6 +132,8 @@ class DocumentRestApp:
             return self._rejection(400, "title_required", "title is required")
         if not isinstance(category, str) or not category:
             return self._rejection(400, "category_required", "category is required")
+        if "content" in body and not isinstance(body["content"], (dict, list)):
+            return self._rejection(400, "content_invalid", "content must be an object or list")
         if category == "restricted":
             return self._rejection(
                 422,
@@ -138,13 +147,15 @@ class DocumentRestApp:
             "identifier": document_id,
             "properties": {"title": title, "category": category},
         }
+        if "content" in body:
+            document["content"] = deepcopy(body["content"])
         self._documents[document_id] = document
         self._owners[document_id] = principal
         return RestResponse(
             201,
             {
                 "receipt": {"state": "accepted", "operation": "create"},
-                "resource": {"document": document},
+                "resource": {"document": deepcopy(document)},
             },
             {"content-type": "application/json", "cache-control": "no-store"},
         )

@@ -166,8 +166,8 @@ def test_invalid_response_assertion_rejected(tmp_path, assertion):
 
 @pytest.mark.parametrize("assertion", [
     {"check": "has"}, {"check": "has", "field": "id", "extra": 1},
-    {"check": "has", "field": ""}, {"check": "field_equals", "field": "id", "value": []},
-    {"check": "field_equals", "field": "id", "value": {"unexpected": 1}},
+    {"check": "has", "field": ""}, {"check": "header_equals", "header": "X-Value", "value": []},
+    {"check": "header_equals", "header": "X-Value", "value": {"unexpected": 1}},
     {"check": "field_equals", "field": "id"},
 ])
 def test_response_assertion_shape_remains_bounded(tmp_path, assertion):
@@ -175,7 +175,7 @@ def test_response_assertion_shape_remains_bounded(tmp_path, assertion):
         write_load(tmp_path, response_doc([assertion]))
 
 
-@pytest.mark.parametrize("value", [None, 0, False, "", "ready", 2.5])
+@pytest.mark.parametrize("value", [None, 0, False, "", "ready", 2.5, [], {"nested": [None, False]}])
 def test_field_equals_literals_preserve_types(tmp_path, value):
     s = write_load(tmp_path, response_doc([{"check": "field_equals", "field": "state", "value": value}]))
     found = s.steps[0].expect.response[0].params["value"]

@@ -14,7 +14,7 @@ def resolve_request(scenario, step, template) -> ports.RequestSpec:
         target_path = "/v3/documents"
     elif method == "GET" and logical_path == "documents/search":
         target_path = "/v3/documents"
-    elif method in {"GET", "DELETE"} and logical_path.startswith("documents/"):
+    elif method in {"GET", "PATCH", "DELETE"} and logical_path.startswith("documents/"):
         document_id = logical_path.removeprefix("documents/")
         if not document_id or "/" in document_id:
             raise ValueError(f"invalid logical document path {template.path!r}")

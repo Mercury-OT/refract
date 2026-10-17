@@ -360,6 +360,7 @@ selection is an error. Background traffic never becomes action evidence.
 | `header_absent` | `header` |
 | `has` | `field` |
 | `field_equals` | `field`, `value` |
+| `field_not_equals` | `field`, `value` |
 | `field_absent` | `field` |
 | `collection_matching_count` | `field`, `matching`, `count` |
 
@@ -367,9 +368,62 @@ selection is an error. Background traffic never becomes action evidence.
 in a step. `failure` means that indicator is false; it does not establish why a
 request was rejected or whether an authorization decision was reached. Add the
 actual response and state requirements needed for the intended obligation.
-`has` checks presence. `field_equals` checks presence
-plus exact type and value, using a scalar literal or reference. These are
-normalized fields, not arbitrary raw JSON paths.
+`has` checks presence. `field_equals` and `field_not_equals` both require the
+field to exist, then compare its complete type and value. These are normalized
+fields, not arbitrary raw JSON paths.
+
+### Complete response-field comparison
+
+These two checks accept finite JSON-like values: null, booleans, integers,
+finite floats, strings, lists and string-keyed objects, recursively. Expected
+values may be literals or use the existing parameter, prior-response and
+included-result references, including references inside a declared container.
+Runtime response data that resembles reference syntax remains data.
+
+Objects must have exactly the same keys and recursively equal values; key order
+does not matter. Lists must have the same length, order and element values.
+Extra object members are not ignored. Types are strict: `false` differs from
+`0`, and `1` differs from `1.0`. There is no sorting, coercion, subset matching,
+arithmetic or approximate comparison. This extension does not broaden other
+assertion parameters or request path/query/header values.
+
+The following fragment assumes an earlier request-bearing `read_before` step
+that guarantees `content`, and an `attempted_content` parameter:
+
+```yaml
+- check: field_equals
+  field: content
+  value: {from_step: read_before, response_field: content}
+- check: field_not_equals
+  field: content
+  value: {from_parameter: attempted_content}
+```
+
+A missing current field fails either check: missing evidence cannot prove
+inequality. A present null or empty object/list is a value, not absence.
+Missing source evidence and top-level null response references still block the
+consuming step before its action; this task does not change that reference rule.
+Non-finite, cyclic or otherwise unsupported observed values produce an execution
+error, even if their types differ. Invalid response-derived expected values block
+the consumer. Core retains stable normalized snapshots so a later callback cannot
+rewrite an earlier comparison baseline through a reused mutable container.
+
+One equality and one inequality may coexist on the same field; both are checked.
+Repeating the same check on that field, or combining either with `field_absent`,
+is invalid. Ordinary comparison failures continue under the existing policy;
+`on_failure: stop` remains available. New container and inequality diagnostics
+name the field and reason without dumping nested keys or values. This is not a
+general-purpose redaction or serialization system.
+
+See the complete [rejected-update example](examples/minimal/rejected_update_preserves_content.yaml)
+and its separate [Documents consumer](examples/documents/scenarios/rejected_update_preserves_content.yaml).
+The final read compares actual content with the first read and with the attempted
+replacement. Success/status/object-ID controls prevent identical error responses
+or a different object from establishing the unchanged-content claim. This proves
+only the selected normalized content, not all database state or an independently
+observed authorization decision.
+
+### HTTP response status and headers
 
 `status_equals` checks one exact HTTP status; `status_in` checks membership in an
 explicit set. `value` is a literal integer from 100 through 599. `values` is a
@@ -422,7 +476,8 @@ reference syntax or multi-value interpretation is introduced.
 `field_absent` checks membership, not truthiness: a present null, zero, false,
 empty string, list, or mapping fails. Failure details name the field, not its
 value. Duplicate absence checks, or absence combined with `has`,
-`field_equals`, or `collection_matching_count` on the same field, are invalid.
+`field_equals`, `field_not_equals`, or `collection_matching_count` on the same
+field, are invalid.
 
 `collection_matching_count` checks an observed list of objects in one normalized
 field. `matching` is a nonempty mapping of field names to scalar literals or
@@ -923,11 +978,15 @@ verify a flow with `session: new`; it reports an error instead of inferring whic
 renewal steps actually ran. Only final polling recordings
 contribute. Response requirements retain success/failure/don't-care, an optional
 exact HTTP status or allowed status set, required
-fields, expected values, forbidden fields, selected response-header equality or
+fields, all complete field-equality and field-inequality constraints, forbidden fields, selected response-header equality or
 absence, and all collection matching constraints. Header checks use the complete
 raw response pair list captured before normalization; missing or ambiguous
 header evidence is an error, not proof of absence. Headers do not change endpoint
-identity or make contract an independent observer. Collection checks evaluate final provider collections with the
+identity or make contract an independent observer. Field comparisons retain both
+checks on the same field and use actual provider-reference values, including
+complete objects/lists and nested declared references. Missing or invalid
+evidence cannot pass inequality. Contract uses the same strict comparison as
+runtime and does not reduce these requirements to field presence. Collection checks evaluate final provider collections with the
 same strict matching rules and actual provider-reference values; contract does
 not reduce them to presence checks. HTTP-status requirements use the original
 recording status, independently of normalized success/failure; missing, malformed,
