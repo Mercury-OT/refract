@@ -3,7 +3,7 @@ scenario: minimal.create_and_delete
 grid:
   level: smoke
   module: minimal
-actor: reader
+users: [reader]
 description: Create a generic record and then delete it through an empty 204 response.
 parameters:
   item_name: sample-item

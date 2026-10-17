@@ -13,7 +13,7 @@ from refracto.declaration.binding import prepare_step
 
 def leaf(scenario="shared.create", *, parameters=None, actor="editor"):
     return {
-        "schema_version": 1, "scenario": scenario, "actor": actor,
+        "schema_version": 1, "scenario": scenario, "users": [actor],
         "parameters": {"name": "Default"} if parameters is None else parameters,
         "steps": [{"id": "create", "do": {"request": {
             "method": "POST", "path": ["records"],
@@ -27,7 +27,7 @@ def include(step="setup", target="shared.create", **extra):
 
 
 def parent(steps=None, parameters=None):
-    return {"schema_version": 1, "scenario": "example.parent", "actor": "editor",
+    return {"schema_version": 1, "scenario": "example.parent", "users": ["editor"],
             "parameters": parameters or {}, "steps": steps or [include()]}
 
 
@@ -52,7 +52,8 @@ def test_include_loads_as_qualified_leaves_and_records_source(tmp_path):
     assert [step.id for step in scenario.steps] == ["setup/create"]
     source = scenario.source_lookup["setup/create"]
     assert source == {"scenario_id": "shared.create", "step_id": "create",
-                      "include_step_id": "setup", "sha256": hashlib.sha256(child.read_bytes()).hexdigest()}
+                      "include_step_id": "setup", "sha256": hashlib.sha256(child.read_bytes()).hexdigest(),
+                      "source_user": "editor", "effective_user": "editor"}
     step, bound = prepare_step(scenario.steps[0], scenario, {})
     assert step.request.body == {"name": "Default"}
     assert bound == {}
@@ -102,10 +103,11 @@ def test_dynamic_include_rejected(tmp_path, target):
         load_scenario(path)
 
 
-def test_actor_mismatch_rejected(tmp_path):
+def test_child_user_alias_maps_to_parent_user(tmp_path):
     path, _ = write_bundle(tmp_path, child=leaf(actor="reader"))
-    with pytest.raises(DeclarationError, match="actor"):
-        load_scenario(path)
+    scenario = load_scenario(path)
+    assert scenario.users == ["editor"]
+    assert scenario.steps[0].user == "editor"
 
 
 def test_child_without_assertion_rejected(tmp_path):
@@ -399,16 +401,17 @@ def test_same_role_two_inclusions_run_twice_one_session_and_offline_contract(tmp
 
 def test_contract_failure_uses_qualified_source_lookup(tmp_path):
     from refracto.runner import run_scenario
-    from tests.fakes import FakeRecorder
-    class TamperingRecorder(FakeRecorder):
-        def responses(self):
-            result = copy.deepcopy(super().responses())
-            for response in result:
-                response.json = {"success": False}
-            return result
+    from refracto.projection import contract
+    from tests.fakes import FakeNormalizer
     path, _ = write_bundle(tmp_path)
-    report = run_scenario(path, adapters_for(recorder_factory=TamperingRecorder),
-                          projections=("backend", "contract"))
+    report = run_scenario(path, adapters_for(), projections=("backend",))
+    # An independent offline provider-drift fixture exercises localization.
+    # A Recorder is no longer allowed to alter accepted live backend evidence.
+    drift = copy.deepcopy(report.domains[0].provider_recordings)
+    for response in drift:
+        response.json = {"success": False}
+    report.domains.append(contract.run(load_scenario(path), drift, FakeNormalizer(),
+                                       execution_steps=report.domains[0].steps))
     assert report.domains[0].status == "PASSED"
     assert report.domains[1].status == "FAILED"
     assert report.localize()[0][:2] == ("contract", "setup/create")
@@ -469,7 +472,7 @@ def test_scope_and_identity_rejections(tmp_path, mutation):
         load_scenario(path)
 
 
-@pytest.mark.parametrize("suffix", ["\nactor: editor\n", "\nunknown: &a [one]\nmore: *a\n", "\nunsafe: !!python/object/apply:os.system ['exit 1']\n"])
+@pytest.mark.parametrize("suffix", ["\nusers: [editor]\n", "\nunknown: &a [one]\nmore: *a\n", "\nunsafe: !!python/object/apply:os.system ['exit 1']\n"])
 def test_invalid_child_yaml_rejected_without_raw_value_leak(tmp_path, suffix):
     path, child = write_bundle(tmp_path)
     child.write_text(child.read_text() + suffix)
@@ -507,7 +510,7 @@ def test_loaded_models_equal_independent_flat_after_explicit_id_renaming(tmp_pat
         "records", {"from_step": "create", "response_field": "id"}]}},
         "expect": {"response": [{"check": "field_equals", "field": "name", "value": {"from_parameter": "name"}}]}})
     path, _ = write_bundle(tmp_path, parent([include(**{"with": {"name": "Concrete"}})]), child)
-    flat = {"schema_version": 1, "scenario": "flat", "actor": "editor", "parameters": {"label": "Concrete"},
+    flat = {"schema_version": 1, "scenario": "flat", "users": ["editor"], "parameters": {"label": "Concrete"},
             "steps": [
                 {"id": "make", "do": {"request": {"method": "POST", "path": ["records"], "body": {"name": {"from_parameter": "label"}}}},
                  "expect": {"response": [{"check": "success"}]}},

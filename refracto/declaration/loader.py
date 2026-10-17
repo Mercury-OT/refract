@@ -250,11 +250,14 @@ def load_scenario(path: str) -> Scenario:
 
 
 def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
-    _mapping(raw, {"schema_version", "scenario", "description", "actor", "parameters", "grid", "steps", "results"}, "top-level")
+    _mapping(raw, {"schema_version", "scenario", "description", "users", "parameters", "grid", "steps", "results"}, "top-level")
     if type(raw.get("schema_version")) is not int or raw["schema_version"] != 1:
         raise DeclarationError("schema_version must be integer 1; old declarations are unsupported")
     scenario_id = _string(raw.get("scenario"), "scenario")
-    actor = _string(raw.get("actor"), "actor")
+    users = raw.get("users")
+    if (type(users) is not list or any(type(user) is not str or not user.strip() for user in users)
+            or len(set(users)) != len(users)):
+        raise DeclarationError("users must be a list of distinct non-empty literal names")
     description = raw.get("description", "")
     if not isinstance(description, str):
         raise DeclarationError("description must be a string")
@@ -276,6 +279,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
     execution_ids = set()
     source_lookup, source_ids = {}, set()
     for item in raw["steps"]:
+        user = _step_user(item, users)
         if dependencies is not None:
             from refracto.declaration.includes import instantiate, is_include
             sid = _string(item.get("id"), "step.id") if isinstance(item, dict) else None
@@ -283,7 +287,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                 raise DeclarationError("composition source step IDs must be unique and contain no slash")
             source_ids.add(sid)
             if is_include(item):
-                expanded, sources = instantiate(item, dependencies, parameters, prior, actor,
+                expanded, sources = instantiate(item, dependencies, parameters, prior, user,
                                                 declared_parameters)
                 for step in expanded:
                     if step.id in execution_ids:
@@ -299,7 +303,9 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                 if len(steps) > 1000:
                     raise DeclarationError("composition exceeds 1000 expanded leaves")
                 continue
-        _mapping(item, {"id", "do", "target", "value", "duration", "expect", "poll", "on_failure"}, "step")
+        _mapping(item, {"id", "do", "target", "value", "duration", "expect", "poll", "on_failure", "user", "session"}, "step")
+        if "session" in item and (type(item["session"]) is not str or item["session"] != "new"):
+            raise DeclarationError("session must be the literal string new; omit it to reuse")
         if "on_failure" in item and (type(item["on_failure"]) is not str or item["on_failure"] != "stop"):
             raise DeclarationError("on_failure must be the literal string stop; omit it to continue")
         sid = _string(item.get("id"), "step.id")
@@ -350,13 +356,14 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                 raise DeclarationError("poll.on_timeout must be FAIL or SKIP")
             poll = PollPolicy(policy)
         step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted,
-                    on_failure=item.get("on_failure", "continue"))
+                    on_failure=item.get("on_failure", "continue"), user=user, session=item.get("session"))
         steps.append(step)
         execution_ids.add(sid)
         prior[sid] = step
         if source_hash is not None:
             source_lookup[sid] = {"scenario_id": scenario_id, "step_id": sid,
-                                  "include_step_id": None, "sha256": source_hash}
+                                  "include_step_id": None, "sha256": source_hash,
+                                  "source_user": user, "effective_user": user}
         assertion_count += int(request_asserted) + len(expect.frontend) + len(expect.response) + len(expect.backend_state)
     if not assertion_count:
         raise DeclarationError("Scenario must contain at least one effective assertion")
@@ -372,14 +379,31 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         if source not in prior or prior[source].request is None:
             raise DeclarationError("result source must be an authored local request-bearing step")
         aliases[name] = ResultSource(source, field)
-    result = Scenario(scenario_id, grid, actor, [], [Input(k, v) for k, v in parameters.items()], description, steps,
+    result = Scenario(scenario_id, grid, "", [], [Input(k, v) for k, v in parameters.items()], description, steps,
                       source_lookup=source_lookup,
                       include_dependencies={key: {"path": value[2], "sha256": value[1]}
                                             for key, value in (dependencies or {}).items()},
-                      results=aliases, included_results=prior.include_results)
+                      results=aliases, included_results=prior.include_results, users=list(users))
     if dependencies is not None:
         from refracto.declaration.includes import validate_instantiated
         if len(steps) > 1000:
             raise DeclarationError("composition exceeds 1000 expanded leaves")
         validate_instantiated(result)
     return result
+
+
+def _step_user(item, users):
+    if not isinstance(item, dict):
+        raise DeclarationError("step must be a mapping")
+    if not users:
+        if "user" in item or "session" in item:
+            raise DeclarationError("anonymous steps must omit user and session")
+        return None
+    if "user" not in item:
+        if len(users) > 1:
+            raise DeclarationError("every step in a multi-user Scenario must declare user")
+        return users[0]
+    user = item["user"]
+    if type(user) is not str or user not in users:
+        raise DeclarationError("step.user must name a declared user")
+    return user

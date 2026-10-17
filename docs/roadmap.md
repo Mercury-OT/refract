@@ -23,13 +23,13 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Continue after assertion failures](tasks/assertion-failure-continuation.md) | Independently audited and locally accepted on 2026-10-17; format 1, one-level same-actor inclusion. Submission separately authorized on 2026-10-17. | The task PR supplies publication, merge, and CI evidence; preserve the approved execution boundary. |
-| 2 | Logical-user/session boundaries | Deferred specification discussion; not part of failure continuation. | Confirm a separate bounded user/session design before implementation. |
+| 1 | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Implemented, independently audited, architect-accepted, and accepted by the maintainer. Format 1, one-level inclusion, no multi-user child inclusion. | Submission separately authorized on 2026-10-17; the task PR records integration and CI. No further capability expansion is authorized. |
+| Delivered | [Continue after assertion failures](tasks/assertion-failure-continuation.md) | Delivered in main `95ba66d`; ordinary assertion failures continue, explicit leaf stop retained. | Preserve the approved execution boundary. |
 | Delivered | [Exact HTTP response status assertions](tasks/http-status-assertions.md) | Delivered through PR #19 in main `d2a5ed9`; eight branch/PR checks and four main jobs passed. | Preserve the approved `status_equals` / `status_in` expression. |
 | Delivered | [Shared Scenario change-impact review](tasks/scenario-impact-review.md) | Delivered on main in `67ce17f`; current YAML and execution unchanged. | Preserve read-only inspection, pin, and review boundaries. |
 | Delivered | [Scenario reuse walkthrough](tasks/scenario-review-exercise.md#follow-up-minimal-reuse-walkthrough) | Delivered in `967af3c`; review-cost comparison remains optional and unmeasured. | Use existing expression; no new language feature implied. |
 | Delivered | [Named Scenario results](tasks/scenario-named-results.md) | Delivered on main in `f5d258a`: multiple explicit result names, one-level inclusion. | Measure review friction without expanding the language. |
-| Delivered | [Scenario inclusion](tasks/scenario-include.md) | Delivered with named results in `f5d258a`: one level, identical actors, parent sidecar pins. | Preserve pin and caller-review boundaries. |
+| Delivered | [Scenario inclusion](tasks/scenario-include.md) | Delivered with named results in `f5d258a`; original same-actor boundary is superseded by the separately approved user/session task. | Preserve one level, pins, and caller-review boundaries. |
 | Delivered | [Browser adapter support](tasks/browser-adapter-support.md) | Delivered on main in `9bebfa7`. | Preserve the accepted support and evidence boundaries. |
 | Delivered | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
 | Delivered | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
@@ -51,9 +51,24 @@ errors and skips still stop this first slice. Missing response dependencies
 block their consumers, not unrelated steps. The maintainer explicitly retained
 `schema_version: 1`: unchanged declarations therefore require review against the
 new engine semantics, not a claim of behavioral compatibility. Multi-user work
-remains separate. Runtime presentation work is deferred while these expression and
+now proceeds under its separately approved specification. Runtime presentation work is deferred while these expression and
 execution boundaries take priority. Each task is introduced with its intended
 use cases; changed YAML is shown to the maintainer before submission.
+
+The approved user/session slice now passes 1548 full regression tests with real
+Chromium and one existing dependency warning, and 1401 isolated dev-only tests
+with the optional Demo collection skipped. Independent audit passed, including
+identity and Recorder tampering controls. The public Documents target exercises
+actual owner/peer access and permission changes; browser tests separately exercise
+context/session isolation. These are synthetic capability checks, not evidence
+of real-product adoption. Current YAML and reference adapters are explicitly
+migrated; historical measurements are not rewritten. See the
+[local acceptance record](tasks/scenario-users-sessions-acceptance.md).
+No submission or private Scenario migration is authorized by this local result.
+The maintainer subsequently accepted the task and separately authorized its
+public submission on 2026-10-17. Historical local acceptance retains its original
+pre-submission statements; the task PR supplies publication, merge, and CI
+evidence. Private workspaces and private Scenario migration remain out of scope.
 
 Continuation acceptance passed 1426 full regression tests with real Chromium,
 no skips, and one existing dependency warning; the isolated dev-only suite passed
@@ -155,6 +170,13 @@ audit passed 228 focused and 10 real Demo tests, plus adversarial probes. The
 three fixed backend faults and their passing neighbors retain the original
 observations; historical measurements were not overwritten. See the
 [named-results acceptance record](tasks/scenario-named-results-acceptance.md).
+The original same-actor behavior above records that historical delivery. The
+current user/session specification replaces it with a single-user child alias
+mapped to the effective parent user; it does not permit multi-user children or
+deeper nesting. Historical task specifications and measured outcomes remain
+records of their original engine. Current executable review-exercise YAML and
+sidecar pins are explicitly migrated to `users`; that migration does not recreate
+the historical measurements or imply renewed human approval.
 No review-cost or real-product adoption improvement is claimed, and no private
 Scenario migration or multilevel inclusion is authorized.
 

@@ -1,0 +1,64 @@
+schema_version: 1
+scenario: documents.permission_sessions
+users: [member, administrator]
+steps:
+  - id: member_profile
+    user: member
+    on_failure: stop
+    do:
+      request: {method: GET, path: [account, profile]}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: has, field: user_id}
+  - id: setup
+    user: member
+    do: {include: documents.shared_create}
+    with: {document_title: Permission document}
+  - id: read_before
+    user: member
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: setup, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: document_id, value: {from_step: setup, result: document_id}}
+  - id: revoke_read
+    user: administrator
+    on_failure: stop
+    do:
+      request:
+        method: PATCH
+        path: [accounts, {from_step: member_profile, response_field: user_id}, permissions]
+        body: {read_documents: false}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: read_documents, value: false}
+  # This target's approved policy applies permission revocation immediately.
+  - id: old_session
+    user: member
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: setup, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 403}
+        - {check: failure}
+  # Reauthenticate the same account; do not restore its previous permission.
+  - id: new_session
+    user: member
+    session: new
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: setup, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 403}
+        - {check: failure}

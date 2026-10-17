@@ -189,7 +189,7 @@ def test_backend_span_attr_still_supported(tmp_path):
     the shipped scenario no longer uses it, so cover it via a synthetic scenario."""
     y = tmp_path / "s.yaml"
     y.write_text(
-        "schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\ndescription: t\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - p\n  expect:\n    backend_state:\n    - check: span_attr\n      span: dataset.import\n      attr: row_count\n      op: '>'\n      value: 0\n",
+        "schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\ndescription: t\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - p\n  expect:\n    backend_state:\n    - check: span_attr\n      span: dataset.import\n      attr: row_count\n      op: '>'\n      value: 0\n",
         encoding="utf-8")
     s = load_scenario(str(y))
     api = FakeApi()
@@ -201,7 +201,7 @@ def test_backend_span_attr_still_supported(tmp_path):
 
 
 _SPAN_ATTR_YAML = (
-    "schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\ndescription: t\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - p\n  expect:\n    backend_state:\n    - check: span_attr\n      span: dataset.import\n      attr: row_count\n      op: '>'\n      value: 0\n"
+    "schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\ndescription: t\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - p\n  expect:\n    backend_state:\n    - check: span_attr\n      span: dataset.import\n      attr: row_count\n      op: '>'\n      value: 0\n"
 )
 
 
@@ -223,7 +223,7 @@ def test_span_exists_with_duplicate_names(tmp_path):
     """Repeated span names still satisfy `span_exists` deterministically."""
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\ndescription: t\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - p\n  expect:\n    backend_state:\n    - check: span_exists\n      span: item.create\n',
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\ndescription: t\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - p\n  expect:\n    backend_state:\n    - check: span_exists\n      span: item.create\n',
         encoding="utf-8")
     s = load_scenario(str(y))
     state = FakeStateProbe()
@@ -263,7 +263,7 @@ def test_backend_state_polls_until_attr_materializes(tmp_path):
 def test_backend_runs_ordered_steps_with_binding(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: flow\ngrid:\n  level: r\n  module: m\nactor: a\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n  expect:\n    response:\n    - check: success\n    - check: has\n      field: jobId\n- id: fetch\n  do:\n    request:\n      method: GET\n      path:\n      - jobs\n      - from_step: create\n        response_field: jobId\n      - result\n  expect:\n    response:\n    - check: success\n',
+        'schema_version: 1\nscenario: flow\ngrid:\n  level: r\n  module: m\nusers: [a]\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n  expect:\n    response:\n    - check: success\n    - check: has\n      field: jobId\n- id: fetch\n  do:\n    request:\n      method: GET\n      path:\n      - jobs\n      - from_step: create\n        response_field: jobId\n      - result\n  expect:\n    response:\n    - check: success\n',
         encoding="utf-8")
     s = load_scenario(str(y))
     api = FakeApi(responses={
@@ -285,7 +285,7 @@ def test_backend_runs_ordered_steps_with_binding(tmp_path):
 def test_backend_explicit_stop_blocks_later_steps(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: flow\ngrid:\n  level: r\n  module: m\nactor: a\nsteps:\n- id: a\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n  expect:\n    response:\n    - check: has\n      field: jobId\n- id: b\n  do:\n    request:\n      method: GET\n      path:\n      - other\n  expect:\n    response:\n    - check: success\n',
+        'schema_version: 1\nscenario: flow\ngrid:\n  level: r\n  module: m\nusers: [a]\nsteps:\n- id: a\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n  expect:\n    response:\n    - check: has\n      field: jobId\n- id: b\n  do:\n    request:\n      method: GET\n      path:\n      - other\n  expect:\n    response:\n    - check: success\n',
         encoding="utf-8")
     s = load_scenario(str(y))
     api = FakeApi(responses={
@@ -307,7 +307,7 @@ def test_backend_explicit_stop_blocks_later_steps(tmp_path):
 def test_backend_option_b_guard_rejects_overridden_body_field(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: flow\ngrid:\n  level: r\n  module: m\nactor: a\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n      body:\n        job: original\n  expect:\n    response:\n    - check: success\n',
+        'schema_version: 1\nscenario: flow\ngrid:\n  level: r\n  module: m\nusers: [a]\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n      body:\n        job: original\n  expect:\n    response:\n    - check: success\n',
         encoding="utf-8")
     s = load_scenario(str(y))
     api = FakeApi(responses={("POST", "jobs"): {"status": 200, "json": {"success": True}}})
@@ -351,7 +351,7 @@ class CountingApi(ports.ApiDriver):
 
 _POLL_FLOW_YAML = (
     "schema_version: 1\n"
-    "scenario: poll_flow\ngrid: {{level: r, module: m}}\nactor: a\n"
+    "scenario: poll_flow\ngrid: {{level: r, module: m}}\nusers: [a]\n"
     "steps:\n"
     "  - id: poll\n"
     "    do: {{request: {{method: GET, path: [jobs, 1, result]}}}}\n"
@@ -450,7 +450,7 @@ def test_state_poll_uses_own_default_timeout_not_poll_config_non_poll_step(tmp_p
     """Backend-state observation uses its own default window rather than the business poll configuration for non-poll steps."""
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\ndescription: t\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - p\n  expect:\n    backend_state:\n    - check: span_exists\n      span: dataset.import\n',
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\ndescription: t\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - p\n  expect:\n    backend_state:\n    - check: span_exists\n      span: dataset.import\n',
         encoding="utf-8")
     s = load_scenario(str(y))
     clock = FakeClock()
@@ -476,7 +476,7 @@ def test_state_poll_uses_own_default_timeout_not_poll_config_poll_step(tmp_path)
     """Backend-state observation also keeps its own default window for poll steps."""
     y = tmp_path / "s.yaml"
     y.write_text(
-        "schema_version: 1\nscenario: poll_flow\ngrid:\n  level: r\n  module: m\nactor: a\nsteps:\n- id: poll\n  do:\n    request:\n      method: GET\n      path:\n      - jobs\n      - '1'\n      - result\n  poll:\n    on_timeout: FAIL\n  expect:\n    response:\n    - check: success\n    backend_state:\n    - check: span_exists\n      span: dataset.import\n",
+        "schema_version: 1\nscenario: poll_flow\ngrid:\n  level: r\n  module: m\nusers: [a]\nsteps:\n- id: poll\n  do:\n    request:\n      method: GET\n      path:\n      - jobs\n      - '1'\n      - result\n  poll:\n    on_timeout: FAIL\n  expect:\n    response:\n    - check: success\n    backend_state:\n    - check: span_exists\n      span: dataset.import\n",
         encoding="utf-8")
     s = load_scenario(str(y))
     api = FakeApi(responses={("GET", "jobs/1/result"): {"status": 200, "json": {"success": True}}})
@@ -540,7 +540,7 @@ def test_span_attr_type_mismatch_is_failed_not_error(tmp_path):
 # --- C-2 Step 1: span_attr.value as a data-only reference to a bound value ---
 
 _FROM_BIND_FLOW_YAML = (
-    'schema_version: 1\nscenario: identity_flow\ngrid:\n  level: r\n  module: m\nactor: a\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - items\n  expect:\n    response:\n    - check: success\n    - check: has\n      field: itemId\n- id: update\n  do:\n    request:\n      method: PUT\n      path:\n      - items\n      - from_step: create\n        response_field: itemId\n  expect:\n    response:\n    - check: success\n    backend_state:\n    - check: span_attr\n      span: item.update\n      attr: entity_id\n      op: ==\n      value:\n        from_step: create\n        response_field: itemId\n'
+    'schema_version: 1\nscenario: identity_flow\ngrid:\n  level: r\n  module: m\nusers: [a]\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - items\n  expect:\n    response:\n    - check: success\n    - check: has\n      field: itemId\n- id: update\n  do:\n    request:\n      method: PUT\n      path:\n      - items\n      - from_step: create\n        response_field: itemId\n  expect:\n    response:\n    - check: success\n    backend_state:\n    - check: span_attr\n      span: item.update\n      attr: entity_id\n      op: ==\n      value:\n        from_step: create\n        response_field: itemId\n'
 )
 
 
@@ -607,7 +607,7 @@ def test_span_attr_from_bind_still_passes_via_reference_after_literal_regression
 def test_backend_field_equals_literal_reports_expected_and_observed(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - status\n  expect:\n    response:\n    - check: field_equals\n      field: state\n      value: ready\n',
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - status\n  expect:\n    response:\n    - check: field_equals\n      field: state\n      value: ready\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     api = FakeApi(responses={
@@ -628,7 +628,7 @@ def test_backend_field_equals_literal_reports_expected_and_observed(tmp_path):
 def test_backend_field_equals_resolves_input_and_is_type_strict(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nparameters:\n  rows: 3\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - result\n  expect:\n    response:\n    - check: field_equals\n      field: count\n      value:\n        from_parameter: rows\n',
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\nparameters:\n  rows: 3\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - result\n  expect:\n    response:\n    - check: field_equals\n      field: count\n      value:\n        from_parameter: rows\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     api = FakeApi(responses={
@@ -648,7 +648,7 @@ def test_backend_field_equals_resolves_input_and_is_type_strict(tmp_path):
 def test_backend_field_equals_resolves_current_step_binding(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - items\n  expect:\n    response:\n    - check: has\n      field: itemId\n- id: archive\n  do:\n    request:\n      method: POST\n      path:\n      - archives\n  expect:\n    response:\n    - check: field_equals\n      field: archived\n      value:\n        from_step: create\n        response_field: itemId\n',
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - items\n  expect:\n    response:\n    - check: has\n      field: itemId\n- id: archive\n  do:\n    request:\n      method: POST\n      path:\n      - archives\n  expect:\n    response:\n    - check: field_equals\n      field: archived\n      value:\n        from_step: create\n        response_field: itemId\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     api = FakeApi(responses={
@@ -667,7 +667,7 @@ def test_backend_field_equals_resolves_current_step_binding(tmp_path):
 def test_poll_waits_for_field_equals_value_not_just_field_presence(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        "schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nsteps:\n- id: poll\n  do:\n    request:\n      method: GET\n      path:\n      - jobs\n      - '1'\n      - status\n  poll:\n    on_timeout: FAIL\n  expect:\n    response:\n    - check: field_equals\n      field: state\n      value: done\n",
+        "schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\nsteps:\n- id: poll\n  do:\n    request:\n      method: GET\n      path:\n      - jobs\n      - '1'\n      - status\n  poll:\n    on_timeout: FAIL\n  expect:\n    response:\n    - check: field_equals\n      field: state\n      value: done\n",
         encoding="utf-8")
     scenario = load_scenario(str(y))
     api = CountingApi({

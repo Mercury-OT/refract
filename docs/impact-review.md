@@ -2,8 +2,9 @@
 
 `refracto impact` compares an explicitly selected old child file with its current
 version and finds current parents that include that exact file. It does not run
-tests, change files, update fingerprints, or approve a change. The Scenario YAML
-and its one-level, same-actor include rules are unchanged.
+tests, change files, update fingerprints, or approve a change. The current
+one-level include rules bind a single-user child's local name to the effective
+parent user; multi-user children cannot be included.
 
 ```sh
 refracto impact --before old-child.yaml --after scenarios/shared/child.yaml --parents scenarios
@@ -22,11 +23,15 @@ directory rather than an arbitrary repository containing other YAML formats.
 The report separates four questions:
 
 1. **What changed in the child?** All authored fields are compared, including
-   parameter defaults, actions, assertions, result names and result sources.
+   parameter defaults, users/session policies, actions, assertions, result names
+   and result sources.
    An assertion removal is a fact to review, not an automatic judgment that the
    new requirement is wrong. No rename or semantic-equivalence inference occurs.
 2. **Which parents use it?** Each include site lists its step, supplied arguments,
    defaults used in each child version, and downstream named-result consumers.
+   User binding also shows the effective parent user, child-local users in both
+   versions, and the child's explicit new-session policies. An unchanged pin is
+   not approval of the caller's account choice or session effects.
    Only executable reference positions count; reference-shaped literal parameter
    objects remain data.
 3. **Does the recorded fingerprint match?** The pin is classified as matching

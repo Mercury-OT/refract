@@ -1,0 +1,43 @@
+schema_version: 1
+scenario: demo.create_update_read
+description: Create, update, then check the same item in the returned list.
+users: [user]
+parameters:
+  initial_name: Test record
+  updated_name: Updated test record
+steps:
+  - id: create
+    do:
+      include: shared.create_item
+    with:
+      item_name: {from_parameter: initial_name}
+  - id: update
+    do:
+      request:
+        method: PUT
+        path: [items, {from_step: create, result: record_id}]
+        body:
+          name: {from_parameter: updated_name}
+    expect:
+      response:
+        - check: success
+        - check: field_equals
+          field: itemId
+          value: {from_step: create, result: record_id}
+      backend_state:
+        - check: span_exists
+          span: item.update
+  - id: read
+    do:
+      request:
+        method: GET
+        path: [items]
+    expect:
+      response:
+        - check: success
+        - check: collection_matching_count
+          field: items
+          matching:
+            id: {from_step: create, result: record_id}
+            name: {from_parameter: updated_name}
+          count: 1

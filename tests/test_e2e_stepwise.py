@@ -432,7 +432,7 @@ def test_live_c5_atomic_failure_blocked_and_falsy_values():
 
 def test_unavailable_or_throwing_context_never_performs_action():
     class Driver(ScriptedUi):
-        def open_stepwise(self, scenario, session, *, mode, mock_plan=None):
+        def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
             self.open_calls += 1
             raise RuntimeError("cannot open")
     ui = Driver()

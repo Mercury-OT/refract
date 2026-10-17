@@ -3,7 +3,7 @@ scenario: refracto.synthetic_probe
 grid:
   level: smoke
   module: generic
-actor: actor1
+users: [actor1]
 description: 'actor1 performs an abstract action; the response carries a task id,
   a result row becomes visible, and two backend spans confirm the operation completed.
 

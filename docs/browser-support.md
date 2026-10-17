@@ -55,10 +55,16 @@ class RecordsUi(ports.UiDriver, ports.StepwiseUiDriver):
     def supports_stepwise_mode(self, mode):
         return mode in {"live", "mock"}
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None):
+    def open_stepwise(self, scenario, session, *, mode, mock_plan=None,
+                      mock_queue=None, user=None, session_generation=0,
+                      context_id=""):
         # This adapter defines session as Playwright browser context options,
         # for example an authenticated storage_state supplied by its caller.
-        return self.browser.open(mode, mock_plan=mock_plan, context_options=session)
+        return self.browser.open(
+            mode, mock_plan=mock_plan, context_options=session,
+            mock_queue=mock_queue, user=user,
+            session_generation=session_generation, context_id=context_id,
+        )
 
     def perform_step(self, scenario, step, context, permit):
         if permit.action == "open":
@@ -85,11 +91,25 @@ already be a string. The helper passively waits for visibility and then requires
 exactly one visible match. It never chooses an arbitrary match or adds an extra
 business action to make an assertion pass.
 
-Core-issued permits are single-use. A context binds to its first execution ID;
-mixing executions or contexts is an error. Treat returned contexts as opaque.
+Core-issued permits are single-use and bind the logical user, current session
+generation, and context ID as well as the run/action IDs. The adapter forwards
+the context binding when opening it. A permit from a different user, an old
+session, or another context is rejected before acting. Treat returned contexts as opaque.
 Use each helper and its contexts on the thread that created them. Concurrent
 contexts on that thread own separate browsers and share only the Playwright
 runtime; closing one leaves the others usable. `close` is safe to repeat.
+
+Core retains one context per current user/session, reuses it when switching back,
+and replaces only the selected user's context after `session: new`. It closes
+all remaining contexts on exit. The authentication adapter supplies fresh storage
+for the same account; it does not restore permissions or replay a hidden login
+workflow. Anonymous execution opens a fresh context without authentication data.
+For a core-bound anonymous context the helper rejects storage state, HTTP
+credentials, client certificates, and Authorization/Cookie/Proxy-Authorization
+headers rather than inheriting them. This is a bounded configuration check, not
+a guarantee about every custom authentication mechanism in arbitrary adapters.
+These checks enforce the declared adapter protocol, not a malicious adapter's
+truthfulness or independent proof of server-side identity.
 
 The executable [Demo adapter](../adapters/demo/ui.py) uses the same helper with
 its own mappings and rendering interpretation. Response normalization remains
@@ -156,6 +176,13 @@ mismatched fixtures abort the request without reaching a live API. Omitting the
 plan in mock mode means an empty plan, so any API request fails. Live mode rejects
 a supplied mock plan. Evidence preserves fixture IDs and consumption records;
 expected assertions never supply mock data.
+
+For a multi-context run, core supplies the same `MockResponseQueue` to each
+`open_stepwise` call. Forward it as `mock_queue`; do not create a new queue when
+switching users or replacing a session. Consumption order is global to that
+projection. Core retains an independent fixture plan to verify the observed
+consumption and responses. A standalone helper caller can also explicitly share
+a queue; unrelated runs must use separate queues.
 
 ## Transport and data boundaries
 

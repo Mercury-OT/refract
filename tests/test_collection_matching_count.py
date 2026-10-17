@@ -28,7 +28,7 @@ def request(sid="list", checks=None, **extra):
 
 
 def load(tmp_path, steps=None, **extra):
-    raw = {"schema_version": 1, "scenario": "collection.check", "actor": "reader",
+    raw = {"schema_version": 1, "scenario": "collection.check", "users": ["reader"],
            "steps": [request()] if steps is None else steps, **extra}
     path = tmp_path / "collection.yaml"
     path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
@@ -85,7 +85,7 @@ def test_duplicate_yaml_matching_key_rejected(tmp_path):
     path = tmp_path / "duplicate.yaml"
     path.write_text("""schema_version: 1
 scenario: collection.duplicate
-actor: reader
+users: [reader]
 steps:
   - id: list
     do: {request: {method: GET, path: [records]}}
@@ -268,7 +268,8 @@ def test_polling_real_attempts_and_terminal_semantics(tmp_path, projection, poli
 def recordings(scenario, payloads):
     return [ports.RecordedResponse(200, {}, response(data), "", None,
         ports.RequestSpec(step.request.method, step.request.path), step_id=step.id,
-        template_path=step.request.path) for step, data in zip(scenario.steps, payloads)]
+        template_path=step.request.path, user=scenario.effective_user(step), session_generation=1)
+        for step, data in zip(scenario.steps, payloads)]
 
 
 def test_contract_keeps_all_samefield_constraints_and_dataclass_compatibility(tmp_path):

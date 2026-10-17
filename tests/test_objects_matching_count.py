@@ -143,6 +143,7 @@ def test_frontend_and_e2e_use_the_same_matching_count_evaluator():
     )
     frontend_result = frontend.run(
         scenario,
+        auth=FakeAuth(),
         ui=FakeUi(rendered=rendered),
         normalizer=FakeNormalizer(), mock_plan=[],
     )
@@ -164,7 +165,7 @@ def test_frontend_and_e2e_use_the_same_matching_count_evaluator():
 def _scenario_text(frontend_assertion, *, inputs="{}", steps=None):
     prefix = (
         "schema_version: 1\nscenario: demo.matching_count\n"
-        "grid: {level: smoke, module: ui}\nactor: viewer\n"
+        "grid: {level: smoke, module: ui}\nusers: [viewer]\n"
         f"parameters: {inputs}\nsteps:\n"
     )
     return prefix + (steps if steps is not None else

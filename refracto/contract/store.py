@@ -112,7 +112,8 @@ def consumer_contract(scenario) -> Contract:
     return Contract(entries=entries)
 
 
-def provider_contract(recordings, normalizer, *, required_status_keys=frozenset()) -> Contract:
+def provider_contract(recordings, normalizer, *, required_status_keys=frozenset(), required_users=None,
+                      required_sessions=None) -> Contract:
     """Build the provider-side contract from real recordings.
 
     Provider entries are keyed on `(step_id, method, template_path)`, not the
@@ -126,11 +127,21 @@ def provider_contract(recordings, normalizer, *, required_status_keys=frozenset(
     """
     entries = {}
     for r in recordings:
-        if getattr(r, "is_final", True) is False:
-            continue
         step_id = getattr(r, "step_id", None)
         template = getattr(r, "template_path", None) or r.request.path
         key = (step_id, r.request.method, template)
+        if required_users is not None and key in required_users:
+            user = required_users[key]
+            generation = getattr(r, "session_generation", None)
+            if (getattr(r, "user", None) != user or type(generation) is not int
+                    or (generation != 0 if user is None else generation < 1)):
+                raise ValueError("provider recording user/session attribution is unavailable or mismatched")
+            if required_sessions is not None and generation != required_sessions.get(step_id):
+                raise ValueError("provider recording session generation does not match execution provenance")
+        if getattr(r, "is_final", True) is False:
+            continue
+        if required_users is not None and key in entries:
+            raise ValueError("multiple final provider recordings have the same declared identity")
         observed_status = getattr(r, "status", None)
         observed_status = observed_status if http_status.valid(observed_status) else None
         if observed_status is None and key in required_status_keys:

@@ -30,6 +30,7 @@ def _resp(
         step_id=step_id,
         template_path=template_path,
         is_final=is_final,
+        user="actor1", session_generation=1,
     )
 
 
@@ -335,13 +336,14 @@ def _value_resp(method, path, values, *, step_id, template_path):
         request=spec,
         step_id=step_id,
         template_path=template_path,
+        user="a", session_generation=1,
     )
 
 
 def test_contract_preserves_field_equals_values_on_both_sides(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nparameters:\n  rows: 3\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - result\n  expect:\n    response:\n    - check: field_equals\n      field: count\n      value:\n        from_parameter: rows\n',
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\nparameters:\n  rows: 3\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - result\n  expect:\n    response:\n    - check: field_equals\n      field: count\n      value:\n        from_parameter: rows\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     consumer = store.consumer_contract(scenario)
@@ -361,7 +363,7 @@ def test_contract_preserves_field_equals_values_on_both_sides(tmp_path):
 def test_contract_projection_detects_from_input_value_drift(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nparameters:\n  rows: 3\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - result\n  expect:\n    response:\n    - check: field_equals\n      field: count\n      value:\n        from_parameter: rows\n',
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\nparameters:\n  rows: 3\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - result\n  expect:\n    response:\n    - check: field_equals\n      field: count\n      value:\n        from_parameter: rows\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     recording = _value_resp(
@@ -376,7 +378,7 @@ def test_contract_projection_detects_from_input_value_drift(tmp_path):
 def test_contract_projection_resolves_from_bind_against_source_recording(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nactor: a\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - items\n  expect:\n    response:\n    - check: has\n      field: itemId\n- id: archive\n  do:\n    request:\n      method: POST\n      path:\n      - archives\n  expect:\n    response:\n    - check: field_equals\n      field: archived\n      value:\n        from_step: create\n        response_field: itemId\n',
+        'schema_version: 1\nscenario: x\ngrid:\n  level: smoke\n  module: m\nusers: [a]\nsteps:\n- id: create\n  do:\n    request:\n      method: POST\n      path:\n      - items\n  expect:\n    response:\n    - check: has\n      field: itemId\n- id: archive\n  do:\n    request:\n      method: POST\n      path:\n      - archives\n  expect:\n    response:\n    - check: field_equals\n      field: archived\n      value:\n        from_step: create\n        response_field: itemId\n',
         encoding="utf-8")
     scenario = load_scenario(str(y))
     recordings = [

@@ -40,7 +40,7 @@ def first_step(version):
 @pytest.mark.parametrize("filename", ("included.yaml", "child.yaml", "flat.yaml"))
 def test_every_review_source_loads(version, filename):
     scenario = load_scenario(ROOT / version / filename)
-    assert scenario.actor == "user"
+    assert scenario.users == ["user"]
     assert len(scenario.steps) == (1 if filename == "child.yaml" else 3)
     assert all(step.action == "request" for step in scenario.steps)
 
@@ -78,7 +78,7 @@ def concrete_plan(version, form, returned_id):
     # Fail closed if the public model adds a new field this comparison ignores.
     assert {f.name for f in fields(Step)} == {
         "id", "request", "expect", "bind", "poll", "action", "target",
-        "value", "duration", "request_asserted", "on_failure"}
+        "value", "duration", "request_asserted", "on_failure", "user", "session"}
     assert {f.name for f in fields(Expect)} == {"frontend", "response", "backend_state"}
     prior, result = {}, []
     for step in scenario.steps:
@@ -90,6 +90,7 @@ def concrete_plan(version, form, returned_id):
             "duration": prepared.duration, "poll": prepared.poll,
             "request_asserted": prepared.request_asserted,
             "on_failure": prepared.on_failure,
+            "user": prepared.user, "session": prepared.session,
             "request": {"method": request.method, "path": request.path, "body": request.body},
             "expect": {point: [{"check": a.check, **a.params}
                                for a in getattr(prepared.expect, point)]

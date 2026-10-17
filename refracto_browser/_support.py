@@ -57,6 +57,10 @@ class _Context:
     owner: object
     mode: str
     mock_plan: list
+    mock_queue: object = None
+    user: str | None = None
+    session_generation: int = 0
+    context_id: str = ""
     playwright: object = None
     browser: object = None
     browser_context: object = None
@@ -64,7 +68,6 @@ class _Context:
     closed: bool = False
     execution_id: str | None = None
     deadline: float | None = None
-    fixture_index: int = 0
     permits: dict = field(default_factory=dict)
     traffic: list = field(default_factory=list)
     diagnostics: list = field(default_factory=list)
@@ -102,22 +105,44 @@ class BrowserSupport:
     def __repr__(self):
         return "<BrowserSupport>"
 
-    def open(self, mode, mock_plan=None, context_options=None):
+    def open(self, mode, mock_plan=None, context_options=None, *, mock_queue=None,
+             user=None, session_generation=0, context_id=""):
         """Create an instrumented context at about:blank; never navigate or log in."""
         if mode not in {"live", "mock"}:
             raise ValueError("unsupported browser mode")
         if mode == "live" and mock_plan is not None:
             raise ValueError("live browser mode does not accept a mock plan")
+        if mode == "live" and mock_queue is not None:
+            raise ValueError("live browser mode does not accept a mock queue")
+        if mock_queue is not None and (type(mock_queue) is not ports.MockResponseQueue
+                or type(mock_queue.index) is not int or mock_queue.index < 0
+                or type(mock_queue.plan) is not list
+                or not all(type(item) is ports.MockResponse for item in mock_queue.plan)):
+            raise ValueError("browser mock queue must be an explicit run-local cursor")
+        if (user is not None and (type(user) is not str or not user.strip())) or (
+                type(session_generation) is not int or session_generation < 0) or type(context_id) is not str:
+            raise ValueError("browser context binding is invalid")
+        if context_id and ((user is None and session_generation != 0)
+                           or (user is not None and session_generation < 1)):
+            raise ValueError("browser context user/session binding is invalid")
         if mock_plan is not None and (not isinstance(mock_plan, (list, tuple)) or
                 not all(isinstance(item, ports.MockResponse) for item in mock_plan)):
             raise ValueError("browser mock plan must contain explicit MockResponse fixtures")
         if context_options is not None and not isinstance(context_options, dict):
             raise ValueError("browser context options must be a mapping")
         options = dict(context_options or {})
+        if context_id and user is None and (any(key in options for key in
+                ("storage_state", "http_credentials", "client_certificates"))
+                or any(str(key).lower() in {"authorization", "cookie", "proxy-authorization"}
+                       for key in options.get("extra_http_headers", {}))):
+            raise ValueError("anonymous browser context cannot inherit authentication")
         if options.get("service_workers", "block") != "block":
             raise ValueError("browser service workers are unsupported")
         options["service_workers"] = "block"
-        context = _Context(self, mode, copy.deepcopy(list(mock_plan or [])))
+        plan = copy.deepcopy(list(mock_plan or []))
+        queue = mock_queue or ports.MockResponseQueue(plan)
+        context = _Context(self, mode, queue.plan, mock_queue=queue, user=user,
+                           session_generation=session_generation, context_id=context_id)
         try:
             # Import lazily: even importing this package needs no browser extra.
             context.playwright = _acquire_playwright()
@@ -162,6 +187,10 @@ class BrowserSupport:
             raise ValueError("browser action requires an action permit")
         if permit.mode != context.mode or permit.action not in {"open", "click", "fill"}:
             raise ValueError("browser action permit is incompatible with context")
+        for name in ("user", "session_generation", "context_id"):
+            actual, expected = getattr(permit, name), getattr(context, name)
+            if type(actual) is not type(expected) or actual != expected:
+                raise ValueError("browser action permit belongs to another user/session/context")
         if not all(type(value) is str and value for value in
                    (permit.execution_id, permit.action_id, permit.step_id, permit.token)):
             raise ValueError("browser action permit has invalid identity")
@@ -176,13 +205,14 @@ class BrowserSupport:
             raise ValueError("browser action does not accept a bound value")
         if context.execution_id not in {None, permit.execution_id}:
             raise ValueError("browser permit belongs to another execution")
-        if self._executions.get(permit.execution_id, context) is not context:
+        execution_key = (permit.execution_id, permit.context_id)
+        if self._executions.get(execution_key, context) is not context:
             raise ValueError("browser execution is already bound to another context")
         identity = (permit.execution_id, permit.action_id)
         if identity in self._used_actions or permit.token in self._used_tokens or permit.token in _authorizations:
             raise ValueError("browser action authorization was already used")
         context.execution_id = permit.execution_id
-        self._executions[permit.execution_id] = context
+        self._executions[execution_key] = context
         self._used_actions.add(identity)
         self._used_tokens.add(permit.token)
         # Keep replay protection while the authorizing helper exists, without
@@ -244,6 +274,7 @@ class BrowserSupport:
             result = ports.UiActionResult(evidence=ports.UiActionEvidence(
                 execution_id=permit.execution_id, action_id=permit.action_id,
                 step_id=permit.step_id, mode=permit.mode, permit_token=permit.token,
+                user=permit.user, session_generation=permit.session_generation, context_id=permit.context_id,
                 traffic=current, rendered=rendered,
                 diagnostic_outgoing=[recording.request for recording in diagnostics],
                 diagnostic_recorded=diagnostics,
@@ -311,12 +342,12 @@ class BrowserSupport:
                         raise ValueError("browser request body must be a JSON object")
                 spec = ports.RequestSpec(request.method, logical_path, body, traceparent)
             if api and context.mode == "mock":
-                if context.fixture_index >= len(context.mock_plan):
+                if context.mock_queue.index >= len(context.mock_queue.plan):
                     raise ValueError("browser mock plan is exhausted")
-                fixture = context.mock_plan[context.fixture_index]
+                fixture = context.mock_queue.plan[context.mock_queue.index]
                 if (fixture.method, fixture.path) != (spec.method, spec.path):
                     raise ValueError("browser traffic does not match the next mock fixture")
-                context.fixture_index += 1
+                context.mock_queue.index += 1
                 fixture_id = fixture.fixture_id
                 response_body, status = copy.deepcopy(fixture.response), fixture.status
                 text = json.dumps(response_body)
@@ -347,6 +378,7 @@ class BrowserSupport:
                     status, response_headers, response_body, text, trace_id, dataclasses.replace(spec),
                     step_id=permit.step_id if permit else None, actual_path=actual_path,
                     request_id=request_id, mock_fixture_id=fixture_id,
+                    user=context.user, session_generation=context.session_generation,
                 )
                 if context.mode == "mock":
                     context.mock_recordings.append(recorded)
@@ -360,6 +392,7 @@ class BrowserSupport:
                         step_id=permit.step_id, mode=permit.mode, request_id=request_id,
                         permit_token=permit.token, request=spec, response=recorded,
                         mock_fixture_id=fixture_id,
+                        user=permit.user, session_generation=permit.session_generation, context_id=permit.context_id,
                     ))
         except Exception:
             context.errors.append("browser request transport or recording failed")
@@ -388,10 +421,11 @@ class BrowserSupport:
         if context.closed:
             return
         context.closed = True
-        if self._executions.get(context.execution_id) is context:
+        execution_key = (context.execution_id, context.context_id)
+        if self._executions.get(execution_key) is context:
             # Reserve the execution without retaining the closed browser and
             # its raw evidence through the helper's lifetime.
-            self._executions[context.execution_id] = _CLOSED_EXECUTION
+            self._executions[execution_key] = _CLOSED_EXECUTION
         failed = False
         for resource, method in ((context.browser_context, "close"), (context.browser, "close")):
             if resource is not None:

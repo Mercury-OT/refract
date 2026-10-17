@@ -3,7 +3,7 @@ scenario: documents.rejected_create
 grid:
   level: regression
   module: documents
-actor: editor
+users: [editor]
 description: Observe the declared business rejection details for a disallowed category.
 steps:
 - id: rejected_create

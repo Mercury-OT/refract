@@ -74,6 +74,8 @@ class Step:
     duration: int | None = None
     request_asserted: bool = False
     on_failure: str = field(default="continue", kw_only=True)
+    user: str | None = field(default=None, kw_only=True)
+    session: str | None = field(default=None, kw_only=True)
 
 @dataclass
 class Scenario:
@@ -88,6 +90,18 @@ class Scenario:
     include_dependencies: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     results: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     included_results: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
+    users: list[str] | None = field(default=None, kw_only=True)
+
+    def __post_init__(self):
+        # Bounded Python-constructor migration only. The YAML loader never
+        # accepts actor and always supplies the explicit users declaration.
+        if self.users is None:
+            self.users = [self.actor] if self.actor else []
+
+    def effective_user(self, step):
+        if step.user is not None:
+            return step.user
+        return self.users[0] if type(self.users) is list and len(self.users) == 1 else None
 
     @property
     def parameters(self):

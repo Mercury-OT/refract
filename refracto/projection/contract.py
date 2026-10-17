@@ -13,17 +13,45 @@ remain recording evidence, but do not change which declared endpoint a provider
 response satisfies.
 """
 from refracto.contract import store
-from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED, ERROR
+from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED, ERROR, BLOCKED, NOT_APPLICABLE
 
 
-def run(scenario, provider_recordings, normalizer) -> DomainResult:
+def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> DomainResult:
     consumer = store.consumer_contract(scenario)
     if not consumer.entries or not any(step.request and step.expect.response for step in scenario.steps):
         return DomainResult(projection="contract", steps=[])
     try:
+        if execution_steps is None:
+            if any(step.session == "new" for step in scenario.steps):
+                raise ValueError("session replacement requires backend execution provenance for contract checking")
+            generations = {step.id: 0 if scenario.effective_user(step) is None else 1
+                           for step in scenario.steps}
+        else:
+            declarations = {step.id: step for step in scenario.steps}
+            generations = {}
+            seen_steps = set()
+            for result in execution_steps:
+                declaration = declarations.get(result.step_id)
+                if declaration is None:
+                    continue
+                if result.step_id in seen_steps:
+                    raise ValueError("duplicate backend execution provenance")
+                seen_steps.add(result.step_id)
+                if result.status in (BLOCKED, NOT_APPLICABLE):
+                    continue
+                if result.user != scenario.effective_user(declaration):
+                    raise ValueError("backend execution user differs from declaration")
+                if result.session_generation is not None:
+                    if (type(result.session_generation) is not int
+                            or (result.session_generation != 0 if result.user is None else result.session_generation < 1)):
+                        raise ValueError("invalid backend session generation provenance")
+                    generations[result.step_id] = result.session_generation
         provider = store.provider_contract(provider_recordings, normalizer,
             required_status_keys=frozenset(key for key, shape in consumer.entries.items()
-                                           if shape.allowed_http_statuses is not None))
+                                           if shape.allowed_http_statuses is not None),
+            required_users={(step.id, step.request.method, step.request.path): scenario.effective_user(step)
+                            for step in scenario.steps if step.request is not None},
+            required_sessions=generations)
     except Exception as exc:
         return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))])
     bound_values = store.provider_binding_values(scenario, provider)

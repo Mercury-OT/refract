@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: demo.include_create_item_ui
-actor: user
+users: [user]
 description: Open the Demo page and create one item using four visible UI primitives.
 parameters:
   item_name: included item

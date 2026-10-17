@@ -25,7 +25,7 @@ still have access to the full child, not just a label saying it was approved.
 
 For **each new parent**, review:
 
-- Whether this child is appropriate here, including role and starting state.
+- Whether this child is appropriate here, including the mapped logical user and starting state.
 - Which values are passed, including defaults that are relied on.
 - Where the child runs in the sequence and how its results are used.
 - What the parent requires afterward, and whether its assertions cover that.
@@ -50,8 +50,13 @@ system-reported evidence, not an independent database check.
 
 A create/read, create/update, and create/delete parent could share the same
 creation child. Reuse can avoid repeatedly inspecting the same creation logic,
-while each parent still needs its own caller review. These other parents are
-illustrations of reuse, not additional examples or requirements delivered here.
+while each parent still needs its own caller review.
+
+The [create/update/read parent](create_update_read.yaml) is the explicitly migrated
+executable copy of the previously approved named-results task example. It uses
+this same child and its own [pin](create_update_read.includes.json), preserving
+the creation, update and read assertions. The historical task prose and measured
+outcomes are not rewritten; this current example uses `users` instead of `actor`.
 
 More repeated use of a stable child creates more opportunities for saving review
 effort. It also means more affected callers when that child changes. No time

@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: shared.create_item
-actor: user
+users: [user]
 
 # Reusable input: callers choose the name without changing the child checks.
 parameters:

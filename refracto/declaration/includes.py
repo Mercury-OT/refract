@@ -129,13 +129,15 @@ def _map(node, convert):
     return copy.deepcopy(node)
 
 
-def instantiate(call, dependencies, parameters, prior, actor, caller_parameters):
+def instantiate(call, dependencies, parameters, prior, user, caller_parameters):
     from refracto.declaration.loader import _data, _mapping
-    _mapping(call, {"id", "do", "with"}, "include step")
+    _mapping(call, {"id", "do", "with", "user"}, "include step")
     sid = call["id"]
     child, pin, _ = dependencies[call["do"]["include"]]
-    if child.actor != actor:
-        _error("included Scenario actor must equal the parent actor")
+    if len(child.users) > 1:
+        _error("including a multi-user Scenario is unsupported")
+    if bool(child.users) != (user is not None):
+        _error("anonymous and authenticated include users cannot be mixed")
     overrides = call.get("with", {})
     if not isinstance(overrides, dict) or set(overrides) - set(child.parameters):
         _error("include with must contain only declared child parameters")
@@ -204,10 +206,11 @@ def instantiate(call, dependencies, parameters, prior, actor, caller_parameters)
                            for point in ("frontend", "response", "backend_state")})
         value = _map(original.value, convert)
         step = replace(original, id=f"{sid}/{original.id}", request=request,
-                       expect=expect, value=value, bind=list(used.values()))
+                       expect=expect, value=value, bind=list(used.values()), user=user)
         result.append(step)
         sources[step.id] = {"scenario_id": child.id, "step_id": original.id,
-                            "include_step_id": sid, "sha256": pin}
+                            "include_step_id": sid, "sha256": pin,
+                            "source_user": original.user, "effective_user": user}
     return result, sources
 
 

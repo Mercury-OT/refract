@@ -51,6 +51,8 @@ class RecordedResponse:
     actual_path: str | None = None         # adapter-resolved path used in execution
     request_id: str | None = field(default=None, kw_only=True)
     mock_fixture_id: str | None = field(default=None, kw_only=True)
+    user: str | None = field(default=None, kw_only=True)
+    session_generation: int | None = field(default=None, kw_only=True)
 
 
 @dataclass
@@ -93,6 +95,9 @@ class UiActionPermit:
         compare=False,
         metadata={"sensitive": True},
     )
+    user: str | None = None
+    session_generation: int = 0
+    context_id: str = ""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -105,6 +110,13 @@ class MockResponse:
     path: str = field(repr=False)
     response: dict = field(repr=False, metadata={"sensitive": True})
     status: int = 200
+
+
+@dataclass
+class MockResponseQueue:
+    """A run-local transport cursor shared by all mock browser contexts."""
+    plan: list[MockResponse] = field(repr=False, metadata={"sensitive": True})
+    index: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -120,6 +132,9 @@ class UiTraffic:
     request: RequestSpec = field(repr=False, metadata={"sensitive": True})
     response: RecordedResponse = field(repr=False, metadata={"sensitive": True})
     mock_fixture_id: str | None = None
+    user: str | None = None
+    session_generation: int = 0
+    context_id: str = ""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -152,6 +167,9 @@ class UiActionEvidence:
     mock_recordings: list[RecordedResponse] = field(
         default_factory=list, repr=False, metadata={"sensitive": True},
     )
+    user: str | None = None
+    session_generation: int = 0
+    context_id: str = ""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -172,9 +190,20 @@ class UiActionResult:
                 "UiActionResult requires exactly one of evidence or a non-empty skip_reason")
 
 
+@dataclass(frozen=True, kw_only=True)
+class UserSession:
+    """Sensitive adapter authentication material, never report serialization."""
+    principal_id: str = field(repr=False, metadata={"sensitive": True})
+    authentication_id: str = field(repr=False, metadata={"sensitive": True})
+    credentials: object = field(repr=False, metadata={"sensitive": True})
+
+
 class Authenticator(ABC):
     @abstractmethod
-    def session(self, role: str) -> object: ...
+    def identify(self, user: str) -> str: ...
+
+    @abstractmethod
+    def session(self, user: str) -> UserSession: ...
 
 
 class ApiDriver(ABC):
@@ -196,7 +225,7 @@ class UiDriver(ABC):
 
 
 class StepwiseUiDriver(ABC):
-    """Core-authorized primitive execution in a single stateful UI context."""
+    """Core-authorized primitives in one context per current user/session."""
 
     @abstractmethod
     def supports_stepwise_mode(self, mode: str) -> bool:
@@ -211,6 +240,10 @@ class StepwiseUiDriver(ABC):
         *,
         mode: str,
         mock_plan: list[MockResponse] | None = None,
+        mock_queue: MockResponseQueue | None = None,
+        user: str | None = None,
+        session_generation: int = 0,
+        context_id: str = "",
     ) -> object: ...
 
     @abstractmethod

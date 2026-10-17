@@ -7,7 +7,6 @@ from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
@@ -64,10 +63,10 @@ class ObservedUi(DemoUiDriver):
         self.contexts, self.permits, self.results = [], [], []
         self.scenario_ids = []
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None):
+    def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
         self.opens += 1
         self.scenario_ids.append(scenario.id)
-        context = super().open_stepwise(scenario, session, mode=mode, mock_plan=mock_plan)
+        context = super().open_stepwise(scenario, session, mode=mode, mock_plan=mock_plan, **identity)
         self.contexts.append(context)
         return context
 
@@ -91,6 +90,9 @@ class ObservedAuth:
     def session(self, role):
         self.roles.append(role)
         return self.delegate.session(role)
+
+    def identify(self, user):
+        return self.delegate.identify(user)
 
 
 class ObservedApi:
@@ -150,6 +152,7 @@ def _assert_sources(report, parent_path, child_path, child_scenario):
             expected = {"scenario_id": scenario.id, "step_id": step.id,
                         "include_step_id": None,
                         "sha256": hashlib.sha256(parent_path.read_bytes()).hexdigest()}
+        expected.update(source_user="user", effective_user="user")
         assert report.source_lookup[step.id] == expected
 
 
@@ -181,7 +184,7 @@ def _assert_ui_lifecycle(ui, domain, *, included):
 
 @pytest.mark.parametrize("projection", ["backend", "frontend", "e2e"])
 def test_independent_flat_controls_execute_on_real_demo(demo_server, projection):
-    """These controls also pass unchanged before include support is implemented."""
+    """Independent flat business controls, explicitly migrated to current users."""
     path = API_FLAT if projection == "backend" else UI_FLAT
     report, adapters, ui = _run(path, demo_server, projection)
     if ui is not None:
@@ -250,17 +253,15 @@ def test_api_include_reuses_actual_response_and_matches_flat_runtime(demo_server
     assert httpx.get(demo_server + "/items").json() == httpx.get(flat_demo_server + "/items").json()
 
 
-def test_approved_named_result_documentation_executes_create_update_read(demo_server, tmp_path):
-    """The approved full YAML is executable on the public Demo, not pseudocode."""
-    specification = (ROOT / "docs/tasks/scenario-named-results.md").read_text(encoding="utf-8")
-    blocks = re.findall(r"```yaml\n(.*?)```", specification, re.DOTALL)
-    assert len(blocks) == 2
+def test_current_named_result_example_executes_create_update_read(demo_server, tmp_path):
+    """Current executable copy preserves the historical three-step obligations."""
+    example = ROOT / "examples/scenario-reuse"
     shared = tmp_path / "shared"
     shared.mkdir()
     child = shared / "create_item.yaml"
-    child.write_text(blocks[0], encoding="utf-8")
+    child.write_bytes((example / "shared/create_item.yaml").read_bytes())
     parent = tmp_path / "create_update_read.yaml"
-    parent.write_text(blocks[1], encoding="utf-8")
+    parent.write_bytes((example / "create_update_read.yaml").read_bytes())
     parent.with_suffix(".includes.json").write_text(json.dumps({
         "manifest_version": 1,
         "scenarios": {"shared.create_item": {

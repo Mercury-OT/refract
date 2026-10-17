@@ -11,6 +11,7 @@ import hashlib
 import json
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 from refracto import ports
 from refracto.runner import Adapters, run_scenario
@@ -19,7 +20,7 @@ from tests import include_fault_controls as frozen
 
 CHILD_CREATE = """schema_version: 1
 scenario: control.create
-actor: editor
+users: [editor]
 parameters:
   record_name: default-name
 steps:
@@ -46,7 +47,7 @@ results:
 
 INCLUDE_COLLECTION = """schema_version: 1
 scenario: control.collection
-actor: editor
+users: [editor]
 parameters:
   record_name: target-name
 steps:
@@ -80,7 +81,7 @@ steps:
 
 INCLUDE_WRONG_OBJECT = """schema_version: 1
 scenario: control.wrong_object
-actor: editor
+users: [editor]
 parameters:
   record_name: target-name
 steps:
@@ -112,11 +113,114 @@ steps:
         - check: success
 """
 
-# The rejection case has no response dependency, so its approved bytes need no
-# migration. All flat declarations remain the original independent controls.
+# Current standalone declarations explicitly migrate identity grammar. The
+# historical harness above remains byte-for-byte fixed and is not executed as
+# though it understood the current format.
+FLAT_REJECTION = """schema_version: 1
+scenario: control.rejection
+users: [editor]
+steps:
+  - id: reject
+    do: {request: {method: POST, path: [records], body: {name: ""}}}
+    expect:
+      response: [{check: failure}]
+  - id: after
+    do: {request: {method: GET, path: [records]}}
+    expect:
+      response: [{check: success}]
+"""
+
+FLAT_COLLECTION = """schema_version: 1
+scenario: control.collection
+users: [editor]
+parameters: {record_name: target-name}
+steps:
+  - id: create
+    do:
+      request:
+        method: POST
+        path: [records]
+        body: {name: {from_parameter: record_name}}
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: id}
+        - {check: field_equals, field: name, value: {from_parameter: record_name}}
+  - id: list
+    do: {request: {method: GET, path: [records]}}
+    expect:
+      response:
+        - {check: success}
+        - check: collection_matching_count
+          field: records
+          matching:
+            id: {from_step: create, response_field: id}
+            name: {from_parameter: record_name}
+          count: 1
+  - id: after
+    do: {request: {method: GET, path: [records, {from_step: create, response_field: id}]}}
+    expect:
+      response: [{check: success}]
+"""
+
+FLAT_WRONG_OBJECT = """schema_version: 1
+scenario: control.wrong_object
+users: [editor]
+parameters: {record_name: target-name}
+steps:
+  - id: create
+    do:
+      request:
+        method: POST
+        path: [records]
+        body: {name: {from_parameter: record_name}}
+    expect:
+      response:
+        - {check: success}
+        - {check: has, field: id}
+        - {check: field_equals, field: name, value: {from_parameter: record_name}}
+  - id: read
+    do: {request: {method: GET, path: [records, {from_step: create, response_field: id}]}}
+    expect:
+      response:
+        - {check: success}
+        - {check: field_equals, field: id, value: {from_step: create, response_field: id}}
+        - {check: field_equals, field: name, value: {from_parameter: record_name}}
+  - id: after
+    do: {request: {method: GET, path: [records]}}
+    expect:
+      response: [{check: success}]
+"""
+
+CHILD_REJECTION = """schema_version: 1
+scenario: control.reject
+users: [editor]
+steps:
+  - id: reject
+    do: {request: {method: POST, path: [records], body: {name: ""}}}
+    expect:
+      response: [{check: failure}]
+"""
+
+INCLUDE_REJECTION = """schema_version: 1
+scenario: control.rejection
+users: [editor]
+steps:
+  - id: setup
+    do: {include: control.reject}
+  - id: after
+    do: {request: {method: GET, path: [records]}}
+    expect:
+      response: [{check: success}]
+"""
+
+FLAT_FIXTURES = {"accepted_rejection": FLAT_REJECTION,
+                 "changed_collection_target": FLAT_COLLECTION,
+                 "wrong_object_read": FLAT_WRONG_OBJECT}
+
 FIXTURES = {
     "accepted_rejection": (
-        frozen.INCLUDE_REJECTION, frozen.CHILD_REJECTION, "control.reject"),
+        INCLUDE_REJECTION, CHILD_REJECTION, "control.reject"),
     "changed_collection_target": (
         INCLUDE_COLLECTION, CHILD_CREATE, "control.create"),
     "wrong_object_read": (
@@ -139,19 +243,26 @@ def write_control(directory, fault):
     return path
 
 
+class ControlAuth(ports.Authenticator):
+    def identify(self, user):
+        return f"control-account:{user}"
+
+    def session(self, user):
+        return ports.UserSession(principal_id=self.identify(user), authentication_id=str(uuid4()),
+                                 credentials={"user": user})
+
+
 def run_control(fault, form="flat", *, inject=True):
-    """Run unchanged flat controls or current-syntax include controls.
+    """Run explicitly migrated flat or current-syntax include controls.
 
 Only the declaration interface differs. The actual service, injected faults,
 transport evidence, assertions, and classification rules stay the same.
 """
-    if form == "flat":
-        return frozen.run_control(fault, form, inject=inject)
-    if form != "include":
+    if form not in {"flat", "include"}:
         raise ValueError("unknown control form")
     api = frozen.ControlApi(fault if inject else None)
     adapters = Adapters(
-        auth=frozen.ControlAuth(), api=api, state=None, ui=None,
+        auth=ControlAuth(), api=api, state=None, ui=None,
         recorder_factory=frozen.ControlRecorder,
         resolve_request=lambda scenario, step, template: ports.RequestSpec(
             template.method, template.path, copy.deepcopy(template.body)),
@@ -159,8 +270,12 @@ transport evidence, assertions, and classification rules stay the same.
     )
     try:
         with tempfile.TemporaryDirectory(prefix="refract-named-results-control-") as directory:
-            report = run_scenario(write_control(Path(directory), fault), adapters,
-                                  projections=("backend",))
+            if form == "flat":
+                path = Path(directory) / "scenario.yaml"
+                path.write_text(FLAT_FIXTURES[fault], encoding="utf-8")
+            else:
+                path = write_control(Path(directory), fault)
+            report = run_scenario(path, adapters, projections=("backend",))
     except Exception as exc:
         return {"fault": fault, "form": form, "injected": inject,
                 "classification": "invalid_control", "error_type": type(exc).__name__,

@@ -29,7 +29,7 @@ def _write(tmp_path, text):
 def _v1_response(*assertions):
     lines = "\n".join(f"    - {assertion}" for assertion in assertions)
     return (
-        'schema_version: 1\nscenario: field_absent\ngrid:\n  level: regression\n  module: generic\nactor: actor\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - resource\n  expect:\n    response:\n'
+        'schema_version: 1\nscenario: field_absent\ngrid:\n  level: regression\n  module: generic\nusers: [actor]\nsteps:\n- id: main\n  do:\n    request:\n      method: GET\n      path:\n      - resource\n  expect:\n    response:\n'
         f"{lines}\n"
     )
 
@@ -74,6 +74,7 @@ def _recording(fields, *, value_json=None):
         request=spec,
         step_id="main",
         template_path="resource",
+        user="actor", session_generation=1,
     )
 
 
@@ -88,7 +89,7 @@ def test_field_absent_vocabulary_has_one_bounded_parameter():
     [
         _v1_response("{check: field_absent, field: internal_token}"),
         (
-            'schema_version: 1\nscenario: field_absent\ngrid:\n  level: regression\n  module: generic\nactor: actor\nsteps:\n- id: read\n  do:\n    request:\n      method: GET\n      path:\n      - resource\n  expect:\n    response:\n    - check: field_absent\n      field: internal_token\n'
+            'schema_version: 1\nscenario: field_absent\ngrid:\n  level: regression\n  module: generic\nusers: [actor]\nsteps:\n- id: read\n  do:\n    request:\n      method: GET\n      path:\n      - resource\n  expect:\n    response:\n    - check: field_absent\n      field: internal_token\n'
         ),
     ],
 )
@@ -156,7 +157,7 @@ def test_existing_has_and_field_equals_combination_remains_legal(tmp_path):
 
 def test_removed_async_hint_is_rejected_instead_of_inventing_has(tmp_path):
     text = (
-        'schema_version: 1\nscenario: async_conflict\ngrid:\n  level: regression\n  module: generic\nactor: actor\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n  expect:\n    response:\n    - check: field_absent\n      field: task_id\n'
+        'schema_version: 1\nscenario: async_conflict\ngrid:\n  level: regression\n  module: generic\nusers: [actor]\nsteps:\n- id: main\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n  expect:\n    response:\n    - check: field_absent\n      field: task_id\n'
     )
 
     text = text.replace("      method: POST", "      async: task_id\n      method: POST")
@@ -166,7 +167,7 @@ def test_removed_async_hint_is_rejected_instead_of_inventing_has(tmp_path):
 
 def test_field_absent_does_not_guarantee_a_later_binding_source(tmp_path):
     text = (
-        'schema_version: 1\nscenario: invalid_bind\ngrid:\n  level: regression\n  module: generic\nactor: actor\nsteps:\n- id: source\n  do:\n    request:\n      method: GET\n      path:\n      - source\n  expect:\n    response:\n    - check: field_absent\n      field: item_id\n- id: target\n  do:\n    request:\n      method: GET\n      path:\n      - items\n      - from_step: source\n        response_field: item_id\n'
+        'schema_version: 1\nscenario: invalid_bind\ngrid:\n  level: regression\n  module: generic\nusers: [actor]\nsteps:\n- id: source\n  do:\n    request:\n      method: GET\n      path:\n      - source\n  expect:\n    response:\n    - check: field_absent\n      field: item_id\n- id: target\n  do:\n    request:\n      method: GET\n      path:\n      - items\n      - from_step: source\n        response_field: item_id\n'
     )
 
     scenario = load_scenario(str(_write(tmp_path, text)))
@@ -265,7 +266,7 @@ def _poll_scenario(tmp_path, on_timeout):
         "schema_version: 1\n"
         "scenario: poll_absence\n"
         "grid: {level: regression, module: generic}\n"
-        "actor: actor\n"
+        "users: [actor]\n"
         "steps:\n"
         "  - id: poll\n"
         "    do: {request: {method: GET, path: [resource]}}\n"

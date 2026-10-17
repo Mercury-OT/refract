@@ -141,7 +141,7 @@ def test_failure_assertion_kills_accepted_rejection_mutant_in_both_projections()
 def test_document_normalizer_treats_an_empty_204_as_success_with_no_fields():
     app = DocumentRestApp()
     adapters = build_adapters(app)
-    session = adapters.auth.session("editor")
+    session = adapters.auth.session("editor").credentials
     created = adapters.api.send(
         ports.RequestSpec(
             method="POST",

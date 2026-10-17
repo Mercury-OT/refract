@@ -16,7 +16,7 @@ from refracto.declaration import model
 
 def document():
     return {
-        "schema_version": 1, "scenario": "test", "actor": "reader",
+        "schema_version": 1, "scenario": "test", "users": ["reader"],
         "parameters": {"name": "sample", "id": "42", "rows": 3},
         "steps": [{"id": "read", "do": {"request": {"method": "GET", "path": ["items"]}},
                    "expect": {"response": [{"check": "success"}]}}],
@@ -66,7 +66,7 @@ def test_load_synthetic_scenario():
     s = load_scenario("tests/fixtures/synthetic_scenario.yaml")
     assert s.id == "refracto.synthetic_probe"
     assert s.grid == model.Grid("smoke", "generic")
-    assert s.actor == "actor1"
+    assert s.users == ["actor1"]
     assert s.precondition == []
     assert s.parameters == {"payload": "testdata/synthetic_input.txt"}
     assert len(s.steps) == 1
@@ -78,7 +78,7 @@ def test_load_synthetic_scenario():
         ("span_exists", "POST /resource/action"), ("span_exists", "INSERT resource.job_queue")]
 
 
-@pytest.mark.parametrize("key", ["precondition", "inputs", "intent", "version", "expect", "expct"])
+@pytest.mark.parametrize("key", ["precondition", "inputs", "intent", "version", "expect", "expct", "actor"])
 def test_old_and_unknown_top_level_keys_rejected(tmp_path, key):
     doc = document()
     doc[key] = []
@@ -92,7 +92,7 @@ def test_top_level_must_be_mapping(tmp_path, value):
         write_load(tmp_path, value)
 
 
-@pytest.mark.parametrize("key", ["scenario", "actor"])
+@pytest.mark.parametrize("key", ["scenario"])
 @pytest.mark.parametrize("value", [None, "", " ", 7, [], {}])
 def test_required_metadata_nonempty_strings(tmp_path, key, value):
     doc = document()

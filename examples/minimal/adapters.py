@@ -1,6 +1,7 @@
 """The minimum Refract adapter surface for the clean-room REST target."""
 
 import json
+from uuid import uuid4
 
 from refracto import ports, runner
 from refracto.recorder import InMemoryRecorder
@@ -9,8 +10,14 @@ from examples.minimal.app import MinimalRestApp
 
 
 class MinimalAuthenticator(ports.Authenticator):
-    def session(self, role: str) -> object:
-        return {"role": role}
+    def identify(self, user: str) -> str:
+        return f"minimal-account:{user}"
+
+    def session(self, user: str) -> ports.UserSession:
+        return ports.UserSession(
+            principal_id=self.identify(user), authentication_id=str(uuid4()),
+            credentials={"user": user},
+        )
 
 
 class MinimalApiDriver(ports.ApiDriver):

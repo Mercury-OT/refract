@@ -37,9 +37,9 @@ class SyntheticUi(ports.UiDriver, ports.StepwiseUiDriver):
     def supports_stepwise_mode(self, mode):
         return mode in {"live", "mock"}
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None):
+    def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
         self.context = self.support.open(mode, mock_plan=mock_plan,
-                                         context_options=self.context_options)
+                                         context_options=self.context_options, **identity)
         return self.context
 
     def perform_step(self, scenario, step, context, permit):

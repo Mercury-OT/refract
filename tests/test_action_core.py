@@ -12,7 +12,7 @@ from tests.fakes import FakeApi, FakeAuth, FakeNormalizer, FakeRecorder
 
 
 def load(tmp_path, steps, **extra):
-    document = {"schema_version": 1, "scenario": "actions", "actor": "reader",
+    document = {"schema_version": 1, "scenario": "actions", "users": ["reader"],
                 "steps": steps, **extra}
     path = tmp_path / "actions.yaml"
     path.write_text(yaml.safe_dump(document), encoding="utf-8")

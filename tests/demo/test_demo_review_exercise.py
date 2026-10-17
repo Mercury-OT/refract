@@ -108,8 +108,8 @@ def test_review_source_runs_and_observation_control(demo_server, version, form, 
         assert report.status == "PASSED", report.localize()
         assert [step.status for step in domain.steps] == ["PASSED"] * 3
         assert all(check.ok for check in domain.checks)
-    # Current execution continues after an ordinary check failure; the frozen
-    # Scenario bytes and the injected fault are unchanged historical assets.
+    # Current execution continues after an ordinary check failure. The user
+    # declaration is explicitly migrated; the business checks and fault remain.
     assert adapters.api.sent == [
         ("POST", "items", {"name": created_name, "rows": [1, 2, 3]}),
         ("PUT", f"items/{item_id}", {"name": "review-final"}),

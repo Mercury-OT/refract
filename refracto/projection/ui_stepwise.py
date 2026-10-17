@@ -15,6 +15,7 @@ from refracto import asyncwait, ports
 from refracto.declaration import binding, values
 from refracto.projection import backend as backend_proj
 from refracto.projection.continuation import FlowState
+from refracto.projection.sessions import SessionManager
 from refracto.report import (
     BLOCKED, COMPLETED, ERROR, FAILED, PASSED, SKIPPED,
     DomainResult, StepResult,
@@ -60,15 +61,17 @@ def _recording_values_equal(actual, expected):
 
 def _signature_payload(data):
     return json.dumps(
-        [data[k] for k in ("execution_id", "action_id", "step_id", "mode", "action", "target", "value")],
+        [data[k] for k in ("execution_id", "action_id", "step_id", "mode", "action", "target", "value",
+                           "user", "session_generation", "context_id")],
         ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True,
     ).encode()
 
 
-def _issue_permit(secret, execution_id, step, bound_values, mode):
+def _issue_permit(secret, execution_id, step, bound_values, mode, lease, context_id):
     data = dict(execution_id=execution_id, action_id=secrets.token_hex(16),
                 step_id=step.id, mode=mode, action=step.action,
-                target=step.target, value=copy.deepcopy(step.value))
+                target=step.target, value=copy.deepcopy(step.value), user=lease.user,
+                session_generation=lease.generation, context_id=context_id)
     return ports.UiActionPermit(
         **data, token=hmac.new(secret, _signature_payload(data), hashlib.sha256).hexdigest(),
         resolved_bindings=dict(bound_values),
@@ -143,11 +146,12 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     if type(evidence) is not ports.UiActionEvidence:
         raise TypeError("action evidence must be UiActionEvidence")
     data = {k: getattr(permit, k) for k in (
-        "execution_id", "action_id", "step_id", "mode", "action", "target", "value")}
+        "execution_id", "action_id", "step_id", "mode", "action", "target", "value",
+        "user", "session_generation", "context_id")}
     signed = hmac.new(secret, _signature_payload(data), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(permit.token, signed):
         raise ValueError("action permit was modified")
-    for name in ("execution_id", "action_id", "step_id", "mode"):
+    for name in ("execution_id", "action_id", "step_id", "mode", "user", "session_generation", "context_id"):
         _require_equal(name, getattr(evidence, name), getattr(permit, name))
     if evidence.permit_token in accepted_tokens:
         raise ValueError("replayed action evidence")
@@ -159,7 +163,7 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     for traffic in evidence.traffic:
         if type(traffic) is not ports.UiTraffic:
             raise TypeError("traffic must contain UiTraffic")
-        for name in ("execution_id", "action_id", "step_id", "mode"):
+        for name in ("execution_id", "action_id", "step_id", "mode", "user", "session_generation", "context_id"):
             _require_equal(f"traffic {name}", getattr(traffic, name), getattr(permit, name))
         _require_equal("traffic permit token", traffic.permit_token, permit.token)
         if type(traffic.request_id) is not str or not traffic.request_id:
@@ -184,6 +188,8 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
         _require_equal("recording step", resp.step_id, permit.step_id)
         _require_equal("recording attempt", resp.attempt_index, 0)
         _require_equal("recording final", resp.is_final, True)
+        _require_equal("recording user", resp.user, permit.user)
+        _require_equal("recording session generation", resp.session_generation, permit.session_generation)
         if type(resp.actual_path) is not str or not resp.actual_path:
             raise ValueError("recording actual_path is required")
         if permit.mode == "mock":
@@ -333,8 +339,9 @@ def _assert_live_backend_state_for(step, state, trace_id, *, state_timeout=30,
 def _before_context_error(scenario, projection, exc):
     first, *rest = scenario.steps
     return DomainResult(projection=projection, steps=[
-        StepResult(first.id, ERROR, detail=str(exc)),
-        *(StepResult(s.id, BLOCKED, detail="a prior step stopped the flow", blocked_by=[first.id]) for s in rest),
+        StepResult(first.id, ERROR, detail=str(exc), user=scenario.effective_user(first)),
+        *(StepResult(s.id, BLOCKED, detail="a prior step stopped the flow", blocked_by=[first.id],
+                     user=scenario.effective_user(s)) for s in rest),
     ])
 
 
@@ -346,8 +353,8 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     needs_ui = any(s.action in {"open", "click", "fill"} or s.expect.frontend
                    for s in scenario.steps)
     try:
-        if mode == "live" and auth is None:
-            raise ValueError("live e2e requires an Authenticator")
+        sessions = SessionManager(scenario, auth)
+        sessions.preflight()
         if needs_ui and (not isinstance(ui, ports.StepwiseUiDriver)
                          or ui.supports_stepwise_mode(mode) is not True):
             raise ValueError("primitive UI capability not supported")
@@ -366,7 +373,6 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 raise ValueError("polling UI actions is not supported")
             if step.action == "wait" and step.request is not None:
                 raise ValueError("wait cannot claim request evidence without an action origin")
-        session = auth.session(scenario.actor) if auth else None
     except Exception as exc:
         return _before_context_error(scenario, projection, exc)
 
@@ -375,28 +381,49 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     retained_plan = copy.deepcopy(mock_plan) if mode == "mock" else None
     consumed, results, recordings, prior = [], [], [], {}
     flow = FlowState()
-    context = None
-    try:
-        if needs_ui:
-            context = ui.open_stepwise(scenario, session, mode=mode,
-                                      mock_plan=copy.deepcopy(retained_plan))
-    except Exception as exc:
-        return _before_context_error(scenario, projection, exc)
+    contexts = {}
+    mock_queue = ports.MockResponseQueue(copy.deepcopy(retained_plan)) if mode == "mock" else None
+
+    def close_user(user):
+        # Remove before calling the adapter so a failed close is never retried.
+        existing = contexts.pop(user, None)
+        if existing is not None:
+            ui.close_stepwise(existing[0])
+
+    def context_for(lease):
+        existing = contexts.get(lease.user)
+        if existing is None:
+            identity = secrets.token_hex(16)
+            context = ui.open_stepwise(
+                scenario, lease.credentials, mode=mode,
+                mock_plan=copy.deepcopy(retained_plan), mock_queue=mock_queue,
+                user=lease.user, session_generation=lease.generation, context_id=identity)
+            existing = contexts[lease.user] = (context, lease.generation, identity)
+        if existing[1] != lease.generation:
+            raise ValueError("UI context belongs to an obsolete session")
+        return existing[0], existing[2]
+
     try:
         for declared in scenario.steps:
+            user = scenario.effective_user(declared)
             blocked = flow.blocked(declared)
             if blocked is not None:
+                blocked.user = user
                 results.append(blocked)
                 continue
             resolved, norm = {}, None
+            lease = None
             prepared_ok = False
             try:
                 step, bound = binding.prepare_step(declared, scenario, prior)
                 prepared_ok = True
                 resolved = dict(bound)
+                lease = sessions.acquire(user, new=step.session == "new")
+                if step.session == "new":
+                    close_user(user)
                 if step.action == "request":
                     sr, norm = backend_proj.execute_api_step(
-                        scenario, step, session=session, api=_VerifiedApi(api),
+                        scenario, step, session=lease.credentials, session_lease=lease, api=_VerifiedApi(api),
                         state=_VerifiedState(state) if state is not None else None,
                         recorder=_VerifiedRecorder(recorder, recordings), resolve_request=resolve_request,
                         normalizer=normalizer, poll_config=poll_config,
@@ -414,16 +441,18 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                     evidence = None
                     if step.action == "wait":
                         (sleep or time.sleep)(step.duration / 1000)
-                        rendered = ui.snapshot(context) if step.expect.frontend else {}
+                        rendered = ui.snapshot(context_for(lease)[0]) if step.expect.frontend else {}
                         _validate_rendered(rendered)
                     else:
-                        permit = _issue_permit(secret, execution_id, step, bound, mode)
+                        context, context_id = context_for(lease)
+                        permit = _issue_permit(secret, execution_id, step, bound, mode, lease, context_id)
                         outcome = ui.perform_step(scenario, step, context, permit)
                         evidence = _validate_evidence(outcome, permit, secret, accepted_tokens,
                                                       seen_requests, seen_traces, retained_plan, consumed)
                         if evidence is None:
                             sr = StepResult(step.id, SKIPPED, skipped=[outcome.skip_reason])
                             sr.resolved_bindings = resolved
+                            sr.user, sr.session_generation = user, lease.generation
                             flow.finish(declared, sr)
                             results.append(sr)
                             continue
@@ -473,14 +502,16 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 sr = StepResult(declared.id, ERROR, detail=str(exc))
                 norm = None
             sr.resolved_bindings = resolved
+            sr.user = user
+            sr.session_generation = lease.generation if lease is not None else None
             flow.finish(declared, sr, norm)
             results.append(sr)
             if norm is not None:
                 prior[declared.id] = norm
     finally:
-        if context is not None:
+        for user in list(contexts):
             try:
-                ui.close_stepwise(context)
+                close_user(user)
             except Exception as exc:
                 for sr in reversed(results):
                     if sr.status != BLOCKED:

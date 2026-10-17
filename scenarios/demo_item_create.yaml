@@ -3,7 +3,7 @@ scenario: demo.item_create
 grid:
   level: smoke
   module: demo
-actor: user
+users: [user]
 description: The user creates an item, the list renders it, and the backend emits
   a semantic span for the row count.
 parameters:

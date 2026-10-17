@@ -2,7 +2,6 @@
 import hashlib
 import json
 from pathlib import Path
-import re
 
 import pytest
 
@@ -12,17 +11,18 @@ from refracto.declaration.loader import load_scenario
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_specification_scenarios_load_with_their_actual_pinned_companion(tmp_path):
-    text = (ROOT / "docs/tasks/scenario-named-results.md").read_text(encoding="utf-8")
-    blocks = re.findall(r"```yaml\n(.*?)```", text, re.DOTALL)
-    assert len(blocks) == 2
-    child_bytes = blocks[0].encode("utf-8")
+def test_current_documented_scenarios_load_with_their_actual_pinned_companion(tmp_path):
+    # Historical task prose remains an acceptance record, not the current grammar.
+    example = ROOT / "examples/scenario-reuse"
+    text = (example / "README.md").read_text(encoding="utf-8")
+    assert "shared/create_item.yaml" in text and "create_update_read.yaml" in text
+    child_bytes = (example / "shared/create_item.yaml").read_bytes()
     shared = tmp_path / "shared"
     shared.mkdir()
     child = shared / "create_item.yaml"
     child.write_bytes(child_bytes)
     parent = tmp_path / "create_update_read.yaml"
-    parent.write_text(blocks[1], encoding="utf-8")
+    parent.write_bytes((example / "create_update_read.yaml").read_bytes())
     digest = hashlib.sha256(child_bytes).hexdigest()
     parent.with_suffix(".includes.json").write_text(json.dumps({
         "manifest_version": 1,
@@ -35,12 +35,16 @@ def test_specification_scenarios_load_with_their_actual_pinned_companion(tmp_pat
     scenario = load_scenario(parent)
     assert scenario.id == "demo.create_update_read"
     assert [step.id for step in scenario.steps] == ["create/create_request", "update", "read"]
-    assert scenario.source_lookup["create/create_request"] == {
+    source = scenario.source_lookup["create/create_request"]
+    assert {key: source[key] for key in ("scenario_id", "step_id", "include_step_id", "sha256")} == {
         "scenario_id": "shared.create_item", "step_id": "create_request",
         "include_step_id": "create", "sha256": digest,
     }
     assert scenario.steps[-1].bind[0].from_step == "create/create_request"
     assert scenario.steps[-1].bind[0].field == "itemId"
+    assert [check.check for check in scenario.steps[0].expect.response] == ["success", "has", "field_equals"]
+    assert [check.check for check in scenario.steps[1].expect.response] == ["success", "field_equals"]
+    assert [check.check for check in scenario.steps[-1].expect.response] == ["success", "collection_matching_count"]
 
 
 @pytest.mark.parametrize("name", ["demo_include_items", "demo_include_items_ui"])
@@ -55,7 +59,7 @@ def test_published_examples_have_exact_real_companion_pins(name):
     expanded = load_scenario(parent)
     assert all("/" in step.id or step.id in {"update", "read"}
                for step in expanded.steps)
-    assert expanded.actor == "user"
+    assert expanded.users == ["user"]
 
 
 def test_public_include_documentation_preserves_review_and_evidence_limits():
