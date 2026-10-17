@@ -102,7 +102,7 @@ execution, not a multi-action adapter primitive.
 | Click | `do: click`, `target` | activate one logical control |
 | Fill | `do: fill`, `target`, `value` | fill one logical input |
 | Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
-| API request | `do: {request: {method, path, body?}}` | send the declared request |
+| API request | `do: {request: {method, path, query?, body?}}` | send the declared request |
 
 Targets map to elements, not multi-action business scripts. A click must not
 secretly navigate, fill fields, and submit. Wait does not trigger a scheduled
@@ -111,7 +111,8 @@ job, change the host clock, or assert success.
 An API action stores its request under `do.request`, never under `expect`.
 A UI action may declare `expect.request` to constrain the traffic it causes.
 The same step cannot contain both request forms. Requests use an HTTP method,
-an explicit list of logical path segments, and an optional body mapping.
+an explicit list of logical path segments, an optional query mapping, and an
+optional body mapping.
 Each path segment is encoded separately after resolving references.
 
 One step may have no expectations. The entire Scenario must have at least one
@@ -166,6 +167,74 @@ references. Equality is type-strict: `false` is not `0`, and `true` is not `1`.
 `no_anonymous` requires no rendered object at the anchor to lack reliable
 business identity; it is not a user-authentication assertion.
 
+### Request query parameters
+
+Both `do.request` and a UI action's `expect.request` accept `query`. Keys are
+nonempty literal strings. Each value is a string, integer, boolean, finite float,
+or an existing parameter, prior-response, or included-result reference resolving
+to one of those types. Empty strings, zero, and false remain values. Null, lists,
+mappings, non-finite numbers, dynamic keys, repeated keys, and extra reference
+syntax are invalid. Known invalid values fail loading, including child parameter
+overrides. Runtime response values invalid for query use block the consuming
+action atomically under the existing dependency policy.
+
+```yaml
+- id: next_page
+  do:
+    request:
+      method: GET
+      path: [records]
+      query:
+        category: {from_parameter: category}
+        limit: 1
+        cursor: {from_step: first_page, response_field: next_cursor}
+  expect:
+    response:
+      - check: success
+```
+
+This fragment assumes a declared `category` parameter and an earlier
+request-bearing `first_page` step. The complete executable
+[Documents filter and next-page example](examples/documents/scenarios/filter_and_next_page.yaml)
+visibly creates three records, filters two matching records, and requests each
+page in a separate step. Run it against a fresh isolated target with creation-order
+lists; the harness owns isolation and disposal. No adapter reset, cleanup,
+automatic pagination, expression, or loop is implied.
+
+Query comparison uses decoded wire strings. Strings stay unchanged; integers
+use decimal spelling, booleans use `true`/`false`, and finite floats use JSON
+numeric spelling. Thus integer `1` and string `"1"` have the same query-string
+representation; boolean `true` and string `"true"` also match on the wire.
+Body and response checks retain strict JSON types: `1`, `"1"`, and `true` do
+not become interchangeable there. Key order is not semantic. Transport encodes
+each key and value once using standard URL encoding, preserving blanks and
+encoded delimiters as data. Observed URLs decode percent escapes and plus-space
+encoding; malformed escapes, invalid UTF-8, and duplicate decoded keys are
+execution errors. A bare wire key may represent an empty string.
+
+| Request location | Omitted `query` | `query: {}` | Nonempty `query` |
+| --- | --- | --- | --- |
+| API `do.request` | Send no parameters | Send no parameters | Send exactly these values |
+| UI `expect.request` | Keep method/path/body-only scope | Require no parameters | Require exact decoded equality, including no extra keys |
+
+Resolvers map routes and preserve the declared query meaning. They cannot read
+global parameters to invent query business values, add defaults, drop values, or
+override them. Authentication remains in the session port. A resolved request
+path cannot contain a second embedded query or fragment. Backend verifies this
+ownership before sending and checks returned and Recorder request evidence
+against the protected outgoing request. Drivers encode at transport time without
+changing that evidence. Actual transport paths are adapter evidence, not an
+independent witness of a malicious driver's behavior.
+
+`RequestTemplate.query` retains declaration values and references; `None` means
+omitted. `RequestSpec.query` is a keyword-only mapping of decoded wire strings,
+defaulting to a fresh empty mapping. It contains actual request evidence, never
+values filled from an expectation. Query participates in atomic preparation,
+inclusion rewriting, named results, instantiated validation, expanded review,
+and change-impact inspection. The shared `refracto.query` utility supplies
+validation, serialization, URL encoding, and observed parsing. Runtime query
+values are sensitive and hidden from default request representations.
+
 ### Request constraints
 
 A UI step's `expect.request` constrains method, logical path, and declared body
@@ -174,6 +243,9 @@ are allowed. Arrays require equal length and order with type-strict recursive
 elements; mappings inside arrays remain subsets. Scalars require identical types
 and values. A mapper must not invent
 undeclared business inputs to satisfy the constraint.
+Declared query equality follows the exact decoded-string rules above, not the
+body's recursive subset comparison. Browser request evidence is extracted from
+the actual URL independently of these expected values.
 
 ### Response vocabulary
 
@@ -309,7 +381,7 @@ State assertions still require actual StateProbe facts, not this fallback alone.
 The local reference forms are `{from_parameter: record_name}` and
 `{from_step: submit, response_field: id}`. An included Scenario's public result
 uses `{from_step: setup, result: record_id}` as described below. They can occur in action values, path
-segments, body values, and supported assertion values. A response reference names
+segments, query values, body values, and supported assertion values. A response reference names
 an earlier request-bearing step and reads its actual normalized runtime response,
 never its expected value. A source step need not assert `has`: preparation
 requests may supply values without inventing checks.
@@ -493,7 +565,8 @@ stop predicate. Core sends the first attempt immediately, then repeats under the
 caller's `PollConfig` timeout and interval. `on_timeout` is `FAIL` or `SKIP`.
 Transport exceptions are `ERROR`, not blind retries. Each attempt has a distinct
 trace and recording; only a successful terminal attempt is final. State checks
-evaluate against that response.
+evaluate against that response. Every attempt reuses the prepared query and
+retains its actual request query in the recording.
 
 ```yaml
 schema_version: 1
@@ -590,7 +663,10 @@ Action identity is separate from traffic: an action may produce zero to many
 requests. Each associated request has an immutable ID and response pairing.
 Core checks run, step, action, mode, user, session generation, context identity,
 permit, and traffic correspondence, then
-selects the unique declared method/path target. Missing or ambiguous target
+selects the declared method/path target. With one associated candidate, a wrong
+declared query is an ordinary failed request check. With multiple candidates,
+an explicit query may select exactly one exact match; no match or multiple
+matches remain ambiguous execution errors. Missing or ambiguous target
 traffic cannot pass. Stale, swapped, or replayed identity is a protocol error;
 correctly associated traffic with a wrong body fails the request check.
 
@@ -607,6 +683,11 @@ and secondary routes. Source and consumption remain visible. Mocks are not
 synthesized from `expect`; unmatched traffic cannot silently reach a live server.
 Mock responses never become live provider recordings. Recorder failures are
 errors; returned live recordings are verified, not trusted by list order alone.
+An optional `MockResponse.query` uses decoded wire strings: `None` keeps the
+existing method/path fixture scope, an empty mapping requires no parameters,
+and a nonempty mapping requires exact equality. Mock routing and core evidence
+verification retain the actual query and compare traffic, response, and Recorder
+copies; a matching expected query cannot repair different observed traffic.
 A locally BLOCKED step issues no permit and consumes no mock. It does not discard
 or reorder fixtures: the next real request still has to match the next unconsumed
 entry, otherwise the existing protocol error stops execution.
@@ -648,6 +729,10 @@ nested run representations hide it; provider recordings and sensitive
 permit/evidence payloads are also hidden. `sensitive=True` is metadata, not a
 security mechanism. `dataclasses.asdict()` and generic third-party serializers
 can still expose values. Reports, permits, fixtures, and evidence are sensitive.
+This includes `RequestSpec.query`, optional fixture queries, and resolved query
+bindings; failure details must not echo query values. Explicit declaration review
+can display declared query values and references under its existing source-file
+confidentiality rules.
 Machine exports need explicit allowlists or redaction, never direct generic
 serialization of these objects.
 
@@ -666,8 +751,13 @@ completeness of the human-approved baseline.
 
 Contract consumes backend recordings without sending requests. Its identity is
 `(step_id, method, declared template_path)`; bound and actual paths remain
-evidence, not replacements for declared identity. Core-controlled user/session
-metadata must agree with the declaration; another user's recording cannot
+evidence, not replacements for declared identity. Verified query remains
+evidence; runtime query values do not become endpoint identities.
+Contract is response compatibility over those recordings,
+not a second query sender or an independent query witness. Query-only bindings
+do not create response requirements or prevent evaluation of declared response
+checks. Core-controlled user/session metadata must agree with the declaration;
+another user's recording cannot
 substitute for the declared user. Contract does not authenticate or independently
 prove account identity. Runner supplies backend execution metadata to check each recording's
 actual session generation. A direct contract call without that provenance cannot

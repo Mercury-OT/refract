@@ -1,6 +1,7 @@
 """Mechanical transport mapping: no preparation or invented business values."""
 import copy
 from refracto import ports
+from refracto.query import wire_query
 
 
 class DemoResolver:
@@ -8,4 +9,5 @@ class DemoResolver:
         self._config = config
 
     def resolve_request(self, scenario, step, template):
-        return ports.RequestSpec(template.method, template.path, copy.deepcopy(template.body))
+        return ports.RequestSpec(template.method, template.path, copy.deepcopy(template.body),
+                                 query=wire_query(template.query or {}))

@@ -342,7 +342,7 @@ def _values(step, index):
     expect = step.get("expect", {})
     for label, req in (("do", request), ("expect", expect.get("request") if isinstance(expect, dict) else None)):
         if isinstance(req, dict):
-            for key in ("path", "body"):
+            for key in ("path", "body", "query"):
                 if key in req:
                     yield prefix + f"/{label}/request/{key}", req[key]
     if isinstance(expect, dict):

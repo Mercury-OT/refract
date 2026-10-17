@@ -23,7 +23,8 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Response-based rejection evidence](tasks/response-rejection-evidence.md) | Implemented, independently audited, and architect-accepted. Approved four-step example; no new vocabulary or runtime semantics. | Public submission authorized after acceptance; the task PR records integration and CI. |
+| 1 | [Explicit request query parameters](tasks/request-query-parameters.md) | Implemented, independently audited, and architect-accepted. Approved five-step example, actual browser query checks, format 1 and existing assertion vocabulary retained. | Await separate maintainer submission authorization; changes remain uncommitted. |
+| Delivered | [Response-based rejection evidence](tasks/response-rejection-evidence.md) | Delivered through PR #22 in main `eaca8cb`. Approved four-step example; no new vocabulary or runtime semantics. | Preserve the accepted response-evidence boundary. |
 | Delivered | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Delivered through PR #21 in main `b2fdab2`. Format 1, one-level inclusion, no multi-user child inclusion. | Preserve the approved user/session and evidence boundaries. |
 | Delivered | [Continue after assertion failures](tasks/assertion-failure-continuation.md) | Delivered in main `95ba66d`; ordinary assertion failures continue, explicit leaf stop retained. | Preserve the approved execution boundary. |
 | Delivered | [Exact HTTP response status assertions](tasks/http-status-assertions.md) | Delivered through PR #19 in main `d2a5ed9`; eight branch/PR checks and four main jobs passed. | Preserve the approved `status_equals` / `status_in` expression. |
@@ -40,6 +41,15 @@ the bounded collection expression. Those two tasks have been delivered on main.
 Browser support, inclusion, and named results have subsequently been merged.
 The approved expression remains the basis of execution;
 implementation convenience must not silently change its meaning.
+
+The accepted query slice exposes per-request filters and pagination values in
+the existing request mapping. Actual browser URLs supply observed evidence;
+expectations cannot fill it in. The approved synthetic Documents example and
+real Chromium/reference-transport controls passed 179 focused tests plus 33
+independent probes. Full regression passed 1784 tests with one existing warning
+and no skips; isolated dev-only regression passed 1574 with one optional Demo
+collection skip. See the [local acceptance record](tasks/request-query-parameters-acceptance.md).
+No adoption claim or public submission follows from local acceptance.
 
 Exact recorded HTTP status is now delivered. It addresses a
 publicly reproducible distinction between transport status and normalized
@@ -83,6 +93,18 @@ The isolated dev-only suite passed 1458 tests with the optional Demo collection
 skipped. See the [local acceptance record](tasks/response-rejection-evidence-acceptance.md).
 Submission was explicitly authorized contingent on these gates; local acceptance
 does not itself claim that publication or hosted CI has finished.
+The task was subsequently delivered through PR #22 in main `eaca8cb`; its local
+acceptance record retains the original pre-submission status.
+
+The current query task declares filtering and pagination per request and checks
+the query actually emitted by a browser. The approved Documents example creates
+three records visibly and follows a response-derived cursor in an explicit
+second-page step. Contract remains response compatibility over verified backend
+recordings, not an independent query witness. Maintained search declarations
+are migrated explicitly; no automatic pagination or new assertion vocabulary
+is introduced. Synthetic Documents and Demo coverage cannot establish real-product
+adoption. Independent audit and architect acceptance have passed; submission
+requires separate maintainer authorization. Private-workspace work remains out of scope.
 
 Continuation acceptance passed 1426 full regression tests with real Chromium,
 no skips, and one existing dependency warning; the isolated dev-only suite passed

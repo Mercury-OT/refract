@@ -3,6 +3,7 @@
 import json
 
 from refracto import ports
+from refracto.query import request_path
 
 from examples.documents.app import DocumentRestApp
 
@@ -17,7 +18,7 @@ class DocumentApiDriver(ports.ApiDriver):
         session_key = session.get("session_key", "") if isinstance(session, dict) else ""
         response = self.app.handle(
             spec.method,
-            spec.path,
+            request_path(spec.path, spec.query),
             spec.body,
             headers={"x-session-key": session_key},
         )

@@ -34,6 +34,8 @@ def expansion_view(scenario):
         result = {"method": template.method, "path": [value(item) for item in template.path_segments]}
         if template.body is not None:
             result["body"] = value(template.body)
+        if template.query is not None:
+            result["query"] = value(template.query)
         return result
 
     steps = []

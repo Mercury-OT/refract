@@ -55,6 +55,10 @@ steps:
       path:
       - documents
       - search
+      query:
+        category: {from_parameter: filter_category}
+        cursor: {from_parameter: cursor}
+        limit: {from_parameter: page_size}
   expect:
     response:
     - check: success

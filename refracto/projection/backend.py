@@ -9,7 +9,8 @@ import dataclasses
 import copy
 import secrets
 import time
-from refracto import asyncwait
+from refracto import asyncwait, ports
+from refracto.query import wire_query, require_wire_query, request_path
 from refracto.normalization import normalize_response
 from refracto.declaration import binding
 from refracto.declaration import values
@@ -18,7 +19,7 @@ from refracto.declaration import http_status
 from refracto.report import CheckResult, DomainResult, StepResult, ResponseOrigin, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
 from refracto.projection.continuation import FlowState
 from refracto.projection.sessions import SessionManager
-from refracto.projection.recording import ProtectedRecorder
+from refracto.projection.recording import ProtectedRecorder, _evidence_equal
 
 _NO_SESSION = object()
 
@@ -199,12 +200,31 @@ def _check_option_b(step, template, spec):
     the declared method or override/drop a declared body field. Actual-path
     mapping remains an adapter-conformance concern, not a core concern.
     """
+    if type(spec) is not ports.RequestSpec:
+        raise TypeError("resolver must return RequestSpec")
+    request_path(spec.path, {})
+    require_wire_query(spec.query)
+    if wire_query(template.query or {}) != spec.query:
+        raise ValueError("resolver changed declared query; transport mapping must not invent values")
     if step.request.method.upper() != spec.method.upper():
         raise ValueError(
             f"resolver changed declared method {step.request.method!r} -> {spec.method!r}")
     if not values.equal(template.body or {}, spec.body or {}):
         raise ValueError(
             "resolver changed declared business body; transport mapping must not invent values")
+
+
+def _send_verified(api, spec, session):
+    """Preserve the outbound request before handing a copy to the driver."""
+    expected = copy.deepcopy(spec)
+    response = api.send(copy.deepcopy(expected), session)
+    if type(response) is not ports.RecordedResponse or type(response.request) is not ports.RequestSpec:
+        raise TypeError("ApiDriver.send must return RecordedResponse with RequestSpec")
+    if not all(_evidence_equal(getattr(response.request, field.name), getattr(expected, field.name))
+               for field in dataclasses.fields(ports.RequestSpec)):
+        raise ValueError("API request/response pairing mismatch")
+    _require_live_response(response)
+    return copy.deepcopy(response)
 
 
 def _run_poll_step(step, template, spec, api, session, recorder, normalizer, state,
@@ -222,9 +242,8 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         traceparent = gen_traceparent()
         # Each attempt gets its own RequestSpec instance so earlier recordings
         # keep their original trace identity.
-        attempt_spec = dataclasses.replace(spec, traceparent=traceparent)
-        resp = api.send(attempt_spec, session)
-        _require_live_response(resp)
+        attempt_spec = dataclasses.replace(copy.deepcopy(spec), traceparent=traceparent)
+        resp = _send_verified(api, attempt_spec, session)
 
         resp.step_id = step.id
         resp.attempt_index = attempts["n"]
@@ -307,8 +326,7 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
                                bound_values, inputs)
 
     spec.traceparent = gen_traceparent()
-    resp = api.send(spec, session)
-    _require_live_response(resp)
+    resp = _send_verified(api, spec, session)
 
     # Record the step identity and the three path identities used by the run.
     resp.step_id = step.id

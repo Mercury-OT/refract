@@ -1,12 +1,7 @@
-"""Map logical document requests to target routes and pagination parameters."""
-
-from urllib.parse import urlencode
+"""Map logical document requests to target routes without inventing values."""
 
 from refracto import ports
-
-
-def _inputs(scenario) -> dict:
-    return {item.kind: item.value for item in scenario.inputs}
+from refracto.query import wire_query
 
 
 def resolve_request(scenario, step, template) -> ports.RequestSpec:
@@ -16,15 +11,7 @@ def resolve_request(scenario, step, template) -> ports.RequestSpec:
     if method == "POST" and logical_path == "documents":
         target_path = "/v3/documents"
     elif method == "GET" and logical_path == "documents/search":
-        values = _inputs(scenario)
-        query = urlencode(
-            {
-                "category": values.get("filter_category", ""),
-                "cursor": values.get("cursor", 0),
-                "limit": values.get("page_size", 10),
-            }
-        )
-        target_path = f"/v3/documents?{query}"
+        target_path = "/v3/documents"
     elif method in {"GET", "DELETE"} and logical_path.startswith("documents/"):
         document_id = logical_path.removeprefix("documents/")
         if not document_id or "/" in document_id:
@@ -42,4 +29,5 @@ def resolve_request(scenario, step, template) -> ports.RequestSpec:
             f"document adapter cannot resolve {template.method} {template.path}"
         )
 
-    return ports.RequestSpec(method=method, path=target_path, body=template.body)
+    return ports.RequestSpec(method=method, path=target_path, body=template.body,
+                             query=wire_query(template.query or {}))

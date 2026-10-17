@@ -12,6 +12,7 @@ from pathlib import PurePosixPath
 
 from refracto.declaration.model import Assertion, Binding, Expect, ValueRef
 from refracto.declaration.collections import is_scalar
+from refracto.query import wire_query
 
 
 def is_include(item):
@@ -200,7 +201,8 @@ def instantiate(call, dependencies, parameters, prior, user, caller_parameters):
             path = "/".join("{" + v.source + ":" + v.key + "}" if isinstance(v, ValueRef)
                             else quote(str(v), safe="") for v in segments)
             request = replace(request, path=path, declared_path=path,
-                              path_segments=segments, body=_map(request.body, convert))
+                              path_segments=segments, body=_map(request.body, convert),
+                              query=_map(request.query, convert))
         expect = Expect(**{point: [Assertion(a.check, _map(a.params, convert))
                                   for a in getattr(original.expect, point)]
                            for point in ("frontend", "response", "backend_state")})
@@ -237,6 +239,13 @@ def validate_instantiated(scenario):
             body = known(step.request.body)
             if body is not unknown and body is not None and not isinstance(body, dict):
                 _error("instantiated request body must be a mapping")
+            for key, declared in (step.request.query or {}).items():
+                value = known(declared)
+                if value is not unknown:
+                    try:
+                        wire_query({key: value})
+                    except ValueError:
+                        _error("instantiated query value must be a finite non-null scalar")
         for point in ("frontend", "response", "backend_state"):
             for assertion in getattr(step.expect, point):
                 for key in {"value", "id"} & set(assertion.params):

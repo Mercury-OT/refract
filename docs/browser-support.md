@@ -115,6 +115,24 @@ The executable [Demo adapter](../adapters/demo/ui.py) uses the same helper with
 its own mappings and rendering interpretation. Response normalization remains
 the product adapter's responsibility.
 
+The helper extracts query keys and values from each actual request URL before
+logical-path mapping, routing, and recording. `logical_path` receives only the
+path. `RequestSpec.query` preserves decoded wire strings, including empty values;
+expected query values never supply actual evidence. Percent escapes and
+plus-space encoding are decoded once. Malformed escapes, invalid UTF-8, and
+duplicate decoded keys stop execution rather than being silently forwarded as
+a supported request.
+
+For UI `expect.request`, omitted `query` keeps the existing method/path/body
+scope; `query: {}` requires no parameters; a nonempty query requires exact
+decoded equality, including no extra keys. Numeric `1` and string `"1"` have
+the same wire spelling, while JSON body and response comparisons remain
+type-strict. If one method/path-associated request exists, a wrong query fails
+the request check. With several candidates, an explicit query may select exactly
+one exact match; zero or multiple matches remain ambiguous errors. Unassigned
+or background traffic cannot satisfy an assertion, even with a matching query.
+See [the query contract](../SCENARIO.md#request-query-parameters).
+
 ## Request origins and completion
 
 Same-origin `fetch` and asynchronous `XMLHttpRequest` started in the targeted
@@ -176,6 +194,11 @@ mismatched fixtures abort the request without reaching a live API. Omitting the
 plan in mock mode means an empty plan, so any API request fails. Live mode rejects
 a supplied mock plan. Evidence preserves fixture IDs and consumption records;
 expected assertions never supply mock data.
+Set a fixture's optional `query` to a mapping of decoded wire strings to require
+an exact query match. `query={}` requires no parameters; the default `None`
+retains method/path-only fixture matching. A wrong-query fixture aborts the
+actual request without reaching a live API. Query evidence remains in the
+traffic/response pair and is checked against the Recorder and fixture plan.
 
 For a multi-context run, core supplies the same `MockResponseQueue` to each
 `open_stepwise` call. Forward it as `mock_queue`; do not create a new queue when
@@ -207,7 +230,7 @@ the Demo's backend-state trace; it is not proof of independent provenance.
 Instrumentation runs inside the tested browser and does not protect against a
 malicious application, adapter, or normalizer.
 
-Helper/context repr and helper error messages omit bodies, browser handles,
+Helper/context repr and helper error messages omit bodies, queries, browser handles,
 context options, bound values, selectors, and URLs. Raw port objects still hold
 sensitive request/response data and are not a safe logging or export format.
 The rendering callback must interpret existing UI state without clicking,
