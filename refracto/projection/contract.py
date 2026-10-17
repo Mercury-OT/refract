@@ -20,7 +20,9 @@ def run(scenario, provider_recordings, normalizer) -> DomainResult:
     consumer = store.consumer_contract(scenario)
     if not consumer.entries or not any(step.request and step.expect.response for step in scenario.steps):
         return DomainResult(projection="contract", steps=[])
-    provider = store.provider_contract(provider_recordings, normalizer)
+    provider = store.provider_contract(provider_recordings, normalizer,
+        required_status_keys=frozenset(key for key, shape in consumer.entries.items()
+                                       if shape.allowed_http_statuses is not None))
     bound_values = store.provider_binding_values(scenario, provider)
     mismatches = store.diff(
         consumer,

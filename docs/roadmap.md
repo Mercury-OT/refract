@@ -23,19 +23,43 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Shared Scenario change-impact review](tasks/scenario-impact-review.md) | Independently audited and locally accepted; current YAML and execution unchanged. | Separate submission authorization; no submission performed. |
-| 2 | [Scenario reuse walkthrough](tasks/scenario-review-exercise.md#follow-up-minimal-reuse-walkthrough) | Delivered in `967af3c`; review-cost comparison remains optional and unmeasured. | Use existing expression; no new language feature implied. |
-| 3 | [Named Scenario results](tasks/scenario-named-results.md) | Delivered on main in `f5d258a`: multiple explicit result names, one-level inclusion. | Measure review friction without expanding the language. |
-| 4 | [Scenario inclusion](tasks/scenario-include.md) | Delivered with named results in `f5d258a`: one level, identical actors, parent sidecar pins. | Preserve pin and caller-review boundaries. |
-| 5 | [Browser adapter support](tasks/browser-adapter-support.md) | Delivered on main in `9bebfa7`. | Preserve the accepted support and evidence boundaries. |
-| 6 | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
-| 7 | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
+| 1 | [Exact HTTP response status assertions](tasks/http-status-assertions.md) | Independently audited and locally accepted; the maintainer approved both YAML checks and authorized submission on 2026-10-17. Existing structure and fail-fast behavior stay unchanged. | PR checks, merge, post-merge main checks and branch cleanup; submission evidence belongs to the task PR. |
+| 2 | Failure continuation and logical-user/session boundaries | Next specification discussion; no execution-policy or user-model change implemented by the status task. | Confirm a bounded decision table and annotated expression before implementation. |
+| Delivered | [Shared Scenario change-impact review](tasks/scenario-impact-review.md) | Delivered on main in `67ce17f`; current YAML and execution unchanged. | Preserve read-only inspection, pin, and review boundaries. |
+| Delivered | [Scenario reuse walkthrough](tasks/scenario-review-exercise.md#follow-up-minimal-reuse-walkthrough) | Delivered in `967af3c`; review-cost comparison remains optional and unmeasured. | Use existing expression; no new language feature implied. |
+| Delivered | [Named Scenario results](tasks/scenario-named-results.md) | Delivered on main in `f5d258a`: multiple explicit result names, one-level inclusion. | Measure review friction without expanding the language. |
+| Delivered | [Scenario inclusion](tasks/scenario-include.md) | Delivered with named results in `f5d258a`: one level, identical actors, parent sidecar pins. | Preserve pin and caller-review boundaries. |
+| Delivered | [Browser adapter support](tasks/browser-adapter-support.md) | Delivered on main in `9bebfa7`. | Preserve the accepted support and evidence boundaries. |
+| Delivered | [Action-oriented Scenario format](tasks/scenario-action-format.md) | Delivered on main in `9900820`; workbench withdrawn. | Preserve the accepted expression and execution contract. |
+| Delivered | [Bounded response collection assertions](tasks/response-collection-assertions.md) | Delivered on main in `9900820`. | Preserve bounded matching and evidence semantics. |
 
 The maintainer approved the explicit do.request and polling form, and subsequently
 the bounded collection expression. Those two tasks have been delivered on main.
 Browser support, inclusion, and named results have subsequently been merged.
 The approved expression remains the basis of execution;
 implementation convenience must not silently change its meaning.
+
+Exact recorded HTTP status is the next small capability slice. It addresses a
+publicly reproducible distinction between transport status and normalized
+business success. It does not identify why a request was rejected or establish
+authorization correctness. Public Demo and Documents examples supply independent
+synthetic consumers; no private source material or measurements are included.
+Broader execution-policy and multi-user changes require a separately confirmed
+specification. Runtime presentation work is deferred while these expression and
+execution boundaries take priority. Each task is introduced with its intended
+use cases; changed YAML is shown to the maintainer before submission.
+
+The local status-assertion implementation passed independent audit, 1337 full
+regression tests with real Chromium and one existing dependency warning, and
+1197 isolated dev-only tests with the optional Demo collection skipped. Public
+Documents examples demonstrate 201 creation, empty 204 deletion, and a rejection
+whose status alone changes from 422 to 500 while its body is unchanged. These
+checks establish the bounded capability, not real-product adoption or rejection
+mechanism assurance. See the [acceptance record](tasks/http-status-assertions-acceptance.md).
+The maintainer subsequently confirmed `status_equals` and `status_in` and
+separately authorized submission on 2026-10-17. Historical local acceptance
+retains its pre-submission statements; the task PR supplies publication and CI
+evidence. No subsequent execution-policy change is authorized by that submission.
 
 The retained local cutover includes core execution, reference adapters,
 maintained examples, and their documentation. On 2026-10-13 the maintainer
@@ -139,7 +163,7 @@ All eight branch/PR checks and all four post-merge main jobs passed; task branch
 were removed and main synchronized. No private workspace was accessed.
 Historical local acceptance retains its original pre-submission statements.
 
-Read-only shared-child impact inspection is now locally accepted: explicit
+Read-only shared-child impact inspection is now delivered: explicit
 old/current child inputs, a bounded caller directory, structural differences,
 caller wiring and named-result use, with unknown evidence shown explicitly.
 The command does not refresh pins, infer approval, change YAML or runtime
@@ -148,8 +172,11 @@ focused and adversarial checks; final full regression passed 1217 tests with
 real Demo execution, no skips and one existing dependency warning. A deep-tree
 inspection failure found by audit was repaired and independently rechecked.
 See the [usage guide](impact-review.md) and
-[acceptance record](tasks/scenario-impact-review-acceptance.md). These changes
-remain unstaged and uncommitted; their submission requires separate authorization.
+[acceptance record](tasks/scenario-impact-review-acceptance.md). The accepted
+changes were submitted through PR #18 and merged in
+`67ce17f8855f976d138ee84e34e2df5fdde31cbe`; all eight branch/PR checks and four
+post-merge main jobs passed. Historical local acceptance retains its original
+pre-submission statements.
 
 Graphical Scenario authoring, deeper or dynamic Scenario composition, intent hierarchies,
 cryptographic approval infrastructure, automatic approval propagation, and

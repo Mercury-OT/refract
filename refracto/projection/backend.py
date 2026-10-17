@@ -13,6 +13,7 @@ from refracto import asyncwait
 from refracto.declaration import binding
 from refracto.declaration import values
 from refracto.declaration import collections
+from refracto.declaration import http_status
 from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
 
 _NO_SESSION = object()
@@ -22,7 +23,13 @@ def gen_traceparent() -> str:
     return f"00-{secrets.token_hex(16)}-{secrets.token_hex(8)}-01"
 
 
-def _eval_response(assertion, norm, bound_values=None, inputs=None):
+def _eval_response(assertion, norm, bound_values=None, inputs=None, *, observed_status=None):
+    if assertion.check in http_status.CHECKS:
+        observed = http_status.require_observed(observed_status)
+        expected = http_status.allowed(assertion)
+        ok = observed in expected
+        return CheckResult("response", assertion.check, ok,
+                           "" if ok else http_status.mismatch(expected, observed))
     if assertion.check == "collection_matching_count":
         params = assertion.params
         ok, detail = collections.evaluate(
@@ -222,8 +229,9 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         resp.bound_logical_path = template.path
         resp.actual_path = attempt_spec.path
         try:
+            observed_status = _capture_status(step, resp)
             norm = normalizer.normalize(copy.deepcopy(resp))
-            ok = all(_eval_response(a, norm, bound_values, inputs).ok
+            ok = all(_eval_response(a, norm, bound_values, inputs, observed_status=observed_status).ok
                      for a in step.expect.response)
         except Exception:
             recorder.record(copy.deepcopy(resp))
@@ -232,7 +240,8 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         recorder.record(copy.deepcopy(resp))
         attempts["n"] += 1
         last["resp"], last["norm"], last["traceparent"] = resp, norm, traceparent
-        return ok, (resp, norm, traceparent)
+        last["status"] = observed_status
+        return ok, (resp, norm, traceparent, observed_status)
 
     timeout = poll_config.timeout if poll_config else 30
     interval = poll_config.interval if poll_config else 1
@@ -244,7 +253,8 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
     except TimeoutError:
         resp, norm, traceparent = last["resp"], last["norm"], last["traceparent"]
         response_checks = [
-            _eval_response(a, norm, bound_values, inputs) for a in step.expect.response
+            _eval_response(a, norm, bound_values, inputs, observed_status=last["status"])
+            for a in step.expect.response
         ]
         for c in response_checks:
             c.step = step.id
@@ -258,11 +268,11 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         return StepResult(step.id, SKIPPED, skipped=["poll timed out (SKIP)"],
                           attempts=attempts["n"], trace_id=trace_id), norm
 
-    winning_resp, winning_norm, winning_traceparent = result.value
+    winning_resp, winning_norm, winning_traceparent, winning_status = result.value
     winning_resp.is_final = True
 
     response_checks = [
-        _eval_response(a, winning_norm, bound_values, inputs)
+        _eval_response(a, winning_norm, bound_values, inputs, observed_status=winning_status)
         for a in step.expect.response
     ]
     for c in response_checks:
@@ -303,10 +313,12 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
     resp.actual_path = spec.path
     recorder.record(copy.deepcopy(resp))
 
+    observed_status = _capture_status(step, resp)
     norm = normalizer.normalize(copy.deepcopy(resp))
 
     response_checks = [
-        _eval_response(a, norm, bound_values, inputs) for a in step.expect.response
+        _eval_response(a, norm, bound_values, inputs, observed_status=observed_status)
+        for a in step.expect.response
     ]
     if step.request_asserted:
         response_checks.insert(0, CheckResult("request", "request", True,
@@ -326,6 +338,14 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
     status = FAILED if any(not c.ok for c in response_checks + state_checks) else (PASSED if response_checks + state_checks else "COMPLETED")
     return StepResult(step.id, status, checks=response_checks + state_checks,
                       skipped=skips, attempts=1, trace_id=trace_id), norm
+
+
+def _capture_status(step, response):
+    """Capture the transport value before normalization, when it is required."""
+    observed = getattr(response, "status", None)
+    if any(a.check in http_status.CHECKS for a in step.expect.response):
+        return http_status.require_observed(observed)
+    return observed
 
 
 def _require_live_response(response):

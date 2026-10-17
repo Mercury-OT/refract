@@ -437,12 +437,14 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         protected = copy.deepcopy(selected.response)
                         protected.template_path = step.request.declared_path or declared.request.path
                         protected.bound_logical_path = step.request.path
+                        observed_status = backend_proj._capture_status(step, protected)
                         norm = normalizer.normalize(copy.deepcopy(protected))
                         trace_id = protected.trace_id
                         if mode == "live":
                             recordings = _record_verified_primary(recorder, protected, recordings)
                         checks.extend(backend_proj._eval_response(a, norm, bound_values=bound,
-                                                                  inputs=scenario.inputs)
+                                                                  inputs=scenario.inputs,
+                                                                  observed_status=observed_status)
                                       for a in step.expect.response)
                     if mode == "live":
                         extra, skipped = _assert_live_backend_state_for(
