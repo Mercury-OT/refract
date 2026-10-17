@@ -23,7 +23,8 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Implemented, independently audited, architect-accepted, and accepted by the maintainer. Format 1, one-level inclusion, no multi-user child inclusion. | Submission separately authorized on 2026-10-17; the task PR records integration and CI. No further capability expansion is authorized. |
+| 1 | [Response-based rejection evidence](tasks/response-rejection-evidence.md) | Implemented, independently audited, and architect-accepted. Approved four-step example; no new vocabulary or runtime semantics. | Public submission authorized after acceptance; the task PR records integration and CI. |
+| Delivered | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Delivered through PR #21 in main `b2fdab2`. Format 1, one-level inclusion, no multi-user child inclusion. | Preserve the approved user/session and evidence boundaries. |
 | Delivered | [Continue after assertion failures](tasks/assertion-failure-continuation.md) | Delivered in main `95ba66d`; ordinary assertion failures continue, explicit leaf stop retained. | Preserve the approved execution boundary. |
 | Delivered | [Exact HTTP response status assertions](tasks/http-status-assertions.md) | Delivered through PR #19 in main `d2a5ed9`; eight branch/PR checks and four main jobs passed. | Preserve the approved `status_equals` / `status_in` expression. |
 | Delivered | [Shared Scenario change-impact review](tasks/scenario-impact-review.md) | Delivered on main in `67ce17f`; current YAML and execution unchanged. | Preserve read-only inspection, pin, and review boundaries. |
@@ -51,7 +52,7 @@ errors and skips still stop this first slice. Missing response dependencies
 block their consumers, not unrelated steps. The maintainer explicitly retained
 `schema_version: 1`: unchanged declarations therefore require review against the
 new engine semantics, not a claim of behavioral compatibility. Multi-user work
-now proceeds under its separately approved specification. Runtime presentation work is deferred while these expression and
+has been delivered under its separately approved specification. Runtime presentation work is deferred while these expression and
 execution boundaries take priority. Each task is introduced with its intended
 use cases; changed YAML is shown to the maintainer before submission.
 
@@ -69,6 +70,19 @@ The maintainer subsequently accepted the task and separately authorized its
 public submission on 2026-10-17. Historical local acceptance retains its original
 pre-submission statements; the task PR supplies publication, merge, and CI
 evidence. Private workspaces and private Scenario migration remain out of scope.
+
+The accepted bounded task uses existing response assertions to distinguish
+an explicit ownership refusal from invalid sessions, invalid input, and absent
+or different refusal reasons. Its four-step public Documents example and
+negative controls do not add a rejection taxonomy, change the Scenario language,
+or establish independent evidence of an internal authorization decision. See
+[response-based rejection evidence](tasks/response-rejection-evidence.md).
+Its 57 added controls and 16 additional independent probes passed; full regression
+passed 1605 tests with real browser execution, no skips, and one existing warning.
+The isolated dev-only suite passed 1458 tests with the optional Demo collection
+skipped. See the [local acceptance record](tasks/response-rejection-evidence-acceptance.md).
+Submission was explicitly authorized contingent on these gates; local acceptance
+does not itself claim that publication or hosted CI has finished.
 
 Continuation acceptance passed 1426 full regression tests with real Chromium,
 no skips, and one existing dependency warning; the isolated dev-only suite passed
