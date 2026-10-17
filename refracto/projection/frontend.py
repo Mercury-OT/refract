@@ -7,6 +7,7 @@ use a real backend or a state probe.
 from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILED
 from refracto.declaration import values
 from refracto.projection import ui_stepwise
+from refracto.query import wire_query
 
 
 def _objects_at(rendered, anchor):
@@ -97,6 +98,7 @@ def _eval_request_shape(request, outgoing):
     ok = len(outgoing) == 1 and (
         outgoing[0].method == request.method
         and outgoing[0].path == request.path
+        and (request.query is None or outgoing[0].query == wire_query(request.query))
         and (request.body is None or ui_stepwise._subset(outgoing[0].body, request.body))
     )
     return CheckResult("request", "request", ok,

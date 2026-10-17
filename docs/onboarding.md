@@ -59,7 +59,16 @@ unchanged. See [continuation and stopping](../SCENARIO.md#continuing-and-stoppin
 The example resolver translates the declaration's `records` path to the target's
 `/items` route. Keep this boundary explicit in a real integration: declarations
 describe logical requests, while `resolve_request` owns target routing, headers,
-and other transport details.
+and other transport details. Per-request filtering and pagination belong in an
+explicit `query` mapping under `do.request`; resolvers preserve those values
+without synthesizing business defaults from global parameters. `RequestSpec.query`
+holds decoded wire strings, and the driver encodes them at the transport boundary.
+The optional UI `expect.request.query` checks the query actually emitted by the
+browser. Omission leaves that check out, while an empty mapping requires no query.
+See [query rules](../SCENARIO.md#request-query-parameters) and the complete
+[filter and next-page example](../examples/documents/scenarios/filter_and_next_page.yaml).
+That example follows an observed cursor in a separate declared request; it needs
+a fresh isolated Documents target, not hidden adapter preparation.
 
 `ResponseNormalizer` owns response-shape differences. A target may return a
 product envelope, bare JSON, or an empty 204 response; the adapter must convert
@@ -74,6 +83,8 @@ the backend projection and is rejected if requested on its own. The tested
 [`create_and_delete.yaml`](../examples/minimal/scenarios/create_and_delete.yaml)
 scenario uses only declared requests and response assertions, then runs with
 `("backend", "contract")`.
+Contract checks response compatibility over the verified backend recordings.
+It neither sends the query again nor independently observes the query on the wire.
 
 `StateProbe` is optional until a scenario declares `backend_state` assertions.
 Without it, those assertions are skipped as an explicit degradation. The report

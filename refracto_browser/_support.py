@@ -1,7 +1,6 @@
 """Bounded browser primitives with request-start association, outside the core."""
 
 import copy
-import dataclasses
 import json
 import math
 import os
@@ -12,6 +11,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from refracto import ports
+from refracto.query import parse_query
 
 from ._instrument import SCRIPT
 
@@ -329,9 +329,13 @@ class BrowserSupport:
                 headers["traceparent"] = headers["x-refract-traceparent"]
             traceparent = headers.get("traceparent")
             trace_id = traceparent.split("-")[1] if traceparent and len(traceparent.split("-")) == 4 else None
-            actual_path = urlsplit(request.url).path
+            actual_url = urlsplit(request.url)
+            actual_path = actual_url.path
             fixture_id = None
             if api:
+                # Parse before forwarding or choosing a fixture. Duplicate or
+                # invalid API query values cannot be represented as evidence.
+                actual_query = parse_query(actual_url.query)
                 logical_path = self._logical_path(actual_path)
                 if type(logical_path) is not str or not logical_path:
                     raise ValueError("browser logical path mapping failed")
@@ -340,13 +344,16 @@ class BrowserSupport:
                     body = json.loads(request.post_data)
                     if body is not None and type(body) is not dict:
                         raise ValueError("browser request body must be a JSON object")
-                spec = ports.RequestSpec(request.method, logical_path, body, traceparent)
+                spec = ports.RequestSpec(request.method, logical_path, body, traceparent,
+                                         query=actual_query)
             if api and context.mode == "mock":
                 if context.mock_queue.index >= len(context.mock_queue.plan):
                     raise ValueError("browser mock plan is exhausted")
                 fixture = context.mock_queue.plan[context.mock_queue.index]
                 if (fixture.method, fixture.path) != (spec.method, spec.path):
                     raise ValueError("browser traffic does not match the next mock fixture")
+                if fixture.query is not None and fixture.query != spec.query:
+                    raise ValueError("browser traffic does not match the next mock fixture query")
                 context.mock_queue.index += 1
                 fixture_id = fixture.fixture_id
                 response_body, status = copy.deepcopy(fixture.response), fixture.status
@@ -375,7 +382,7 @@ class BrowserSupport:
                     response.dispose()
             if api:
                 recorded = ports.RecordedResponse(
-                    status, response_headers, response_body, text, trace_id, dataclasses.replace(spec),
+                    status, response_headers, response_body, text, trace_id, copy.deepcopy(spec),
                     step_id=permit.step_id if permit else None, actual_path=actual_path,
                     request_id=request_id, mock_fixture_id=fixture_id,
                     user=context.user, session_generation=context.session_generation,

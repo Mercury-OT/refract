@@ -12,6 +12,7 @@ import secrets
 import time
 
 from refracto import asyncwait, ports
+from refracto.query import wire_query, require_wire_query, request_path
 from refracto.declaration import binding, values
 from refracto.projection import backend as backend_proj
 from refracto.projection.continuation import FlowState
@@ -47,7 +48,7 @@ def _require_equal(name, actual, expected):
 def _request_values_equal(actual, expected):
     return type(actual) is ports.RequestSpec and type(expected) is ports.RequestSpec and all(
         _strict_equal(getattr(actual, name), getattr(expected, name))
-        for name in ("method", "path", "body", "traceparent")
+        for name in ("method", "path", "body", "traceparent", "query")
     )
 
 
@@ -92,6 +93,9 @@ def _validate_mock_plan(plan):
         identifiers.add(item.fixture_id)
         if type(item.status) is not int or not 100 <= item.status <= 599 or type(item.response) is not dict:
             raise ValueError("invalid mock fixture response")
+        request_path(item.path, {})
+        if item.query is not None:
+            require_wire_query(item.query)
 
 
 def _validate_rendered(rendered):
@@ -125,6 +129,8 @@ def _validate_diagnostic_identity(value, accepted, name):
 def _validate_diagnostic_request(request, accepted_traces):
     if type(request) is not ports.RequestSpec:
         raise TypeError("invalid diagnostic request")
+    require_wire_query(request.query)
+    request_path(request.path, {})
     parent = request.traceparent
     if parent is None:
         return
@@ -174,6 +180,8 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
         req, resp = traffic.request, traffic.response
         if type(req) is not ports.RequestSpec or type(resp) is not ports.RecordedResponse:
             raise TypeError("traffic must pair RequestSpec and RecordedResponse")
+        require_wire_query(req.query)
+        request_path(req.path, {})
         if not _request_values_equal(req, resp.request):
             raise ValueError("request/response pairing mismatch")
         _require_equal("request identity pairing", resp.request_id, traffic.request_id)
@@ -233,6 +241,8 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
                 ("fixture response", response.json, fixture.response),
             ):
                 _require_equal(name, actual, expected)
+            if fixture.query is not None:
+                _require_equal("fixture query", response.request.query, fixture.query)
             local_consumption.append(dict(fixture_id=fixture.fixture_id, source=fixture.source,
                                           step_id=permit.step_id, request_id=response.request_id))
     elif evidence.mock_recordings:
@@ -464,6 +474,9 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         matches = [t for t in evidence.traffic
                                    if t.request.method == step.request.method
                                    and t.request.path == step.request.path]
+                        if len(matches) > 1 and step.request.query is not None:
+                            expected_query = wire_query(step.request.query)
+                            matches = [t for t in matches if t.request.query == expected_query]
                         if len(matches) != 1:
                             raise ValueError("declared UI request missing or ambiguous among associated traffic")
                         selected = matches[0]

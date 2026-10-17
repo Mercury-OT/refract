@@ -32,6 +32,7 @@ class RequestSpec:
     path: str
     body: dict | None = None
     traceparent: str | None = None
+    query: dict[str, str] = field(default_factory=dict, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
@@ -110,6 +111,7 @@ class MockResponse:
     path: str = field(repr=False)
     response: dict = field(repr=False, metadata={"sensitive": True})
     status: int = 200
+    query: dict[str, str] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass

@@ -59,9 +59,9 @@ def test_second_adapter_runs_server_id_filter_page_and_204_through_backend_contr
     assert len(adapters.api.sent) == 5
     assert adapters.api.sent[0].body == {"title": "other-notes", "category": "guide"}
     assert adapters.api.sent[1].body == {"title": "field-notes", "category": "guide"}
-    assert "category=guide" in adapters.api.sent[2].path
-    assert "cursor=0" in adapters.api.sent[2].path
-    assert "limit=2" in adapters.api.sent[2].path
+    assert adapters.api.sent[2].path == "/v3/documents"
+    assert adapters.api.sent[2].query == {"category": "guide", "cursor": "0", "limit": "2"}
+    assert app.requests[2][1] == "/v3/documents?category=guide&cursor=0&limit=2"
     created_id = adapters.api.sent[3].path.rsplit("/", 1)[-1]
     assert created_id.startswith("document-")
     assert created_id not in adapters.api.sent[1].body.values()

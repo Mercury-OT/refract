@@ -7,6 +7,7 @@ product-specific gateway logic.
 import httpx
 
 from refracto import ports
+from refracto.query import request_path
 from adapters.demo.config import DemoConfig
 
 
@@ -23,7 +24,8 @@ class DemoApiDriver(ports.ApiDriver):
         if spec.traceparent:
             headers["traceparent"] = spec.traceparent
         with httpx.Client(base_url=self._config.base_url, timeout=30.0) as client:
-            r = client.request(spec.method, real_path(spec.path), json=spec.body, headers=headers)
+            r = client.request(spec.method, request_path(real_path(spec.path), spec.query),
+                               json=spec.body, headers=headers)
         try:
             body = r.json()
         except Exception:

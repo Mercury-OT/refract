@@ -91,7 +91,8 @@ def test_explicit_stop_preserves_failed_result_and_does_not_delete(tmp_path, pro
 def test_unavailable_id_blocks_consumers_but_not_independent_list(tmp_path, projections, fault):
     def append_independent_read(raw):
         raw["steps"].append({"id": "independent_read", "do": {"request": {
-            "method": "GET", "path": ["documents", "search"]}}, "expect": {
+            "method": "GET", "path": ["documents", "search"],
+            "query": {"category": "", "cursor": 0, "limit": 10}}}, "expect": {
             "response": [{"check": "status_equals", "value": 200}, {"check": "success"}]}})
     path = write_example(tmp_path, append_independent_read)
     app = ChangedCreation(fault)

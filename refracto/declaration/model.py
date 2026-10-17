@@ -38,6 +38,7 @@ class RequestTemplate:
     body: dict | None = None
     path_segments: list | None = field(default=None, kw_only=True)
     declared_path: str | None = field(default=None, kw_only=True)
+    query: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 @dataclass(frozen=True)
 class Binding:

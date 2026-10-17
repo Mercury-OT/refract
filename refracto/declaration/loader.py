@@ -8,6 +8,7 @@ import yaml
 from refracto.declaration import vocabulary as vocab
 from refracto.declaration import http_status
 from refracto.declaration.collections import is_scalar
+from refracto.query import wire_query
 from refracto.declaration.model import (
     Scenario, Grid, Input, Assertion, Expect, RequestTemplate, Binding,
     PollPolicy, Step, ValueRef, ResultSource,
@@ -42,7 +43,7 @@ class _Loader(yaml.SafeLoader):
             if not isinstance(key, str):
                 raise DeclarationError("mapping keys must be strings")
             if key in result:
-                raise DeclarationError(f"duplicate mapping key {key!r}")
+                raise DeclarationError("duplicate mapping key")
             result[key] = self.construct_object(value_node, deep=deep)
         return result
 
@@ -125,7 +126,7 @@ def _data(value, parameters, prior, bindings, where):
 
 
 def _request(raw, parameters, prior, bindings, where):
-    _mapping(raw, {"method", "path", "body"}, where)
+    _mapping(raw, {"method", "path", "body", "query"}, where)
     method = _string(raw.get("method"), f"{where}.method").upper()
     if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
         raise DeclarationError(f"{where}: unsupported HTTP method")
@@ -143,8 +144,26 @@ def _request(raw, parameters, prior, bindings, where):
     if body is not None and not isinstance(body, dict):
         raise DeclarationError(f"{where}.body must be a mapping")
     body = _data(body, parameters, prior, bindings, f"{where}.body")
+    query = None
+    if "query" in raw:
+        if type(raw["query"]) is not dict:
+            raise DeclarationError(f"{where}.query must be a mapping")
+        query = {}
+        for key, declared in raw["query"].items():
+            if type(key) is not str or not key:
+                raise DeclarationError("query keys must be nonempty literal strings")
+            value = _reference(declared, parameters, prior, bindings, f"{where}.query value")
+            if value is None:
+                value = declared
+            known = parameters[value.key] if isinstance(value, ValueRef) and value.source == "input" else value
+            if not isinstance(known, ValueRef):
+                try:
+                    wire_query({key: known})
+                except ValueError as exc:
+                    raise DeclarationError(str(exc)) from None
+            query[key] = value
     return RequestTemplate(method, template_path, body, path_segments=segments,
-                           declared_path=template_path)
+                           declared_path=template_path, query=query)
 
 
 def _assertions(point, raw, parameters, prior, bindings):

@@ -1,0 +1,99 @@
+schema_version: 1
+scenario: documents.filter_and_next_page
+users: [editor]
+description: Filter documents and follow an observed cursor in an explicit next-page request.
+parameters:
+  category: guide
+  first_title: Getting started
+  second_title: Advanced usage
+steps:
+  # Preparation is visible. Run against a fresh isolated target whose lists
+  # preserve creation order; the harness owns isolation and disposal.
+  - id: create_first
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: first_title}
+          category: {from_parameter: category}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+  - id: create_other_category
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: Internal memo
+          category: memo
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: field_equals, field: category, value: memo}
+  - id: create_second
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: second_title}
+          category: {from_parameter: category}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+  - id: first_page
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+        query:
+          category: {from_parameter: category}
+          limit: 1
+          cursor: 0
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: returned, value: 1}
+        - check: collection_matching_count
+          field: documents
+          matching:
+            document_id: {from_step: create_first, response_field: document_id}
+            title: {from_parameter: first_title}
+            category: {from_parameter: category}
+          count: 1
+        - {check: field_equals, field: next_cursor, value: 1}
+  - id: next_page
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+        query:
+          category: {from_parameter: category}
+          limit: 1
+          # This reads the actual first-page response; core never invents a cursor.
+          cursor: {from_step: first_page, response_field: next_cursor}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: returned, value: 1}
+        - check: collection_matching_count
+          field: documents
+          matching:
+            document_id: {from_step: create_second, response_field: document_id}
+            title: {from_parameter: second_title}
+            category: {from_parameter: category}
+          count: 1
+        - {check: field_equals, field: next_cursor, value: null}

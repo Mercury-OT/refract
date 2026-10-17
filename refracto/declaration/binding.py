@@ -21,6 +21,7 @@ from dataclasses import replace
 from refracto.declaration.model import RequestTemplate, ValueRef, Assertion, Expect
 from refracto.declaration import values as value_ops
 from refracto.declaration.collections import is_scalar, resolve_matching
+from refracto.query import wire_query, request_path
 
 _PLACEHOLDER_RE = re.compile(r"\{([^}]+)\}")
 
@@ -124,7 +125,8 @@ def substitute(template, values):
     """
     new_path = _substitute_path(template.path, values)
     new_body = None if template.body is None else _substitute_body(template.body, values)
-    return RequestTemplate(method=template.method, path=new_path, body=new_body)
+    return replace(template, path=new_path, body=new_body,
+                   query=None if template.query is None else dict(template.query))
 
 
 def prepare_step(step, scenario, prior_norms):
@@ -189,8 +191,15 @@ def prepare_step(step, scenario, prior_norms):
         if body is not None and not isinstance(body, dict):
             invalid(request.body, "resolved request body must be a mapping or null")
         _require_data(body)
+        query = None if request.query is None else concrete(request.query)
+        if query is not None:
+            try:
+                wire_query(query)
+            except ValueError:
+                invalid(request.query, "resolved query requires nonempty string keys and finite scalar values")
+        request_path(path, {})
         request = replace(request, path=path, body=body,
-                          declared_path=request.declared_path or request.path)
+                          declared_path=request.declared_path or request.path, query=query)
     expect = Expect(**{
         point: [Assertion(a.check, concrete(a.params)) for a in getattr(step.expect, point)]
         for point in ("frontend", "response", "backend_state")

@@ -28,6 +28,7 @@ steps:
       request:
         method: GET
         path: [documents, search]
+        query: {category: "", cursor: 0, limit: 10}
     expect:
       response:
         - {check: status_equals, value: 200}
