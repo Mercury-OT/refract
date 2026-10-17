@@ -32,6 +32,13 @@ class DocumentResponseNormalizer(ports.ResponseNormalizer):
                 fields = _document_fields(resource["document"])
             elif isinstance(resource, dict) and isinstance(resource.get("normalized"), dict):
                 fields = dict(resource["normalized"])
+            elif isinstance(resource, dict) and isinstance(resource.get("account"), dict):
+                account = resource["account"]
+                fields = {name: account[name] for name in ("user_id", "role") if name in account}
+            elif isinstance(resource, dict) and isinstance(resource.get("permissions"), dict):
+                permissions = resource["permissions"]
+                fields = {name: permissions[name] for name in ("user_id", "read_documents")
+                          if name in permissions}
             elif isinstance(result_set, dict):
                 page_info = result_set.get("page_info")
                 page_info = page_info if isinstance(page_info, dict) else {}

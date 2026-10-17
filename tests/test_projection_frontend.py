@@ -5,7 +5,7 @@ from refracto.declaration.loader import DeclarationError, load_scenario
 from refracto.declaration.model import Assertion, Expect, Grid, Input, RequestTemplate, Scenario, Step, ValueRef
 from refracto.projection import frontend
 from refracto.report import DEGRADED
-from tests.fakes import FakeNormalizer, FakeUi
+from tests.fakes import FakeAuth, FakeNormalizer, FakeUi
 
 
 def _rendered(identified=None, anonymous=None, anchor="result_row"):
@@ -40,7 +40,8 @@ def _plan(payload=None):
 
 
 def _run_frontend(scenario, *, ui, normalizer, **kwargs):
-    return frontend.run(scenario, ui=ui, normalizer=normalizer, mock_plan=kwargs.pop("mock_plan", _plan()), **kwargs)
+    return frontend.run(scenario, auth=FakeAuth(), ui=ui, normalizer=normalizer,
+                        mock_plan=kwargs.pop("mock_plan", _plan()), **kwargs)
 
 
 def test_frontend_consumes_explicit_fixture_not_consumer_synthesis():
@@ -57,7 +58,7 @@ def test_frontend_consumes_explicit_fixture_not_consumer_synthesis():
 def test_frontend_does_not_make_fixture_match_declared_parameter(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
-        "schema_version: 1\nscenario: x\nactor: a\nparameters: {rows: 3}\n"
+        "schema_version: 1\nscenario: x\nusers: [a]\nparameters: {rows: 3}\n"
         "steps:\n- id: read\n  do: click\n  target: resource.submit\n"
         "  expect:\n    request: {method: POST, path: [resource, action]}\n"
         "    response:\n"
@@ -87,7 +88,7 @@ def test_frontend_never_calls_normalizer_synthesis():
 def test_frontend_requires_explicit_mock_plan_before_any_context():
     scenario = load_scenario("tests/fixtures/synthetic_scenario.yaml")
     ui = FakeUi()
-    result = frontend.run(scenario, ui=ui, normalizer=FakeNormalizer())
+    result = frontend.run(scenario, auth=FakeAuth(), ui=ui, normalizer=FakeNormalizer())
     assert result.steps[0].status == "ERROR"
     assert "explicit mock_plan" in result.steps[0].detail
     assert ui.open_calls == 0 and ui.permits == []

@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: review.item_lifecycle
-actor: user
+users: [user]
 description: Create a draft item, update the same item, and read its final name.
 parameters:
   draft_name: review-draft

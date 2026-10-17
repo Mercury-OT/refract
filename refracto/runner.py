@@ -84,6 +84,7 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         return report
 
     provider_recordings = []
+    provider_steps = []
     if "backend" in projections:
         rec = adapters.recorder_factory()
         d = backend_proj.run(scenario, auth=adapters.auth, api=adapters.api,
@@ -92,6 +93,7 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
                              normalizer=adapters.normalizer, poll_config=poll_config,
                              now=now, sleep=sleep)
         provider_recordings = d.provider_recordings
+        provider_steps = d.steps
         report.domains.append(d)
     if "frontend" in projections:
         report.domains.append(frontend_proj.run(scenario, ui=adapters.ui, auth=adapters.auth,
@@ -105,5 +107,6 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
                                             normalizer=adapters.normalizer, poll_config=poll_config,
                                             now=now, sleep=sleep))
     if "contract" in projections:
-        report.domains.append(contract_proj.run(scenario, provider_recordings, adapters.normalizer))
+        report.domains.append(contract_proj.run(scenario, provider_recordings, adapters.normalizer,
+                                               execution_steps=provider_steps))
     return report

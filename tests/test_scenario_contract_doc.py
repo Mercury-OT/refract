@@ -79,7 +79,7 @@ def test_documented_explicit_stop_fragment_loads_in_its_stated_context(tmp_path)
     data = {
         "schema_version": 1,
         "scenario": "demo.documented_stop",
-        "actor": "editor",
+        "users": ["editor"],
         "steps": [{
             "id": "create",
             "do": {"request": {"method": "POST", "path": ["records"]}},

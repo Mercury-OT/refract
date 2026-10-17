@@ -23,8 +23,12 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
     def supports_stepwise_mode(self, mode):
         return mode in {"mock", "live"}
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None):
-        return self._browser.open(mode, mock_plan=mock_plan)
+    def open_stepwise(self, scenario, session, *, mode, mock_plan=None,
+                      mock_queue=None, user=None, session_generation=0, context_id=""):
+        return self._browser.open(mode, mock_plan=mock_plan, mock_queue=mock_queue,
+                                  user=user, session_generation=session_generation,
+                                  context_id=context_id,
+                                  context_options=getattr(session, "context", None))
 
     def perform_step(self, scenario, step, context, permit):
         if permit.action == "open":

@@ -182,7 +182,8 @@ def test_sensitive_payloads_hidden_through_report_and_permits():
     for obj in [*ui.permits, *ui.evidence, domain, RunReport("x", [domain])]:
         assert secret not in repr(obj)
     assert ports.UiActionPermit.__match_args__ == ()
-    assert dataclasses.fields(ports.UiActionPermit)[-1].metadata["sensitive"]
+    fields = {field.name: field for field in dataclasses.fields(ports.UiActionPermit)}
+    assert fields["resolved_bindings"].metadata["sensitive"]
 
 
 def test_action_result_requires_evidence_xor_skip():
@@ -232,7 +233,7 @@ def test_loaded_response_reference_drives_action_path_body_and_assertion(tmp_pat
     path = tmp_path / "references.yaml"
     path.write_text("""schema_version: 1
 scenario: refs.ui
-actor: editor
+users: [editor]
 steps:
   - id: create
     do: click

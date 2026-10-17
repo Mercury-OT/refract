@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: demo.include_items
-actor: user
+users: [user]
 description: Create twice, pass an actual response value, update the second item, and read both.
 parameters:
   first_name: included-first

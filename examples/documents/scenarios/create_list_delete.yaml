@@ -3,7 +3,7 @@ scenario: documents.create_list_delete
 grid:
   level: regression
   module: documents
-actor: editor
+users: [editor]
 description: Create an unrelated document and a target, find the target after the
   unrelated member in one filtered page, and delete both documents.
 parameters:

@@ -10,7 +10,7 @@ truthful evidence normalization remain adapter responsibilities.
 
 The executable format is `schema_version: 1`. This identifies the declaration
 format, not a Scenario's content revision or approval. Unversioned declarations,
-`version: 2`, and the former `inputs`, `intent`, `precondition`, and `bind` YAML
+`version: 2`, and the former `actor`, `inputs`, `intent`, `precondition`, and `bind` YAML
 fields are rejected; no silent conversion or compatibility mode is provided.
 
 Format 1 now continues after ordinary assertion failure by default. This is an
@@ -24,7 +24,7 @@ alone does not pin engine semantics or renew approval.
 | `schema_version` | yes | strict integer `1` |
 | `scenario` | yes | stable nonempty Scenario identifier |
 | `description` | no | human-readable intent |
-| `actor` | yes | identity or role resolved by the authenticator |
+| `users` | yes | distinct logical user names; an empty list means no account binding |
 | `parameters` | no | mapping of declared data values |
 | `grid` | no | organizational selector `{level, module}` |
 | `steps` | yes | nonempty ordered list with unique step IDs |
@@ -34,11 +34,62 @@ Parameters contain finite JSON-like data, not scripts or generators. Unknown
 fields, duplicate mapping keys, and invalid reference shapes fail validation.
 A requested grid filter does not silently match a Scenario without that grid.
 
+## Users and current sessions
+
+Users are logical account names, not roles, credentials, or declarations of
+permissions. Account bindings belong to the adapter configuration. A response
+field named `role` can still be checked when it is part of the business obligation;
+the Scenario does not configure a user's role or grant permissions.
+
+| Declaration | Step selection |
+| --- | --- |
+| `users: []` | Omit `user` and `session`; no authentication is performed. |
+| `users: [creator]` | Omitted `user` selects `creator`; an explicit value must match. |
+| `users: [creator, peer]` | Every step must name a declared `user`, including waits and include nodes. |
+
+Null, duplicate or non-string names, dynamic user selection, and undeclared users
+are invalid. Before business actions, the authenticator resolves each declared
+user to a fixed principal. Different logical users must bind different principals.
+This validates the adapter's declared identities, not the truth of a malicious
+adapter's claims. Missing identity capability is an error, never anonymous fallback.
+
+Authentication is lazy and projection-local. Omit `session` to keep that user's
+current session. Set `session: new` on an ordinary step to authenticate the same
+account again and replace only its current session. It must supply a new
+authentication identity, not reuse the old one or select another account by role.
+Blocked steps do not authenticate. Poll attempts reuse one session. A 401/403
+response does not trigger automatic refresh or restoration of permissions.
+There is no facility to return to an earlier replaced session.
+
+The authentication port exposes `identify(user)` and `session(user)`. The latter
+returns a `UserSession` with opaque `principal_id`, `authentication_id`, and
+`credentials`. Core validates the first two and passes only the credentials to
+execution adapters. Credentials and principal/authentication identities are
+hidden from default representations; generic serialization is not safe.
+
+UI execution retains separate contexts for each user's current session. Switching
+users leaves other contexts open; a new session closes/replaces only that user's
+context. Every remaining context is closed on exit. Anonymous execution must not
+inherit credentials, authenticated storage, or an existing user's context.
+`users: []` is an execution instruction, not evidence that the target observed an
+anonymous request. Login-page behavior and permission changes require their own
+visible actions and assertions; authentication does not secretly perform them.
+
+This format-1 cutover replaces the former `actor` declaration without conversion.
+Maintained examples are migrated explicitly; historical records are not proof
+that an unchanged declaration runs with the current engine.
+
+The synthetic Documents examples exercise [owner versus same-role peer access](examples/documents/scenarios/owner_peer.yaml)
+and [old versus new sessions after permission revocation](examples/documents/scenarios/permission_sessions.yaml).
+Both reuse the same [single-user creation child](examples/documents/scenarios/shared/create_document.yaml).
+Their target really enforces account ownership and the selected permission policy;
+their 403 checks still do not prove an arbitrary product's rejection mechanism.
+
 ## One action per step
 
 There is no `action`, `type`, or `sequence` wrapper. An executable leaf step has
-one `id`, one `do`, the applicable action fields below, and optionally `expect`
-and `on_failure: stop`.
+one `id`, one `do`, the applicable action fields below, and optionally `expect`,
+`user`, `session: new`, and `on_failure: stop` under the user rules above.
 A static include is a composition node expanded into these same leaves before
 execution, not a multi-action adapter primitive.
 
@@ -272,13 +323,18 @@ which remain distinguishable from live responses.
 
 ## Including a pinned, reviewed Scenario
 
-A Scenario may include all steps of a local child with the same `actor`. The
-child must independently validate, contain an effective assertion, and have no
-include of its own. No recursion, dynamic target, partial inclusion, assertion
-override, actor switch, or execution cache is supported.
+A Scenario may include all steps of a local single-user child, mapping its
+local user to the include step's effective parent user. An anonymous child can
+only be included by an anonymous parent. A multi-user child cannot be included
+in this slice, even though it can run independently. The child must independently
+validate, contain an effective assertion, and have no include of its own.
+No recursion, dynamic target, partial inclusion, assertion override, or execution
+cache is supported.
 
 The include step accepts only `id`, `do: {include: <literal Scenario ID>}`, and
-optional `with`. For example, in a parent declaring a `record_name` parameter:
+optional `with` and `user` under the cardinality rules above. No session override
+is allowed on the include node. For example, in a single-user parent declaring
+a `record_name` parameter:
 
 ```yaml
 - id: setup
@@ -295,6 +351,13 @@ Caller references are checked at the include position, while child-internal
 references remain local. Runtime responses are not read during loading. Each
 invocation has isolated parameters and steps; literal objects resembling reference
 syntax remain data. No additional parameterized positions are introduced.
+
+If a child declares `users: [operator]`, two parent include steps may select
+`user: creator` and `user: peer`. Both reuse the same child bytes: `operator` is
+bound to the selected parent user, not a separately authenticated account.
+Explicit and implicit child user selections map identically. A child's own
+`session: new` remains effective for that mapped user. Caller review includes
+this user choice; an unchanged child pin does not approve a new caller binding.
 
 ### Named results
 
@@ -379,9 +442,9 @@ Every include executes anew; prior passing evidence is not reused as a result.
 ### Execution and review view
 
 Inclusion expands symbolically into the existing ordered execution model. The
-parent retains its actor, metadata, grid selection, adapters, and projections.
-Child grid metadata cannot silently filter steps. Each UI projection retains one
-session/context. All child actions and checks remain present; unsupported expanded
+parent retains its user declarations, metadata, grid selection, adapters, and projections.
+Child grid metadata cannot silently filter steps. Sessions and UI contexts belong
+to the effective parent users. All child actions and checks remain present; unsupported expanded
 flows still fail the existing projection checks before side effects.
 
 Ordinary FAILED continues by default. A child's explicit leaf `on_failure: stop`
@@ -397,7 +460,8 @@ effective checks, but that does not establish the parent's complete business goa
 `refracto validate <parent.yaml> --expand` explicitly prints the verified flat
 review plan and its sources. It preserves symbolic response references and shows
 declared public result names, their source mappings, and each leaf's effective
-failure policy. It never runs adapters,
+failure policy, effective user, session policy, and included local-user mapping.
+It never runs adapters,
 and emits no partial plan when validation fails. This is a review
 view, not another authoring format. It can display literal declaration data,
 including `with` values; its confidentiality matches the source files. It never
@@ -405,7 +469,8 @@ contains runtime response values. Default validation remains a concise summary.
 
 Qualified leaf IDs remain in reports and contract identity. The loaded Scenario
 and RunReport expose `source_lookup`, a diagnostic map with source Scenario ID, original
-step ID, include step ID, and source-byte SHA-256. This does not affect equality,
+step ID, include step ID, source-byte SHA-256, and local/effective user mapping.
+This does not affect equality,
 status, or execution and is hidden from default repr. `localize()` still returns
 failed checks in its existing tuple shape; ERROR/BLOCKED are inspected through
 StepResult, with the same source lookup. No approval status is inferred.
@@ -430,7 +495,7 @@ evaluate against that response.
 ```yaml
 schema_version: 1
 scenario: demo.export_ready
-actor: user
+users: [user]
 steps:
   - id: wait_for_export
     do:
@@ -515,12 +580,13 @@ domain DEGRADED, even if another check passed, and is visible in `degradations()
 
 Frontend and e2e share one orchestration loop for every step count. Core
 authorizes one primitive, checks evidence, resolves later values, and decides
-whether the next action may run. One authenticated UI context is reused and
-closed exactly once. There is no legacy `run_intent()` workflow fallback.
+whether the next action may run. Contexts are isolated by current user/session
+and closed exactly once. There is no legacy `run_intent()` workflow fallback.
 
 Action identity is separate from traffic: an action may produce zero to many
 requests. Each associated request has an immutable ID and response pairing.
-Core checks run, step, action, mode, permit, and traffic correspondence, then
+Core checks run, step, action, mode, user, session generation, context identity,
+permit, and traffic correspondence, then
 selects the unique declared method/path target. Missing or ambiguous target
 traffic cannot pass. Stale, swapped, or replayed identity is a protocol error;
 correctly associated traffic with a wrong body fails the request check.
@@ -562,7 +628,10 @@ Defaulted keyword-only metadata explains continuation without copying values:
   steps, including assertion-free actions; it does not diagnose causal failures.
 - `blocked_by` lists unavailable source IDs or the step that stopped the projection.
 - `response_origin` is either absent or a `ResponseOrigin` containing `step_id`,
-  zero-based `attempt_index`, `is_final`, and `timed_out`.
+  zero-based `attempt_index`, `is_final`, `timed_out`, source `user`, and
+  `session_generation`.
+- Step `user` identifies the effective logical user. `session_generation` records
+  the acquired session (1 onwards; 0 for anonymous); unexecuted work has none.
 - `binding_sources` maps internal binding names to `BindingSource` objects holding
   `response_field` and the source `ResponseOrigin`. A timed-out, non-final source
   remains distinguishable from a successful polling attempt.
@@ -594,7 +663,13 @@ completeness of the human-approved baseline.
 
 Contract consumes backend recordings without sending requests. Its identity is
 `(step_id, method, declared template_path)`; bound and actual paths remain
-evidence, not replacements for declared identity. Only final polling recordings
+evidence, not replacements for declared identity. Core-controlled user/session
+metadata must agree with the declaration; another user's recording cannot
+substitute for the declared user. Contract does not authenticate or independently
+prove account identity. Runner supplies backend execution metadata to check each recording's
+actual session generation. A direct contract call without that provenance cannot
+verify a flow with `session: new`; it reports an error instead of inferring which
+renewal steps actually ran. Only final polling recordings
 contribute. Response requirements retain success/failure/don't-care, an optional
 exact HTTP status or allowed status set, required
 fields, expected values, forbidden fields, and all collection matching
@@ -617,7 +692,7 @@ need truthful mappings; frontend execution also needs explicit mock data.
 schema_version: 1
 scenario: demo.record_create
 description: Create a record and check response and rendered content.
-actor: editor
+users: [editor]
 parameters:
   record_name: Example record
 steps:

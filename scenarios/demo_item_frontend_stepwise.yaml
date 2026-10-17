@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: demo.item_frontend_stepwise
-actor: user
+users: [user]
 description: Two explicit creations with a previous response value as the second name.
 parameters:
   first_name: first

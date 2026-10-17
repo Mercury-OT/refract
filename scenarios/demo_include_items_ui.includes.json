@@ -3,7 +3,7 @@
   "scenarios": {
     "demo.include_create_item_ui": {
       "path": "include_shared/create_item_ui.yaml",
-      "sha256": "0c337655b45859194b937ad02f0ad052f2f0310ecdc756e1070be89c7e15ba64"
+      "sha256": "de22e76efa54c3a1027fd57aadd381e567ee24978c2af75c9cab07688c229eab"
     }
   }
 }

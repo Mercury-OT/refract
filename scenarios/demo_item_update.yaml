@@ -3,7 +3,7 @@ scenario: demo.item_update
 grid:
   level: regression
   module: demo
-actor: user
+users: [user]
 description: The user renames an existing item and the backend emits the item.update
   semantic span with row-count evidence.
 parameters:

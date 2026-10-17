@@ -40,6 +40,8 @@ class ResponseOrigin:
     attempt_index: int
     is_final: bool
     timed_out: bool = False
+    user: str | None = field(default=None, kw_only=True)
+    session_generation: int | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,8 @@ class StepResult:
     blocked_by: list[str] = field(default_factory=list, kw_only=True, compare=False)
     response_origin: ResponseOrigin | None = field(default=None, kw_only=True, compare=False)
     binding_sources: dict[str, BindingSource] = field(default_factory=dict, kw_only=True, compare=False)
+    user: str | None = field(default=None, kw_only=True)
+    session_generation: int | None = field(default=None, kw_only=True)
     resolved_bindings: dict[str, object] = field(
         default_factory=dict,
         repr=False,

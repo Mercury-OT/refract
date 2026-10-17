@@ -13,7 +13,7 @@ from examples.documents.app import DocumentRestApp
 def build_adapters(app: DocumentRestApp | None = None) -> runner.Adapters:
     app = app or DocumentRestApp()
     return runner.Adapters(
-        auth=DocumentAuthenticator(),
+        auth=DocumentAuthenticator(app),
         api=DocumentApiDriver(app),
         state=None,
         ui=None,

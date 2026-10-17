@@ -39,6 +39,7 @@ def expansion_view(scenario):
     steps = []
     for step in scenario.steps:
         item = {"id": step.id, "source": copy.deepcopy(scenario.source_lookup.get(step.id)),
+                "user": scenario.effective_user(step), "session": step.session or "reuse",
                 "on_failure": step.on_failure,
                 "do": {"request": request(step.request)} if step.action == "request" else step.action}
         if step.target is not None:
@@ -62,7 +63,7 @@ def expansion_view(scenario):
             item["poll"] = {"on_timeout": step.poll.on_timeout}
         steps.append(item)
     return {"view": "expanded-review/1", "scenario": scenario.id,
-            "actor": scenario.actor, "description": scenario.description,
+            "users": list(scenario.users), "description": scenario.description,
             "grid": None if scenario.grid is None else {"level": scenario.grid.level, "module": scenario.grid.module},
             "dependencies": copy.deepcopy(scenario.include_dependencies),
             "results": aliases(scenario.results),

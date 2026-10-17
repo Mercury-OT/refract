@@ -37,7 +37,7 @@ def test_default_failed_continues_and_keeps_failed_domain():
 
 
 def test_schema_one_accepts_explicit_stop():
-    raw = {"schema_version": 1, "scenario": "stop", "actor": "editor", "steps": [
+    raw = {"schema_version": 1, "scenario": "stop", "users": ["editor"], "steps": [
         {"id": "first", "on_failure": "stop", "do": {"request": {"method": "GET", "path": ["first"]}},
          "expect": {"response": [{"check": "success"}]}}
     ]}
@@ -45,7 +45,7 @@ def test_schema_one_accepts_explicit_stop():
 
 
 def document(steps):
-    return {"schema_version": 1, "scenario": "references", "actor": "editor", "steps": steps}
+    return {"schema_version": 1, "scenario": "references", "users": ["editor"], "steps": steps}
 
 
 def request(sid, path=None, checks=None, **extra):

@@ -70,7 +70,7 @@ def test_e2e_response_fails_loudly_without_matching_ui_traffic():
 def test_e2e_field_equals_resolves_scenario_parameter_and_reports_drift(tmp_path):
     path = tmp_path / "scenario.yaml"
     path.write_text(
-        "schema_version: 1\nscenario: x\nactor: a\nparameters: {rows: 3}\n"
+        "schema_version: 1\nscenario: x\nusers: [a]\nparameters: {rows: 3}\n"
         "steps:\n"
         "  - id: query\n    do: click\n    target: results.refresh\n"
         "    expect:\n"
@@ -241,7 +241,7 @@ def test_contract_projection_clean():
     spec = ports.RequestSpec(method="POST", path="resource/action")
     recording = ports.RecordedResponse(
         status=200, headers={}, text="", json={"success": True, "data": {"taskId": "T1"}},
-        trace_id=None, request=spec, step_id="main", template_path="resource/action")
+        trace_id=None, request=spec, step_id="main", template_path="resource/action", user="actor1", session_generation=1)
     result = contract_proj.run(scenario, [recording], FakeNormalizer())
     assert result.status == "PASSED"
     assert len(result.steps) == 1 and result.steps[0].step_id == "contract"
@@ -253,7 +253,7 @@ def test_contract_projection_flags_response_field_drift():
     spec = ports.RequestSpec(method="POST", path="resource/action")
     recording = ports.RecordedResponse(
         status=200, headers={}, text="", json={"success": True, "data": {"renamedField": "x"}},
-        trace_id=None, request=spec, step_id="main", template_path="resource/action")
+        trace_id=None, request=spec, step_id="main", template_path="resource/action", user="actor1", session_generation=1)
     result = contract_proj.run(scenario, [recording], FakeNormalizer())
     assert not result.passed
     assert any(c.point == "contract" and not c.ok and "taskId" in c.detail for c in result.checks)

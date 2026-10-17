@@ -3,7 +3,7 @@ scenario: refracto.synthetic_templated_probe
 grid:
   level: smoke
   module: generic
-actor: actor1
+users: [actor1]
 description: 'actor1 performs an abstract action that returns a task id, then polls
   the task status by id through a templated second-step path.
 

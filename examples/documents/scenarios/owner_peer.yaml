@@ -1,0 +1,50 @@
+schema_version: 1
+scenario: documents.owner_peer
+users: [creator, peer]
+parameters:
+  document_title: Owner document
+steps:
+  - id: creator_profile
+    user: creator
+    on_failure: stop
+    do:
+      request: {method: GET, path: [account, profile]}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: has, field: role}
+  - id: setup
+    user: creator
+    do: {include: documents.shared_create}
+    with:
+      document_title: {from_parameter: document_title}
+  - id: creator_reads
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: setup, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: document_id, value: {from_step: setup, result: document_id}}
+  - id: peer_profile
+    user: peer
+    on_failure: stop
+    do:
+      request: {method: GET, path: [account, profile]}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: role, value: {from_step: creator_profile, response_field: role}}
+  - id: peer_reads
+    user: peer
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: setup, result: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 403}
+        - {check: failure}

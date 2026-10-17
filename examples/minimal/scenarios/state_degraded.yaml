@@ -3,7 +3,7 @@ scenario: minimal.state_degraded
 grid:
   level: smoke
   module: minimal
-actor: reader
+users: [reader]
 description: Show that an unavailable state capability is reported as a degradation.
 steps:
 - id: create_with_state_expectation

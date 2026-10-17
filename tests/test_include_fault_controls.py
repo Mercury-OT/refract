@@ -91,12 +91,12 @@ def test_collection_fault_changes_only_the_target_not_the_unrelated_member(form)
 
 
 def test_setup_errors_are_invalid_controls_not_detections(monkeypatch):
-    from tests import include_fault_controls
+    from tests import named_results_fault_controls
 
     def fail_setup(*args, **kwargs):
         raise ImportError("deliberate setup failure")
 
-    monkeypatch.setattr(include_fault_controls, "run_scenario", fail_setup)
+    monkeypatch.setattr(named_results_fault_controls, "run_scenario", fail_setup)
     result = run_control("accepted_rejection")
     assert result["classification"] == "invalid_control"
     assert result["fault_reached"] == 0

@@ -10,7 +10,8 @@ empty 204 response.
 
 A request/response-only integration needs four adapter-facing pieces:
 
-1. `Authenticator` creates the session associated with the scenario actor.
+1. `Authenticator` binds each logical user to a fixed principal and creates a
+   fresh `UserSession` when core requests authentication. Core owns session reuse.
 2. `ApiDriver` executes the resolved request against the target.
 3. `ResponseNormalizer` maps target responses into Refract's success flag and
    field map.
@@ -36,12 +37,16 @@ def build_adapters(app: MinimalRestApp | None = None) -> runner.Adapters:
 The recorder is Refract's existing in-memory recorder, not another target port.
 The example implements no `StateProbe` and no `UiDriver`.
 
-The declaration uses `schema_version: 1`, a `parameters` mapping, and ordered
+The declaration uses `schema_version: 1`, a required `users` list, a `parameters` mapping, and ordered
 steps. API commands are under `do.request`; response checks are under
 `expect.response`. Preparation is another visible step. Later steps can use
 `{from_step: create, response_field: id}` without declaring binding aliases.
 See [SCENARIO.md](../SCENARIO.md) for the complete contract. Old unversioned and
-`version: 2` files are rejected, not silently upgraded.
+`version: 2` files and the old `actor` field are rejected, not silently upgraded.
+With one user, steps may omit `user`; with multiple users, every step names one.
+`users: []` runs without authentication. `session: new` on a leaf replaces only
+that user's current session, using the same account, not a fresh role assignment.
+See [users and sessions](../SCENARIO.md#users-and-current-sessions).
 
 Ordinary assertion failures are retained while later steps continue by default.
 Put `on_failure: stop` on a leaf step when that failure should stop the remainder.

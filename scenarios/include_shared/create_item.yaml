@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: demo.include_create_item
-actor: user
+users: [user]
 description: Create one item with an explicitly declared name and check the real response.
 parameters:
   item_name: included item

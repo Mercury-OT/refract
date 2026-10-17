@@ -190,7 +190,7 @@ def test_new_documentation_fragments_load_in_declared_response_context(tmp_path,
                 isinstance(check, dict) and check.get("check") in {"status_equals", "status_in"}
                 for check in checks):
             continue
-        raw = {"schema_version": 1, "scenario": "docs.status_fragment", "actor": "reader",
+        raw = {"schema_version": 1, "scenario": "docs.status_fragment", "users": ["reader"],
                "steps": [{"id": "read", "do": {"request": {"method": "GET", "path": ["documents"]}},
                           "expect": {"response": checks}}]}
         loaded = load_scenario(_write(tmp_path / f"fragment-{index}.yaml", raw))

@@ -28,6 +28,12 @@ It provides three things:
 
 A scenario declares ordered actions and what should be true after them. Logical UI targets keep product selectors in the adapter; direct API requests remain explicit actions. Selected projections check frontend behavior, outgoing requests, responses, and backend evidence without hiding business preparation in adapter scripts.
 
+Declare logical accounts under `users`, select the acting `user` when there is
+more than one, and use `session: new` when the same account must log in again.
+One-level inclusion can bind a reusable single-user child's local user to the
+selected parent user. See the [user/session contract](SCENARIO.md#users-and-current-sessions)
+for account, context, evidence, and reuse limits.
+
 ## Current Scope
 
 Refract currently targets a Web/API reference profile:

@@ -3,7 +3,7 @@ scenario: demo.job_run
 grid:
   level: regression
   module: demo
-actor: user
+users: [user]
 description: Submit a job carrying the declared number of rows, wait for completion,
   fetch the result, and archive it; the backend must account for that exact row count
   both when the job is created and when its result is read.

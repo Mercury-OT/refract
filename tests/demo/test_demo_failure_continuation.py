@@ -22,9 +22,9 @@ class ObservedUi(DemoUiDriver):
         self.opens = self.closes = 0
         self.contexts, self.permits, self.evidence = [], [], []
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None):
+    def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
         self.opens += 1
-        return super().open_stepwise(scenario, session, mode=mode, mock_plan=mock_plan)
+        return super().open_stepwise(scenario, session, mode=mode, mock_plan=mock_plan, **identity)
 
     def perform_step(self, scenario, step, context, permit):
         self.contexts.append(context)

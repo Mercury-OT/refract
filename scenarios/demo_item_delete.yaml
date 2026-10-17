@@ -3,7 +3,7 @@ scenario: demo.item_delete
 grid:
   level: regression
   module: demo
-actor: user
+users: [user]
 description: Given the declared number of items already exist, the user deletes one;
   the backend emits the item.delete semantic span, and the number of items remaining
   afterwards is one fewer than declared.

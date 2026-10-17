@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: demo.item_e2e_stepwise
-actor: user
+users: [user]
 description: Two real creations, explicit UI primitives, and independent trace checks.
 parameters:
   first_name: first

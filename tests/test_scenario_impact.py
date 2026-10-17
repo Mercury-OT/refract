@@ -16,7 +16,7 @@ from refracto.declaration.loader import DeclarationError, load_scenario
 
 def child(**changes):
     document = {
-        "schema_version": 1, "scenario": "shared.create", "actor": "user",
+        "schema_version": 1, "scenario": "shared.create", "users": ["user"],
         "parameters": {"name": "Default record"},
         "steps": [{"id": "create", "do": {"request": {
             "method": "POST", "path": ["items"], "body": {"name": {"from_parameter": "name"}}}},
@@ -37,7 +37,7 @@ def reference(sid="setup", result="record_id"):
 
 
 def parent(steps=None, **changes):
-    document = {"schema_version": 1, "scenario": "example.parent", "actor": "user",
+    document = {"schema_version": 1, "scenario": "example.parent", "users": ["user"],
                 "steps": steps or [include(), {"id": "read", "do": {"request": {
                     "method": "GET", "path": ["items", reference()]}},
                     "expect": {"response": [{"check": "success"}]}}]}
@@ -106,14 +106,15 @@ def test_multiple_parents_sites_and_same_id_other_file(tmp_path):
     assert report["scope"]["yaml_files_discovered"] == 5
 
 
-@pytest.mark.parametrize("change", ["result", "actor", "parameter"])
+@pytest.mark.parametrize("change", ["result", "users", "parameter"])
 def test_known_breakage_is_complete_but_actual_pin_stays_invalid(tmp_path, change):
     new = child()
     caller = parent([include(**{"with": {"name": "Chosen"}}), parent()["steps"][1]])
     if change == "result":
         new["results"] = {}
-    elif change == "actor":
-        new["actor"] = "different-role"
+    elif change == "users":
+        # Anonymous children cannot inherit an authenticated caller identity.
+        new["users"] = []
     else:
         new["parameters"] = {}
         new["steps"][0]["do"]["request"]["body"]["name"] = "Fixed"

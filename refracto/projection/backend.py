@@ -17,6 +17,8 @@ from refracto.declaration import collections
 from refracto.declaration import http_status
 from refracto.report import CheckResult, DomainResult, StepResult, ResponseOrigin, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
 from refracto.projection.continuation import FlowState
+from refracto.projection.sessions import SessionManager
+from refracto.projection.recording import ProtectedRecorder
 
 _NO_SESSION = object()
 
@@ -360,14 +362,26 @@ def _require_live_response(response):
 
 def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
                      normalizer, auth=None, session=_NO_SESSION, poll_config=None,
-                     now=None, sleep=None, bound_values=None):
+                     now=None, sleep=None, bound_values=None, session_lease=None):
     """Execute a prepared explicit request (also reused by the e2e loop)."""
     if step.action == "request" and step.expect.frontend:
         raise ValueError("direct API action with UI assertions is not supported")
     if session is _NO_SESSION:
-        if auth is None:
-            raise ValueError("Authenticator is required")
-        session = auth.session(scenario.actor)
+        manager = SessionManager(scenario, auth)
+        manager.preflight()
+        session_lease = manager.acquire(scenario.effective_user(step), new=step.session == "new")
+        session = session_lease.credentials
+    if session_lease is not None:
+        original_api = api
+
+        class AttributedApi:
+            def send(self, spec, credentials):
+                response = copy.deepcopy(original_api.send(spec, credentials))
+                response.user = session_lease.user
+                response.session_generation = session_lease.generation
+                return response
+
+        api = AttributedApi()
     template = step.request
     if template is None:
         raise ValueError("request action has no request")
@@ -382,10 +396,11 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
 def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
         poll_config=None, now=None, sleep=None):
 
+    recorder = ProtectedRecorder(recorder)
     step_results = []
     prior_norms = {}
     flow = FlowState()
-    session = _NO_SESSION
+    sessions = SessionManager(scenario, auth)
     # Validate the complete flow before authentication, waits, mapping or sends.
     # A later unsupported step must not allow earlier steps to have side effects.
     unsupported = None
@@ -393,41 +408,52 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
         unsupported = "direct API action with UI assertions is not supported"
     elif any(s.request is None and (s.expect.backend_state or s.expect.response) for s in scenario.steps):
         unsupported = "requestless backend_state has no correlation source"
+    if unsupported is None:
+        try:
+            sessions.preflight()
+        except Exception as exc:
+            unsupported = str(exc)
     for step in scenario.steps:
+        user = scenario.effective_user(step)
         blocked = flow.blocked(step)
         if blocked is not None:
+            blocked.user = user
             step_results.append(blocked)
             continue
         norm = None
         bound_values = {}
         resolved_bindings = {}
         prepared_ok = False
+        lease = None
         try:
             if unsupported:
                 raise ValueError(unsupported)
             if step.action == "wait":
+                _, bound_values = binding.prepare_step(step, scenario, prior_norms)
+                prepared_ok = True
+                resolved_bindings = dict(bound_values)
+                lease = sessions.acquire(user, new=step.session == "new")
                 (sleep or time.sleep)(step.duration / 1000)
                 sr = StepResult(step.id, "COMPLETED", not_checked=(
-                    ["UI checks are outside backend projection"] if step.expect.frontend else []))
+                    ["UI checks are outside backend projection"] if step.expect.frontend else []),
+                    user=user, session_generation=lease.generation)
+                sr.resolved_bindings = resolved_bindings
                 flow.finish(step, sr)
                 step_results.append(sr)
                 continue
             if step.request is None:
                 sr = StepResult(step.id, "NOT_APPLICABLE",
-                    not_checked=["UI action/checks are outside backend projection"])
+                    not_checked=["UI action/checks are outside backend projection"], user=user)
                 flow.finish(step, sr)
                 step_results.append(sr)
                 continue
             prepared, bound_values = binding.prepare_step(step, scenario, prior_norms)
             prepared_ok = True
             resolved_bindings = dict(bound_values)
-            if session is _NO_SESSION:
-                if auth is None:
-                    raise ValueError("Authenticator is required")
-                session = auth.session(scenario.actor)
+            lease = sessions.acquire(user, new=step.session == "new")
             sr, norm = execute_api_step(scenario, prepared, api=api, state=state,
                 recorder=recorder, resolve_request=resolve_request, normalizer=normalizer,
-                session=session, poll_config=poll_config, now=now, sleep=sleep,
+                session=lease.credentials, session_lease=lease, poll_config=poll_config, now=now, sleep=sleep,
                 bound_values=bound_values)
             if step.action != "request" or step.expect.frontend:
                 sr.not_checked.append("UI actions/checks are outside backend projection")
@@ -439,6 +465,8 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
             sr = StepResult(step.id, ERROR, detail=str(exc))
             norm = None
         sr.resolved_bindings = resolved_bindings
+        sr.user = user
+        sr.session_generation = lease.generation if lease is not None else None
         flow.finish(step, sr, norm)
         step_results.append(sr)
         if norm is not None:

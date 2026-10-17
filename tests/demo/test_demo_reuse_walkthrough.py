@@ -29,7 +29,7 @@ def checks(step):
 def test_walkthrough_sources_retain_the_approved_minimal_pair():
     """Explicit expectations prevent silently broadening the walkthrough."""
     assert yaml.safe_load(CHILD.read_text(encoding="utf-8")) == {
-        "schema_version": 1, "scenario": "shared.create_item", "actor": "user",
+        "schema_version": 1, "scenario": "shared.create_item", "users": ["user"],
         "parameters": {"item_name": "Default record"},
         "steps": [{
             "id": "create_request",
@@ -46,7 +46,7 @@ def test_walkthrough_sources_retain_the_approved_minimal_pair():
             "record_name": {"from_step": "create_request", "response_field": "name"}},
     }
     assert yaml.safe_load(PARENT.read_text(encoding="utf-8")) == {
-        "schema_version": 1, "scenario": "demo.create_read", "actor": "user",
+        "schema_version": 1, "scenario": "demo.create_read", "users": ["user"],
         "parameters": {"record_name": "Test record"},
         "steps": [
             {"id": "setup", "do": {"include": "shared.create_item"},
@@ -69,7 +69,7 @@ def test_walkthrough_exact_pin_and_named_result_sources():
     child = load_scenario(CHILD)
     parent = load_scenario(PARENT)
     assert child.id == "shared.create_item"
-    assert child.actor == parent.actor == "user"
+    assert child.users == parent.users == ["user"]
     assert child.parameters == {"item_name": "Default record"}
     assert child.results == {
         "record_id": ResultSource("create_request", "itemId"),
@@ -79,6 +79,7 @@ def test_walkthrough_exact_pin_and_named_result_sources():
     assert parent.source_lookup["setup/create_request"] == {
         "scenario_id": "shared.create_item", "step_id": "create_request",
         "include_step_id": "setup", "sha256": digest,
+        "source_user": "user", "effective_user": "user",
     }
     assert parent.included_results == {"setup": {
         "record_id": ResultSource("setup/create_request", "itemId"),

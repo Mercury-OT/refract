@@ -19,7 +19,7 @@ def request(sid, *, path=None, body=None, checks=None):
 
 
 def child():
-    return {"schema_version": 1, "scenario": "shared.create", "actor": "user",
+    return {"schema_version": 1, "scenario": "shared.create", "users": ["user"],
             "parameters": {"name": "Default"},
             "steps": [request("create", body={"name": {"from_parameter": "name"}})],
             "results": {"record_id": {"from_step": "create", "response_field": "id"},
@@ -37,7 +37,7 @@ def named(name="record_id", source="setup"):
 def bundle(tmp_path, *, child_raw=None, steps=None, parameters=None, root_extra=None):
     child_path = tmp_path / "child.yaml"
     child_path.write_text(yaml.safe_dump(child() if child_raw is None else child_raw, sort_keys=False))
-    root = {"schema_version": 1, "scenario": "example.parent", "actor": "user",
+    root = {"schema_version": 1, "scenario": "example.parent", "users": ["user"],
             "parameters": parameters or {},
             "steps": steps if steps is not None else [include(), request("read", path=["items", named()])]}
     root.update(root_extra or {})
@@ -433,7 +433,7 @@ def test_named_result_models_and_backend_reports_equal_independent_flat_flow(tmp
     read = request("read", path=["items", named()], body={"name": named("record_name")})
     path, _ = bundle(tmp_path, child_raw=raw, steps=[include(), read])
     # Independent authored flat declaration uses ordinary local response refs.
-    flat = {"schema_version": 1, "scenario": "example.parent", "actor": "user", "steps": [
+    flat = {"schema_version": 1, "scenario": "example.parent", "users": ["user"], "steps": [
         request("setup/create", body={"name": "Fixed"}),
         request("read", path=["items", {"from_step": "setup/create", "response_field": "id"}],
                 body={"name": {"from_step": "setup/create", "response_field": "name"}})]}

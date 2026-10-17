@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: documents.continue_after_failure
-actor: editor
+users: [editor]
 description: Create, inspect, and delete the current document while retaining every failed check.
 parameters:
   document_title: continuation-example

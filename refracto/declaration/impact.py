@@ -425,11 +425,19 @@ def _parent_record(snapshot, parent, raw, selected, before_raw, after_raw, befor
             defaults[label] = {key: _describe(value, show_values)
                                for key, value in sorted(child_raw.get("parameters", {}).items())
                                if key not in overrides}
+        declared_users = raw.get("users", [])
+        effective_user = call.get("user", declared_users[0] if isinstance(declared_users, list) and len(declared_users) == 1 else None)
+        user_binding = {"effective_user": effective_user if isinstance(effective_user, str) else None,
+                        "before": {"local_users": list(before_raw["users"]),
+                                   "session_policies": {step["id"]: step.get("session", "reuse") for step in before_raw["steps"]}},
+                        "after": {"local_users": list(after_raw["users"]),
+                                  "session_policies": {step["id"]: step.get("session", "reuse") for step in after_raw["steps"]}}}
         sites.append({"step_id": call.get("id") if isinstance(call.get("id"), str) else None, "position": i + 1,
                       "target_path": entry["path"], "expected_pin": pin,
                       "actual_sha256": after_hash, "pin_match": match,
                       "with": {key: _wiring(value, show_values) for key, value in sorted(overrides.items())},
                       "defaults": defaults,
+                      "user_binding": user_binding,
                       "consumers": sorted(consumers, key=lambda row: (row["position"], row["location"]))})
     return {"path": snapshot.label(parent), "scenario_id": raw.get("scenario") if isinstance(raw.get("scenario"), str) else None, "includes": sites,
             "validity": {"actual": "unknown", "hypothetical_before": "unknown", "hypothetical_after": "unknown"}}
@@ -523,6 +531,7 @@ def render_text(report, *, show_values=False):
             lines.append(f"  Include {site['step_id']} at step {site['position']}: pin={site['pin_match']} "
                          f"target={site['target_path']}")
             lines.append("    Wiring " + json.dumps({"with": site["with"], "defaults": site["defaults"]}, sort_keys=True, ensure_ascii=False))
+            lines.append("    User binding " + json.dumps(site["user_binding"], sort_keys=True, ensure_ascii=False))
             for consumer in site["consumers"]:
                 lines.append(f"    Uses result {consumer['result']} at {consumer['location']} ({consumer['step_id']})")
     for gap in report["gaps"]:

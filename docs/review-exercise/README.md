@@ -3,7 +3,11 @@
 This optional comparison remains unmeasured and is not a required next gate.
 For a shorter practical walkthrough, start with the repository's
 `examples/scenario-reuse/README.md`.
-The cases below remain unchanged; a walkthrough does not count as answering them.
+The business changes below remain unchanged; a walkthrough does not count as
+answering them. Current executable YAML and sidecar pins have been migrated from
+`actor` to `users` for the current engine. Recorded historical measurements remain
+unchanged and refer to their original inputs, not these migrated bytes. The
+migration is not a new human review or a repeated measurement.
 
 This is a small review exercise, not a request to approve a product release.
 Please judge each proposed change independently against the same requirements.

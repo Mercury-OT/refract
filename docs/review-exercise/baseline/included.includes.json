@@ -3,7 +3,7 @@
   "scenarios": {
     "review.create_item": {
       "path": "child.yaml",
-      "sha256": "3b955c1eb9f0851e322f47607d12a1cdfb5ef201d722f79821fa9e9e3b62c220"
+      "sha256": "42142a9fdca1274c30e135fc706b5b86c0854f9bf4a4c281febb6354f0badd59"
     }
   }
 }

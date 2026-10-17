@@ -1,0 +1,23 @@
+schema_version: 1
+scenario: documents.shared_create
+users: [operator]
+parameters:
+  document_title: Shared document
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: document_title}
+          category: guide
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+        - {check: field_equals, field: title, value: {from_parameter: document_title}}
+results:
+  document_id: {from_step: create, response_field: document_id}

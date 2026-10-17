@@ -25,7 +25,7 @@ def request(sid="create", checks=None, **extra):
 
 
 def load(checks=None, *, steps=None, **extra):
-    return _load_document({"schema_version": 1, "scenario": "status.requirement", "actor": "reader",
+    return _load_document({"schema_version": 1, "scenario": "status.requirement", "users": ["reader"],
         "steps": steps if steps is not None else [request(checks=checks)], **extra})
 
 
@@ -41,7 +41,8 @@ def execute(scenario, status=201, *, projection="backend", normalizer=None, api=
 
 def recorded(status):
     return ports.RecordedResponse(status, {}, {"success": True}, "", "trace",
-        ports.RequestSpec("GET", "create"), step_id="create", template_path="create")
+        ports.RequestSpec("GET", "create"), step_id="create", template_path="create",
+        user="reader", session_generation=1)
 
 
 def test_vocabulary_and_boundary_values():

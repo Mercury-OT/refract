@@ -1,6 +1,6 @@
 schema_version: 1
 scenario: demo.create_read
-actor: user
+users: [user]
 
 # Caller review: is this the intended input for this scenario?
 parameters:

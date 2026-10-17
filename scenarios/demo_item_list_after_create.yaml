@@ -3,7 +3,7 @@ scenario: demo.item_list_after_create
 grid:
   level: smoke
   module: demo
-actor: user
+users: [user]
 description: After the user creates an item, the frontend list renders it in a frontend-only
   scenario.
 parameters:

@@ -15,8 +15,12 @@ def _trace_id_of(traceparent):
 
 
 class FakeAuth(ports.Authenticator):
-    def session(self, role):
-        return {"role": role}
+    def identify(self, user):
+        return "fake-principal:" + user
+
+    def session(self, user):
+        return ports.UserSession(principal_id=self.identify(user),
+            authentication_id=secrets.token_hex(16), credentials={"user": user})
 
 
 class FakeApi(ports.ApiDriver):
@@ -65,9 +69,12 @@ class FakeUi(ports.UiDriver, ports.StepwiseUiDriver):
     def supports_stepwise_mode(self, mode):
         return mode in {"mock", "live"}
 
-    def open_stepwise(self, scenario, session=None, *, mode, mock_plan=None):
+    def open_stepwise(self, scenario, session=None, *, mode, mock_plan=None,
+                      mock_queue=None, user=None, session_generation=0, context_id=""):
         self.open_calls += 1
-        context = {"mode": mode, "mock_plan": mock_plan or []}
+        context = {"mode": mode, "mock_plan": mock_plan or [], "mock_queue": mock_queue,
+                   "user": user, "session_generation": session_generation, "context_id": context_id,
+                   "session": session}
         self.contexts.append(context)
         return context
 
@@ -91,7 +98,10 @@ class FakeUi(ports.UiDriver, ports.StepwiseUiDriver):
             request_id = secrets.token_hex(16)
             fixture_id = None
             if context["mode"] == "mock":
-                fixture = context["mock_plan"][self.fixture_index]
+                queue = context["mock_queue"]
+                fixture = queue.plan[queue.index] if queue is not None else context["mock_plan"][self.fixture_index]
+                if queue is not None:
+                    queue.index += 1
                 self.fixture_index += 1
                 fixture_id = fixture.fixture_id
                 response = ports.RecordedResponse(fixture.status, {}, copy.deepcopy(fixture.response), "", trace_id, request)
@@ -99,14 +109,17 @@ class FakeUi(ports.UiDriver, ports.StepwiseUiDriver):
                 response = responses[i]
             response = dataclasses.replace(response, request=dataclasses.replace(request), trace_id=trace_id,
                                            step_id=permit.step_id, actual_path="/" + request.path,
-                                           request_id=request_id, mock_fixture_id=fixture_id)
+                                           request_id=request_id, mock_fixture_id=fixture_id,
+                                           user=permit.user, session_generation=permit.session_generation)
             traffic.append(ports.UiTraffic(
                 execution_id=permit.execution_id, action_id=permit.action_id, step_id=permit.step_id,
                 mode=permit.mode, request_id=request_id, permit_token=permit.token,
-                request=request, response=response, mock_fixture_id=fixture_id))
+                request=request, response=response, mock_fixture_id=fixture_id,
+                user=permit.user, session_generation=permit.session_generation, context_id=permit.context_id))
         return ports.UiActionResult(evidence=ports.UiActionEvidence(
             execution_id=permit.execution_id, action_id=permit.action_id, step_id=permit.step_id,
             mode=permit.mode, permit_token=permit.token, traffic=traffic,
+            user=permit.user, session_generation=permit.session_generation, context_id=permit.context_id,
             rendered=copy.deepcopy(self._rendered),
             mock_recordings=[t.response for t in traffic] if permit.mode == "mock" else []))
 
