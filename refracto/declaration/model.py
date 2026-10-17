@@ -73,6 +73,7 @@ class Step:
     value: object = None
     duration: int | None = None
     request_asserted: bool = False
+    on_failure: str = field(default="continue", kw_only=True)
 
 @dataclass
 class Scenario:

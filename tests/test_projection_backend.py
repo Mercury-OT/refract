@@ -282,7 +282,7 @@ def test_backend_runs_ordered_steps_with_binding(tmp_path):
     assert ("GET", "jobs/7/result") in {(r.request.method, r.request.path) for r in res.provider_recordings}
 
 
-def test_backend_fail_fast_blocks_later_steps(tmp_path):
+def test_backend_explicit_stop_blocks_later_steps(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(
         'schema_version: 1\nscenario: flow\ngrid:\n  level: r\n  module: m\nactor: a\nsteps:\n- id: a\n  do:\n    request:\n      method: POST\n      path:\n      - jobs\n  expect:\n    response:\n    - check: has\n      field: jobId\n- id: b\n  do:\n    request:\n      method: GET\n      path:\n      - other\n  expect:\n    response:\n    - check: success\n',
@@ -293,6 +293,7 @@ def test_backend_fail_fast_blocks_later_steps(tmp_path):
         ("POST", "jobs"): {"status": 200, "json": {"success": True, "data": {}}},
         ("GET", "other"): {"status": 200, "json": {"success": True}},
     })
+    s.steps[0].on_failure = "stop"
     recorder = FakeRecorder()
     res = backend.run(s, auth=FakeAuth(), api=api, state=None, recorder=recorder,
                       resolve_request=_resolver, normalizer=FakeNormalizer())
@@ -439,7 +440,7 @@ def test_poll_step_fail_timeout_fails_domain(tmp_path):
 
     assert res.steps[0].status == FAILED
     assert any(c.check == "has" and not c.ok for c in res.steps[0].checks)
-    assert res.steps[1].status == BLOCKED
+    assert res.steps[1].status == PASSED
     assert not res.passed
 
 

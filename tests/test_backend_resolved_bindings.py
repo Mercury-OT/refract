@@ -225,7 +225,7 @@ def test_error_after_binding_keeps_resolved_bindings(error_stage):
     assert result.steps[1].resolved_bindings == {"value": 7}
 
 
-def test_partial_binding_resolution_error_discards_all_values():
+def test_partial_binding_resolution_blocks_and_discards_all_values():
     scenario = _flow(
         target_path="targets",
         bindings=[
@@ -242,13 +242,14 @@ def test_partial_binding_resolution_error_discards_all_values():
 
     result = _run(scenario, api)
 
-    assert result.steps[1].status == ERROR
+    assert result.steps[1].status == BLOCKED
     assert result.steps[1].resolved_bindings == {}
     assert len(api.sent) == 1
 
 
 def test_blocked_step_with_declared_binding_has_no_resolved_values():
     scenario = _flow()
+    scenario.steps[0].on_failure = "stop"
     scenario.steps[0].expect = Expect(
         response=[Assertion("has", {"field": "required_but_missing"})]
     )

@@ -83,7 +83,7 @@ def test_collection_assertion_kills_changed_target_after_unrelated_member():
         "backend": FAILED,
         "contract": FAILED,
     }
-    assert app.request_count == 3  # Failure stops both declared cleanup actions.
+    assert app.request_count == 5  # Declared deletes run after assertion failure.
     listed = rep.domains[0].provider_recordings[2]
     documents = adapters.normalizer.normalize(listed).fields["documents"]
     assert [document["title"] for document in documents] == [

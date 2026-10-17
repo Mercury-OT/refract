@@ -9,8 +9,8 @@ This module has two responsibilities:
 
 Structural correctness is validated at load time by `loader.py`. This module
 resolves runtime values and validates them at their use sites before an action.
-Missing/null response bindings and invalid resolved paths, bodies, or assertion
-values are runtime errors; declaration literals are never reinterpreted as code.
+Missing/null response bindings and invalid response-derived use sites block only
+the consumer. Other runtime errors still stop execution; literals are never code.
 """
 
 import math
@@ -23,6 +23,21 @@ from refracto.declaration import values as value_ops
 from refracto.declaration.collections import is_scalar, resolve_matching
 
 _PLACEHOLDER_RE = re.compile(r"\{([^}]+)\}")
+
+
+class DependencyUnavailable(Exception):
+    """Only a response reference unavailable for its declared use; no raw values."""
+    def __init__(self, message, sources):
+        super().__init__(message)
+        self.sources = list(dict.fromkeys(sources))
+
+
+class MissingDependency(DependencyUnavailable, KeyError):
+    pass
+
+
+class InvalidDependency(DependencyUnavailable, ValueError):
+    pass
 
 
 def _require_data(value):
@@ -52,23 +67,25 @@ def resolve_bindings(step, prior_norms):
     values = {}
     for binding in step.bind:
         if binding.from_step not in prior_norms:
-            raise KeyError(
+            raise MissingDependency(
                 f"binding '{binding.placeholder}' refers to unknown prior step "
-                f"'{binding.from_step}'"
+                f"'{binding.from_step}'", [binding.from_step]
             )
         norm = prior_norms[binding.from_step]
+        if not isinstance(norm.fields, dict) or any(type(key) is not str for key in norm.fields):
+            raise ValueError("normalized response fields must be a string-keyed mapping")
         if binding.field not in norm.fields:
-            raise KeyError(
+            raise MissingDependency(
                 f"binding '{binding.placeholder}' refers to field "
                 f"'{binding.field}' not present in step '{binding.from_step}' "
-                f"response"
+                f"response", [binding.from_step]
             )
         value = norm.fields[binding.field]
         if value is None:
-            raise ValueError(
+            raise InvalidDependency(
                 f"binding '{binding.placeholder}' (from step "
                 f"'{binding.from_step}', field '{binding.field}') binds "
-                f"{binding.placeholder} to a null value"
+                f"{binding.placeholder} to a null value", [binding.from_step]
             )
         values[binding.placeholder] = value
     return values
@@ -117,6 +134,24 @@ def prepare_step(step, scenario, prior_norms):
     the existing shallow-copy semantics. No declaration assertion is invented.
     """
     bound = resolve_bindings(step, prior_norms)
+    by_key = {item.placeholder: item.from_step for item in step.bind}
+
+    def sources(node):
+        if isinstance(node, ValueRef):
+            if node.source == "bind":
+                return [by_key[node.key]] if node.key in by_key else []
+            value, error = value_ops.resolve(node, inputs=scenario.inputs)
+            return [] if error else sources(value)
+        if isinstance(node, (dict, list)):
+            items = node.values() if isinstance(node, dict) else node
+            return list(dict.fromkeys(source for item in items for source in sources(item)))
+        return []
+
+    def invalid(node, message):
+        dependencies = sources(node)
+        if dependencies:
+            raise InvalidDependency(message, dependencies)
+        raise ValueError(message)
 
     def concrete(node):
         if isinstance(node, ValueRef):
@@ -125,7 +160,13 @@ def prepare_step(step, scenario, prior_norms):
                 raise ValueError(error)
             # Compiled include parameters may contain typed response references.
             # Literal dictionaries are never parsed as reference syntax here.
-            return concrete(value) if node.source == "input" else value
+            if node.source == "input":
+                return concrete(value)
+            try:
+                _require_data(value)
+            except ValueError:
+                invalid(node, "response-derived value requires finite JSON-like data")
+            return value
         if isinstance(node, dict):
             return {key: concrete(value) for key, value in node.items()}
         if isinstance(node, list):
@@ -136,8 +177,9 @@ def prepare_step(step, scenario, prior_norms):
     if request is not None:
         if request.path_segments is not None:
             segments = [concrete(v) for v in request.path_segments]
-            if any(type(v) not in (str, int) or v == "" for v in segments):
-                raise ValueError("resolved path segment must be a non-empty string or integer")
+            for original, resolved in zip(request.path_segments, segments):
+                if type(resolved) not in (str, int) or resolved == "":
+                    invalid(original, "resolved path segment must be a non-empty string or integer")
             path = "/".join(urllib.parse.quote(str(v), safe="") for v in segments)
         else:
             # Internal programmatic models can still use legacy placeholders;
@@ -145,7 +187,7 @@ def prepare_step(step, scenario, prior_norms):
             path = _substitute_path(request.path, bound)
         body = concrete(request.body) if request.path_segments is not None else _substitute_body(request.body, bound)
         if body is not None and not isinstance(body, dict):
-            raise ValueError("resolved request body must be a mapping or null")
+            invalid(request.body, "resolved request body must be a mapping or null")
         _require_data(body)
         request = replace(request, path=path, body=body,
                           declared_path=request.declared_path or request.path)
@@ -154,13 +196,16 @@ def prepare_step(step, scenario, prior_norms):
         for point in ("frontend", "response", "backend_state")
     })
     for point in ("frontend", "response", "backend_state"):
-        for assertion in getattr(expect, point):
+        for original, assertion in zip(getattr(step.expect, point), getattr(expect, point)):
             for key in {"value", "id"} & set(assertion.params):
                 if not is_scalar(assertion.params[key]):
-                    raise ValueError("resolved assertion value/id must be a finite scalar")
+                    invalid(original.params[key], "resolved assertion value/id must be a finite scalar")
             if assertion.check == "collection_matching_count":
                 # Validate before actions or partial diagnostic bindings are
                 # published by the projection's execution boundary.
+                for key, value in assertion.params["matching"].items():
+                    if not is_scalar(value):
+                        invalid(original.params["matching"][key], "resolved collection matching value must be a finite scalar")
                 resolve_matching(assertion.params["matching"])
     action_value = concrete(step.value)
     _require_data(action_value)

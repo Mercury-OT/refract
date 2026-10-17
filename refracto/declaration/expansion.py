@@ -39,6 +39,7 @@ def expansion_view(scenario):
     steps = []
     for step in scenario.steps:
         item = {"id": step.id, "source": copy.deepcopy(scenario.source_lookup.get(step.id)),
+                "on_failure": step.on_failure,
                 "do": {"request": request(step.request)} if step.action == "request" else step.action}
         if step.target is not None:
             item["target"] = step.target

@@ -4,7 +4,10 @@
 authorized primitive, request and response recording, bounded completion waits,
 and cleanup. It is optional support for a product adapter implementing the
 existing `StepwiseUiDriver` port. The core still owns action order, wait actions,
-assertions, and stopping after a failed step.
+assertions, and continuation/stopping decisions. Ordinary assertion failure now
+continues by default; a leaf `on_failure: stop` stops after that failure. Execution
+or evidence-integrity errors still stop. The helper does not retry an action or
+repair its evidence. See [the execution contract](../SCENARIO.md#continuing-and-stopping).
 
 Install it with the browser extra and Chromium:
 

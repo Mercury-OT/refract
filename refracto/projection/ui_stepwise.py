@@ -14,6 +14,7 @@ import time
 from refracto import asyncwait, ports
 from refracto.declaration import binding, values
 from refracto.projection import backend as backend_proj
+from refracto.projection.continuation import FlowState
 from refracto.report import (
     BLOCKED, COMPLETED, ERROR, FAILED, PASSED, SKIPPED,
     DomainResult, StepResult,
@@ -323,7 +324,7 @@ def _assert_live_backend_state_for(step, state, trace_id, *, state_timeout=30,
     try:
         facts = asyncwait.wait_until(observe, timeout=state_timeout, interval=interval,
                                     on_timeout=asyncwait.FAIL, now=now, sleep=sleep).value
-    except TimeoutError:
+    except asyncwait.WaitTimeout:
         facts = _validate_state_facts(state.observe(trace_id), trace_id)
     return [backend_proj._eval_span(a, facts, bound_values, inputs)
             for a in step.expect.backend_state], []
@@ -333,7 +334,7 @@ def _before_context_error(scenario, projection, exc):
     first, *rest = scenario.steps
     return DomainResult(projection=projection, steps=[
         StepResult(first.id, ERROR, detail=str(exc)),
-        *(StepResult(s.id, BLOCKED, detail="a prior step stopped the flow") for s in rest),
+        *(StepResult(s.id, BLOCKED, detail="a prior step stopped the flow", blocked_by=[first.id]) for s in rest),
     ])
 
 
@@ -373,7 +374,8 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     accepted_tokens, seen_requests, seen_traces = set(), set(), set()
     retained_plan = copy.deepcopy(mock_plan) if mode == "mock" else None
     consumed, results, recordings, prior = [], [], [], {}
-    context, stopped = None, False
+    flow = FlowState()
+    context = None
     try:
         if needs_ui:
             context = ui.open_stepwise(scenario, session, mode=mode,
@@ -382,12 +384,15 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         return _before_context_error(scenario, projection, exc)
     try:
         for declared in scenario.steps:
-            if stopped:
-                results.append(StepResult(declared.id, BLOCKED, detail="a prior step stopped the flow"))
+            blocked = flow.blocked(declared)
+            if blocked is not None:
+                results.append(blocked)
                 continue
             resolved, norm = {}, None
+            prepared_ok = False
             try:
                 step, bound = binding.prepare_step(declared, scenario, prior)
+                prepared_ok = True
                 resolved = dict(bound)
                 if step.action == "request":
                     sr, norm = backend_proj.execute_api_step(
@@ -419,8 +424,8 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         if evidence is None:
                             sr = StepResult(step.id, SKIPPED, skipped=[outcome.skip_reason])
                             sr.resolved_bindings = resolved
+                            flow.finish(declared, sr)
                             results.append(sr)
-                            stopped = True
                             continue
                         rendered = evidence.rendered
                     checks = [eval_frontend(a, rendered, bound_values=bound, inputs=scenario.inputs)
@@ -438,7 +443,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         protected.template_path = step.request.declared_path or declared.request.path
                         protected.bound_logical_path = step.request.path
                         observed_status = backend_proj._capture_status(step, protected)
-                        norm = normalizer.normalize(copy.deepcopy(protected))
+                        norm = backend_proj.normalize_response(normalizer, protected)
                         trace_id = protected.trace_id
                         if mode == "live":
                             recordings = _record_verified_primary(recorder, protected, recordings)
@@ -460,13 +465,18 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                     status = FAILED if any(not c.ok for c in checks) else (PASSED if checks else COMPLETED)
                     sr = StepResult(step.id, status, checks=checks, skipped=skipped,
                                     trace_id=trace_id, not_checked=not_checked)
+            except binding.DependencyUnavailable as exc:
+                sr = (StepResult(declared.id, ERROR, detail=str(exc)) if prepared_ok else
+                      StepResult(declared.id, BLOCKED, detail=str(exc), blocked_by=exc.sources))
+                norm = None
             except Exception as exc:
                 sr = StepResult(declared.id, ERROR, detail=str(exc))
+                norm = None
             sr.resolved_bindings = resolved
+            flow.finish(declared, sr, norm)
             results.append(sr)
             if norm is not None:
                 prior[declared.id] = norm
-            stopped = sr.status in (FAILED, ERROR, SKIPPED)
     finally:
         if context is not None:
             try:

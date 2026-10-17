@@ -44,16 +44,26 @@ def test_fault_assets_still_match_the_preimplementation_freeze():
 @pytest.mark.parametrize("fault", FAULTS)
 @pytest.mark.parametrize("form", ("flat", "include"))
 @pytest.mark.parametrize("inject", (False, True))
-def test_fixed_backend_fault_observations_match_the_flat_baseline(fault, form, inject):
+def test_fixed_backend_fault_detection_matches_historical_baseline(fault, form, inject):
     result = run_control(fault, form, inject=inject)
-    assert _comparable(result) == _comparable(_baseline_result(fault, inject))
+    baseline = _comparable(_baseline_result(fault, inject))
+    current = _comparable(result)
+    # The frozen measurements retain their original fail-fast behavior. Compare
+    # the actual injected fault, detecting check and observed prefix, not old
+    # stopping behavior that this task intentionally changes.
+    for field in ("fault", "injected", "classification", "status", "fault_reached",
+                  "failures", "degradations"):
+        assert current[field] == baseline[field]
+    for field in ("requests", "observed"):
+        assert current[field][:len(baseline[field])] == baseline[field]
+    assert _comparable(run_control(fault, "include" if form == "flat" else "flat", inject=inject)) == current
     assert result["degradations"] == []
     if inject:
         assert result["classification"] == "detected"
         assert result["fault_reached"] == 1
-        assert result["steps"][-1] == ("after", "BLOCKED")
+        assert result["steps"][-1] == ("after", "PASSED")
         assert len(result["failures"]) == 1
-        assert len(result["requests"]) == (1 if fault == "accepted_rejection" else 2)
+        assert len(result["requests"]) == (2 if fault == "accepted_rejection" else 3)
     else:
         assert result["classification"] == "passing_neighbor"
         assert result["fault_reached"] == 0

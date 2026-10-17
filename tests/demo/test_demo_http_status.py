@@ -57,13 +57,14 @@ def test_chromium_observed_status_is_independent_from_normalizer(
     assert report.status == ("PASSED" if passed else "FAILED"), [(s.status, s.detail) for s in domain.steps]
     assert report.degradations() == []
     status_checks = [item for item in domain.checks if item.check == check["check"]]
-    assert len(status_checks) == (2 if passed else 1)
+    assert len(status_checks) == 2
     assert all(item.ok is passed for item in status_checks)
     assert all(item.ok for item in domain.checks if item.check == "success")
     if not passed:
-        assert [step.status for step in domain.steps[4:]] == ["BLOCKED", "BLOCKED"]
+        assert [step.status for step in domain.steps[4:]] == ["COMPLETED", "FAILED"]
+        assert [step.after_failures for step in domain.steps[4:]] == [["create_first"], ["create_first"]]
     if projection == "frontend":
         assert not domain.provider_recordings
         assert "create-1" in [item["fixture_id"] for item in domain.mock_consumption]
     else:
-        assert [item.status for item in domain.provider_recordings] == [200] * (2 if passed else 1)
+        assert [item.status for item in domain.provider_recordings] == [200, 200]

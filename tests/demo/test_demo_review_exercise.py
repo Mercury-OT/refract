@@ -98,8 +98,9 @@ def test_review_source_runs_and_observation_control(demo_server, version, form, 
     detects = observation == "row-count-2" and version != "case-03"
     if detects:
         assert report.status == "FAILED"
-        assert [step.status for step in domain.steps] == ["FAILED", "BLOCKED", "BLOCKED"]
-        assert len(adapters.api.sent) == len(domain.provider_recordings) == 1
+        assert [step.status for step in domain.steps] == ["FAILED", "PASSED", "PASSED"]
+        assert [step.after_failures for step in domain.steps[1:]] == [[first_id], [first_id]]
+        assert len(adapters.api.sent) == len(domain.provider_recordings) == 3
         failed = [(check.point, check.check) for check in domain.checks if not check.ok]
         assert failed == [("backend_state", "span_attr")]
         assert all(check.ok for check in domain.steps[0].checks if check.check != "span_attr")
@@ -107,14 +108,16 @@ def test_review_source_runs_and_observation_control(demo_server, version, form, 
         assert report.status == "PASSED", report.localize()
         assert [step.status for step in domain.steps] == ["PASSED"] * 3
         assert all(check.ok for check in domain.checks)
-        assert adapters.api.sent == [
-            ("POST", "items", {"name": created_name, "rows": [1, 2, 3]}),
-            ("PUT", f"items/{item_id}", {"name": "review-final"}),
-            ("GET", "items", None),
-        ]
-        assert domain.provider_recordings[1].json["data"]["itemId"] == item_id
-        assert domain.provider_recordings[2].json["data"]["items"] == [
-            {"id": item_id, "name": "review-final", "count": 3}]
+    # Current execution continues after an ordinary check failure; the frozen
+    # Scenario bytes and the injected fault are unchanged historical assets.
+    assert adapters.api.sent == [
+        ("POST", "items", {"name": created_name, "rows": [1, 2, 3]}),
+        ("PUT", f"items/{item_id}", {"name": "review-final"}),
+        ("GET", "items", None),
+    ]
+    assert domain.provider_recordings[1].json["data"]["itemId"] == item_id
+    assert domain.provider_recordings[2].json["data"]["items"] == [
+        {"id": item_id, "name": "review-final", "count": 3}]
     if observation != "direct":
         probe = adapters.state
         assert probe.creation_observations

@@ -58,9 +58,9 @@ def test_terminal_state_blocks_and_preserves_successful_binding(terminal, expect
     if terminal == "failed":
         ui.renders[1] = {}
     result = run(scenario(count=3, references=True), ui, mode="mock")
-    assert [r.status for r in result.steps] == ["PASSED", expected, "BLOCKED"]
+    assert [r.status for r in result.steps] == ["PASSED", expected, "PASSED" if terminal == "failed" else "BLOCKED"]
     assert result.steps[1].resolved_bindings == {"previous": "1"}
-    assert result.steps[2].resolved_bindings == {}
+    assert result.steps[2].resolved_bindings == ({"previous": "1"} if terminal == "failed" else {})
     assert ui.close_calls == 1
 
 
@@ -69,7 +69,7 @@ def test_atomic_resolution_does_not_expose_partial_results():
     s.steps[1].bind.append(Binding("missing", "s0", "absent"))
     ui = ScriptedUi()
     result = run(s, ui, mode="mock")
-    assert result.steps[1].status == "ERROR"
+    assert result.steps[1].status == "BLOCKED"
     assert result.steps[1].resolved_bindings == {}
     assert len(ui.permits) == 1
 
@@ -121,7 +121,7 @@ def test_nested_mock_and_request_type_confusion_cannot_pass(actual, expected):
     s = scenario()
     s.steps[0].request.body = {"name": expected}
     result = run(s, ui, mode="mock")
-    assert [r.status for r in result.steps] == ["FAILED", "BLOCKED"]
+    assert [r.status for r in result.steps] == ["FAILED", "FAILED"]
     def change(i, result, permit):
         e = result.evidence
         t = e.traffic[0]

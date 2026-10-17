@@ -10,6 +10,10 @@ FAIL = "FAIL"
 SKIP = "SKIP"
 
 
+class WaitTimeout(TimeoutError):
+    """The wait budget expired, distinct from a timeout raised by a port."""
+
+
 @dataclass(frozen=True)
 class Retry:
     attempts: int
@@ -28,14 +32,19 @@ class WaitResult:
 
 
 def _poll_once_window(fn, timeout, interval, now, sleep):
-    start = now()
-    while True:
-        done, value = fn()
-        if done:
-            return True, value
-        if now() - start >= timeout:
-            return False, value
-        sleep(interval)
+    try:
+        start = now()
+        while True:
+            done, value = fn()
+            if done:
+                return True, value
+            if now() - start >= timeout:
+                return False, value
+            sleep(interval)
+    except WaitTimeout as exc:
+        # A callback may itself invoke wait_until. Its budget belongs to that
+        # invocation, not this window, and must remain an execution failure.
+        raise TimeoutError("poll callback raised an independent wait timeout") from exc
 
 
 def wait_until(fn, timeout, interval=0.5, on_timeout=FAIL, now=None, sleep=None):
@@ -56,4 +65,4 @@ def wait_until(fn, timeout, interval=0.5, on_timeout=FAIL, now=None, sleep=None)
         return WaitResult(ok=True, value=value)
     if on_timeout == SKIP:
         return WaitResult(ok=False, value=value, timed_out=True, skipped=True)
-    raise TimeoutError(f"wait_until timed out after {timeout}s (policy=FAIL)")
+    raise WaitTimeout(f"wait_until timed out after {timeout}s (policy=FAIL)")

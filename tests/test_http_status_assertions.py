@@ -136,8 +136,8 @@ class MisleadingNormalizer:
 def test_execution_ignores_normalizer_status_and_mutation(projection, actual, normalized):
     scenario = load(steps=[request(), request("after", [{"check": "success"}])])
     result, api = execute(scenario, actual, projection=projection, normalizer=MisleadingNormalizer(normalized))
-    assert [s.status for s in result.steps] == (["PASSED", "PASSED"] if actual == 201 else ["FAILED", "BLOCKED"])
-    assert len(api.sent) == (2 if actual == 201 else 1)
+    assert [s.status for s in result.steps] == (["PASSED", "PASSED"] if actual == 201 else ["FAILED", "PASSED"])
+    assert len(api.sent) == 2
     first = result.provider_recordings[0]
     assert (first.status, first.step_id, first.request.method, first.request.path) == (actual, "create", "GET", "create")
 
@@ -171,7 +171,7 @@ def test_ui_mock_and_live_protect_status_from_normalizer(mode, actual):
     plan[0] = dataclasses.replace(plan[0], status=actual)
     result = run_ui(scenario, ui, mode=mode, normalizer=MisleadingNormalizer(201),
                     **({"mock_plan": plan} if mode == "mock" else {}))
-    assert [s.status for s in result.steps] == (["PASSED", "COMPLETED"] if actual == 201 else ["FAILED", "BLOCKED"])
+    assert [s.status for s in result.steps] == (["PASSED", "COMPLETED"] if actual == 201 else ["FAILED", "COMPLETED"])
     assert ui.open_calls == ui.close_calls == 1
     if mode == "mock":
         assert result.provider_recordings == []
@@ -229,9 +229,12 @@ def test_contract_rejects_invalid_status_before_normalizer(status):
     assert result.status == "FAILED"
     assert "HTTP status evidence is missing or invalid" in result.checks[0].detail
     assert "sentinel" not in result.checks[0].detail + repr(result)
-    # With no HTTP constraint, the pre-existing normalizer path remains intact.
-    with pytest.raises(AssertionError, match="sensitive-normalizer-sentinel"):
-        contract.run(load([{"check": "success"}]), [response], ExplodingNormalizer())
+    # Without a status check the normalizer is called; its exception is an
+    # execution ERROR, not a passing comparison or a leaked raw exception.
+    result = contract.run(load([{"check": "success"}]), [response], ExplodingNormalizer())
+    assert result.status == "FAILED" and result.steps[0].status == "ERROR"
+    assert "sensitive-normalizer-sentinel" in result.steps[0].detail
+    assert "sensitive-normalizer-sentinel" not in repr(result)
 
 
 def test_contract_recording_with_missing_status_fails_before_normalization():
@@ -272,7 +275,7 @@ def test_poll_status_uses_each_actual_attempt_and_final_contract(projection, pol
     result, _ = execute(scenario, api=api, projection=projection, normalizer=MisleadingNormalizer(),
         poll_config=PollConfig(timeout=1, interval=1), now=clock.now, sleep=clock.sleep)
     assert [s.status for s in result.steps] == (["PASSED", "PASSED"] if ready else
-        ["FAILED" if policy == "FAIL" else "SKIPPED", "BLOCKED"])
+        (["FAILED", "PASSED"] if policy == "FAIL" else ["SKIPPED", "BLOCKED"]))
     records = [r for r in result.provider_recordings if r.step_id == "create"]
     assert [r.status for r in records] == [202, 201 if ready else 202]
     assert [r.attempt_index for r in records] == [0, 1]

@@ -367,7 +367,7 @@ def test_consumed_missing_or_null_result_fails_before_consumer_action(tmp_path, 
     path, _ = bundle(tmp_path, steps=[include(), request("consumer", path=["read"], body={"value": named()}),
                                     {"id": "after", "do": "wait", "duration": 0}])
     report, api = run_backend(path, {("POST", "items"): {"json": {"success": True, "data": fields}}})
-    assert [step.status for step in report.domains[0].steps] == ["PASSED", "ERROR", "BLOCKED"]
+    assert [step.status for step in report.domains[0].steps] == ["PASSED", "BLOCKED", "COMPLETED"]
     assert len(api.sent) == 1 and report.domains[0].steps[1].resolved_bindings == {}
 
 
@@ -382,7 +382,7 @@ def test_named_result_resolution_is_atomic_with_multiple_outputs(tmp_path):
     path, _ = bundle(tmp_path, steps=[include(), request("consumer", path=["read"], body={
         "first": named(), "second": named("record_name")})])
     report, api = run_backend(path, {("POST", "items"): {"json": {"success": True, "data": {"id": 7}}}})
-    assert [step.status for step in report.domains[0].steps] == ["PASSED", "ERROR"]
+    assert [step.status for step in report.domains[0].steps] == ["PASSED", "BLOCKED"]
     assert report.domains[0].steps[-1].resolved_bindings == {} and len(api.sent) == 1
 
 
@@ -392,6 +392,7 @@ def test_child_stop_after_result_source_prevents_early_return(tmp_path, stop):
     from tests.fakes import FakeApi
     raw = child()
     later = request("later", path=["later"])
+    later["on_failure"] = "stop"
     later["do"]["request"]["method"] = "GET"
     if stop == "SKIPPED":
         later["poll"] = {"on_timeout": "SKIP"}

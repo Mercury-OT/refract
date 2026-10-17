@@ -338,6 +338,7 @@ def test_child_stop_blocks_remaining_child_and_parent(tmp_path, stop):
     from tests.fakes import FakeApi
     child = leaf()
     child["steps"][0]["do"]["request"] = {"method": "GET", "path": ["records"]}
+    child["steps"][0]["on_failure"] = "stop"
     child["steps"].append({"id": "after", "do": "wait", "duration": 0})
     if stop == "SKIPPED":
         child["steps"][0]["poll"] = {"on_timeout": "SKIP"}
@@ -376,7 +377,7 @@ def test_runtime_bad_path_binding_errors_before_consumer(tmp_path, actual):
     data = {} if actual == "__missing__" else {"id": actual}
     api = FakeApi({("POST", "records"): {"json": {"success": True, "data": data}}})
     report = run_scenario(path, adapters_for(api), projections=("backend",))
-    assert [step.status for step in report.domains[0].steps] == ["PASSED", "ERROR", "BLOCKED"]
+    assert [step.status for step in report.domains[0].steps] == ["PASSED", "BLOCKED", "COMPLETED"]
     assert len(api.sent) == 1
 
 
@@ -593,7 +594,7 @@ def test_dynamic_invalid_use_fails_before_consumer_mapping_and_send(tmp_path, po
         return original_mapper(scenario, step, template)
     adapters.resolve_request = mapper
     report = run_scenario(path, adapters, projections=("backend", "contract"))
-    assert [step.status for step in report.domains[0].steps] == ["PASSED", "ERROR", "BLOCKED"]
+    assert [step.status for step in report.domains[0].steps] == ["PASSED", "BLOCKED", "COMPLETED"]
     assert mapped == ["before"] and len(api.sent) == 1 and auth.calls == 1
     error_step = report.domains[0].steps[1]
     assert error_step.resolved_bindings == {}
