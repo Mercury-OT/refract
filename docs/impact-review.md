@@ -3,8 +3,10 @@
 `refracto impact` compares an explicitly selected old child file with its current
 version and finds current parents that include that exact file. It does not run
 tests, change files, update fingerprints, or approve a change. The current
-one-level include rules bind a single-user child's local name to the effective
-parent user; multi-user children cannot be included.
+one-level include rules bind child-local participants through the caller's
+explicit `with_users` map, or the retained single-user shorthand. Multi-user
+children require complete mappings; an anonymous participant cannot be upgraded
+to a named account, and distinct child participants cannot collapse to one target.
 
 ```sh
 refracto impact --before old-child.yaml --after scenarios/shared/child.yaml --parents scenarios
@@ -29,8 +31,9 @@ The report separates four questions:
    new requirement is wrong. No rename or semantic-equivalence inference occurs.
 2. **Which parents use it?** Each include site lists its step, supplied arguments,
    defaults used in each child version, and downstream named-result consumers.
-   User binding also shows the effective parent user, child-local users in both
-   versions, and the child's explicit new-session policies. An unchanged pin is
+   User binding also shows the complete caller mapping, effective parent users,
+   child-local users in both versions, and the child's explicit new-session
+   policies. Anonymous selection remains explicit in this review view. An unchanged pin is
    not approval of the caller's account choice or session effects.
    Only executable reference positions count; reference-shaped literal parameter
    objects remain data.

@@ -1,0 +1,9 @@
+{
+  "manifest_version": 1,
+  "scenarios": {
+    "documents.shared_access": {
+      "path": "shared/access_document.yaml",
+      "sha256": "4f7a16eb5363209e057d9eeb88a5c11512bb6e749d1ba772e0404029e8f661b9"
+    }
+  }
+}

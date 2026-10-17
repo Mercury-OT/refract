@@ -20,7 +20,11 @@ class DemoApiDriver(ports.ApiDriver):
         self._config = config
 
     def send(self, spec: ports.RequestSpec, session) -> ports.RecordedResponse:
-        headers = {}
+        # Credentials belong only to this lease. Do not retain a client or its
+        # authentication defaults across named/anonymous sends. The core owns
+        # trace attribution, including over mixed-case credential header names.
+        headers = {name: value for name, value in dict(getattr(session, "headers", {})).items()
+                   if name.lower() != "traceparent"} if session is not None else {}
         if spec.traceparent:
             headers["traceparent"] = spec.traceparent
         with httpx.Client(base_url=self._config.base_url, timeout=30.0) as client:

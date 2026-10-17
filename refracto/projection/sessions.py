@@ -30,17 +30,21 @@ class SessionManager:
                 or len(set(users)) != len(users)):
             raise SessionError("invalid declared users")
         for step in self.scenario.steps:
-            user = self.scenario.effective_user(step)
+            if ((step.user is not None and type(step.user) is not str)
+                    or (step.session is not None and (type(step.session) is not str or step.session != "new"))):
+                raise SessionError("invalid step user or session policy")
+            user = self.scenario.selected_user(step)
             if ((not users and (step.user is not None or step.session is not None))
                     or (users and user not in users)
                     or (len(users) > 1 and step.user is None)
-                    or step.session not in (None, "new")):
+                    or (user == "anonymous" and step.session is not None)):
                 raise SessionError("invalid step user or session policy")
-        if users and (not callable(getattr(self.auth, "identify", None))
+        named_users = [user for user in users if user != "anonymous"]
+        if named_users and (not callable(getattr(self.auth, "identify", None))
                       or not callable(getattr(self.auth, "session", None))):
             raise SessionError("Authenticator with fixed user identity is required")
         principals = {}
-        for user in users:
+        for user in named_users:
             try:
                 principal = self.auth.identify(user)
             except Exception:
@@ -60,7 +64,7 @@ class SessionManager:
         if not self._ready:
             raise SessionError("authentication preflight has not completed")
         if user is None:
-            if self.scenario.users or new:
+            if (self.scenario.users and "anonymous" not in self.scenario.users) or new:
                 raise SessionError("anonymous authentication cannot replace a session")
             return SessionLease(None, 0, None)
         if user not in self._principals:

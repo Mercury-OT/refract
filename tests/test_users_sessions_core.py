@@ -462,6 +462,8 @@ def test_impact_review_exposes_current_caller_mapping_and_child_session_policy(t
     sites = report["parents"][0]["includes"]
     assert [site["user_binding"]["effective_user"] for site in sites] == ["owner", "peer"]
     assert sites[0]["user_binding"]["before"] == {
-        "local_users": ["operator"], "session_policies": {"read": "new"}}
+        "local_users": ["operator"], "session_policies": {"read": "new"},
+        "effective_bindings": {"operator": "owner"},
+        "steps": {"read": {"local_user": "operator", "effective_user": "owner", "session": "new"}}}
     assert "User binding" in render_text(report)
     assert "Inspection is not approval" in render_text(report)

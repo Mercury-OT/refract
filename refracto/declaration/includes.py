@@ -130,15 +130,37 @@ def _map(node, convert):
     return copy.deepcopy(node)
 
 
-def instantiate(call, dependencies, parameters, prior, user, caller_parameters):
+def participant_mapping(call, child_users, parent_users):
+    """Validate the complete, static local-to-caller participant substitution."""
+    from refracto.declaration.loader import _step_user
+    if "with_users" in call:
+        if "user" in call:
+            _error("include user and with_users are mutually exclusive")
+        mapping = call["with_users"]
+        if (not child_users or type(mapping) is not dict or not mapping
+                or any(type(key) is not str for key in mapping)
+                or set(mapping) != set(child_users)):
+            _error("with_users must map every declared child user exactly once")
+        allowed = parent_users or ["anonymous"]
+        if any(type(value) is not str or value not in allowed for value in mapping.values()):
+            _error("with_users values must select declared parent users")
+        if len(set(mapping.values())) != len(mapping):
+            _error("distinct child users must map to distinct parent participants")
+    else:
+        if len(child_users) > 1:
+            _error("including a multi-user Scenario requires with_users")
+        selected = _step_user(call, parent_users) or "anonymous"
+        mapping = {child_users[0] if child_users else "anonymous": selected}
+    if mapping.get("anonymous", "anonymous") != "anonymous":
+        _error("an anonymous child participant must remain anonymous")
+    return dict(mapping)
+
+
+def instantiate(call, dependencies, parameters, prior, mapping, caller_parameters, *, implicit_anonymous=False):
     from refracto.declaration.loader import _data, _mapping
-    _mapping(call, {"id", "do", "with", "user"}, "include step")
+    _mapping(call, {"id", "do", "with", "user", "with_users"}, "include step")
     sid = call["id"]
     child, pin, _ = dependencies[call["do"]["include"]]
-    if len(child.users) > 1:
-        _error("including a multi-user Scenario is unsupported")
-    if bool(child.users) != (user is not None):
-        _error("anonymous and authenticated include users cannot be mixed")
     overrides = call.get("with", {})
     if not isinstance(overrides, dict) or set(overrides) - set(child.parameters):
         _error("include with must contain only declared child parameters")
@@ -160,6 +182,10 @@ def instantiate(call, dependencies, parameters, prior, user, caller_parameters):
     external_bindings = {binding.placeholder: binding for binding in external}
     result, sources = [], {}
     for original in child.steps:
+        local_user = child.selected_user(original) or "anonymous"
+        user = mapping[local_user]
+        if user == "anonymous" and original.session is not None:
+            _error("anonymous include mapping cannot replace a session")
         rewritten = {}
         for binding in original.bind:
             source = f"{sid}/{binding.from_step}"
@@ -208,11 +234,12 @@ def instantiate(call, dependencies, parameters, prior, user, caller_parameters):
                            for point in ("frontend", "response", "backend_state")})
         value = _map(original.value, convert)
         step = replace(original, id=f"{sid}/{original.id}", request=request,
-                       expect=expect, value=value, bind=list(used.values()), user=user)
+                       expect=expect, value=value, bind=list(used.values()),
+                       user=None if implicit_anonymous else user)
         result.append(step)
         sources[step.id] = {"scenario_id": child.id, "step_id": original.id,
                             "include_step_id": sid, "sha256": pin,
-                            "source_user": original.user, "effective_user": user}
+                            "source_user": local_user, "effective_user": user}
     return result, sources
 
 

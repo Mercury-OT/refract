@@ -43,10 +43,23 @@ steps. API commands are under `do.request`; response checks are under
 `{from_step: create, response_field: id}` without declaring binding aliases.
 See [SCENARIO.md](../SCENARIO.md) for the complete contract. Old unversioned and
 `version: 2` files and the old `actor` field are rejected, not silently upgraded.
-With one user, steps may omit `user`; with multiple users, every step names one.
-`users: []` runs without authentication. `session: new` on a leaf replaces only
-that user's current session, using the same account, not a fresh role assignment.
+With one participant, ordinary steps may omit `user`; with multiple participants,
+every ordinary step names one. Reserved `anonymous` may appear in `users`, so
+`users: [creator, anonymous]` supports authenticated and unauthenticated actions
+in one flow. `users: []` retains its implicit anonymous behavior. Anonymous
+actions never authenticate, inherit another user's credentials, or log that user
+out. `session: new` on a named-user leaf replaces only that user's current session,
+using the same account, not a fresh role assignment; anonymous renewal is invalid.
 See [users and sessions](../SCENARIO.md#users-and-current-sessions).
+
+A one-level include can map each local child participant through `with_users`.
+Multi-user children require the complete mapping; single-user children also
+retain their existing shorthand. Reusing child bytes does not approve new caller
+mappings or change child expectations. See the paired Documents callers for a
+[named peer](../examples/documents/scenarios/mapped_peer_access.yaml) and
+[anonymous participant](../examples/documents/scenarios/mapped_anonymous_access.yaml).
+Their common child explicitly allows 401 or 403; each parent separately checks
+its exact refusal. A fixed 403 expectation is never broadened automatically.
 
 Ordinary assertion failures are retained while later steps continue by default.
 Put `on_failure: stop` on a leaf step when that failure should stop the remainder.

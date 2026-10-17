@@ -23,9 +23,10 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Explicit request query parameters](tasks/request-query-parameters.md) | Implemented, independently audited, and architect-accepted. Approved five-step example, actual browser query checks, format 1 and existing assertion vocabulary retained. | Await separate maintainer submission authorization; changes remain uncommitted. |
+| 1 | [Mixed anonymous users and included-user mappings](tasks/anonymous-users-inclusion.md) | Implemented, independently audited and architect-accepted; see the [acceptance record](tasks/anonymous-users-inclusion-acceptance.md). Format 1 and one-level inclusion retained. | Public submission is authorized after local gates; merged history and CI establish publication. Preserve the accepted boundaries. |
+| Delivered | [Explicit request query parameters](tasks/request-query-parameters.md) | Delivered through PR #23 in main `68af23a`. Approved five-step example, actual browser query checks, format 1 and existing assertion vocabulary retained. | Preserve the accepted query and evidence boundaries. |
 | Delivered | [Response-based rejection evidence](tasks/response-rejection-evidence.md) | Delivered through PR #22 in main `eaca8cb`. Approved four-step example; no new vocabulary or runtime semantics. | Preserve the accepted response-evidence boundary. |
-| Delivered | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Delivered through PR #21 in main `b2fdab2`. Format 1, one-level inclusion, no multi-user child inclusion. | Preserve the approved user/session and evidence boundaries. |
+| Delivered | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Delivered through PR #21 in main `b2fdab2`. Its original single-user child restriction is being extended by the separately approved mixed-user task. | Preserve identity, session, evidence, and one-level boundaries. |
 | Delivered | [Continue after assertion failures](tasks/assertion-failure-continuation.md) | Delivered in main `95ba66d`; ordinary assertion failures continue, explicit leaf stop retained. | Preserve the approved execution boundary. |
 | Delivered | [Exact HTTP response status assertions](tasks/http-status-assertions.md) | Delivered through PR #19 in main `d2a5ed9`; eight branch/PR checks and four main jobs passed. | Preserve the approved `status_equals` / `status_in` expression. |
 | Delivered | [Shared Scenario change-impact review](tasks/scenario-impact-review.md) | Delivered on main in `67ce17f`; current YAML and execution unchanged. | Preserve read-only inspection, pin, and review boundaries. |
@@ -49,7 +50,22 @@ real Chromium/reference-transport controls passed 179 focused tests plus 33
 independent probes. Full regression passed 1784 tests with one existing warning
 and no skips; isolated dev-only regression passed 1574 with one optional Demo
 collection skip. See the [local acceptance record](tasks/request-query-parameters-acceptance.md).
-No adoption claim or public submission follows from local acceptance.
+No adoption claim follows from local acceptance. The query slice was subsequently
+delivered through PR #23 in main `68af23a`; its acceptance record remains a
+historical record of the pre-submission checks.
+
+The accepted mixed-user slice adds `anonymous` to declared participants and complete
+`with_users` mappings for multi-user leaf children. Named and anonymous contexts
+must remain isolated, anonymous execution must not authenticate, and child
+assertions and session rules must remain unchanged. Public Documents callers
+exercise both peer and anonymous refusals under the same pinned child, while
+separate exact checks preserve the different 403/401 obligations. This is not
+deeper nesting, automatic approval propagation, or evidence of review-cost savings.
+Final regression passed 1978 tests with real Chromium, no skips and one existing
+warning. Fresh dev-only regression passed 1737 with one optional Demo collection
+skip. Independent audit's malformed-parent impact finding was fixed and retested;
+there are no unresolved findings. Public submission follows the authorized PR/CI
+workflow; the local acceptance record does not claim hosted delivery.
 
 Exact recorded HTTP status is now delivered. It addresses a
 publicly reproducible distinction between transport status and normalized
@@ -103,8 +119,8 @@ second-page step. Contract remains response compatibility over verified backend
 recordings, not an independent query witness. Maintained search declarations
 are migrated explicitly; no automatic pagination or new assertion vocabulary
 is introduced. Synthetic Documents and Demo coverage cannot establish real-product
-adoption. Independent audit and architect acceptance have passed; submission
-requires separate maintainer authorization. Private-workspace work remains out of scope.
+adoption. Independent audit and architect acceptance passed before the separately
+authorized PR #23 submission. Private-workspace work remains out of scope.
 
 Continuation acceptance passed 1426 full regression tests with real Chromium,
 no skips, and one existing dependency warning; the isolated dev-only suite passed
@@ -207,9 +223,10 @@ three fixed backend faults and their passing neighbors retain the original
 observations; historical measurements were not overwritten. See the
 [named-results acceptance record](tasks/scenario-named-results-acceptance.md).
 The original same-actor behavior above records that historical delivery. The
-current user/session specification replaces it with a single-user child alias
-mapped to the effective parent user; it does not permit multi-user children or
-deeper nesting. Historical task specifications and measured outcomes remain
+user/session task replaced it with a single-user child alias mapped to the
+effective parent user. The separately approved mixed-user task now adds complete
+maps for multi-user leaf children without permitting deeper nesting.
+Historical task specifications and measured outcomes remain
 records of their original engine. Current executable review-exercise YAML and
 sidecar pins are explicitly migrated to `users`; that migration does not recreate
 the historical measurements or imply renewed human approval.

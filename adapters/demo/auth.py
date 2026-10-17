@@ -2,7 +2,9 @@
 
 The demo has no real login flow. The adapter returns a lightweight session
 object so the core can exercise the Authenticator port without introducing
-product-specific authentication machinery.
+product-specific authentication machinery. Optional credential headers allow
+synthetic HTTP isolation checks; the default authenticator adds none and makes
+no claim that the Demo implements authentication or authorization.
 """
 from dataclasses import dataclass, field
 from uuid import uuid4
@@ -14,6 +16,8 @@ from refracto import ports
 class Session:
     user: str = field(repr=False)
     context: dict = field(default_factory=dict, repr=False)
+    headers: dict = field(default_factory=dict, kw_only=True, repr=False,
+                          metadata={"sensitive": True})
 
 
 class DemoAuthenticator(ports.Authenticator):

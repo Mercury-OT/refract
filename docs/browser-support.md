@@ -104,6 +104,13 @@ and replaces only the selected user's context after `session: new`. It closes
 all remaining contexts on exit. The authentication adapter supplies fresh storage
 for the same account; it does not restore permissions or replay a hidden login
 workflow. Anonymous execution opens a fresh context without authentication data.
+A Scenario may explicitly declare `anonymous` alongside named users. Core uses
+runtime `user=None` and generation 0 for its anonymous context, keeps it separate
+from every named user's context, and may reuse it only within the same projection.
+Returning to a named user reuses that user's retained session, not the anonymous
+context. Anonymous participation cannot request `session: new`; the loader also
+rejects a renewed child alias mapped to anonymous. Multi-user child mappings are
+resolved per leaf before the same context and permit checks, with no new loop.
 For a core-bound anonymous context the helper rejects storage state, HTTP
 credentials, client certificates, and Authorization/Cookie/Proxy-Authorization
 headers rather than inheriting them. This is a bounded configuration check, not

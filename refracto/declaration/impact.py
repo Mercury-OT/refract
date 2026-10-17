@@ -425,13 +425,34 @@ def _parent_record(snapshot, parent, raw, selected, before_raw, after_raw, befor
             defaults[label] = {key: _describe(value, show_values)
                                for key, value in sorted(child_raw.get("parameters", {}).items())
                                if key not in overrides}
-        declared_users = raw.get("users", [])
-        effective_user = call.get("user", declared_users[0] if isinstance(declared_users, list) and len(declared_users) == 1 else None)
-        user_binding = {"effective_user": effective_user if isinstance(effective_user, str) else None,
-                        "before": {"local_users": list(before_raw["users"]),
-                                   "session_policies": {step["id"]: step.get("session", "reuse") for step in before_raw["steps"]}},
-                        "after": {"local_users": list(after_raw["users"]),
-                                  "session_policies": {step["id"]: step.get("session", "reuse") for step in after_raw["steps"]}}}
+        declared_users = raw.get("users")
+        # Current callers may be invalid; inspect them without treating malformed
+        # declarations as implicit anonymous participants or executing loader helpers.
+        valid_users = (type(declared_users) is list
+                       and all(type(user) is str and user.strip() for user in declared_users)
+                       and len(set(declared_users)) == len(declared_users))
+        effective_user = (call.get("user", declared_users[0] if len(declared_users) == 1 else None)
+                          if valid_users else None)
+        user_binding = {"effective_user": effective_user if isinstance(effective_user, str) and "with_users" not in call else None,
+                        "with_users": copy.deepcopy(call.get("with_users"))}
+        from refracto.declaration.includes import participant_mapping
+        for label, child_raw in (("before", before_raw), ("after", after_raw)):
+            mapping = None
+            if valid_users:
+                try:
+                    mapping = participant_mapping(call, child_raw["users"], declared_users)
+                except (DeclarationError, TypeError, ValueError):
+                    pass
+            child_users = child_raw["users"]
+            leaves = {}
+            for step in child_raw["steps"]:
+                local = step.get("user", child_users[0] if len(child_users) == 1 else "anonymous")
+                leaves[step["id"]] = {"local_user": local,
+                    "effective_user": mapping.get(local) if mapping is not None else None,
+                    "session": step.get("session", "reuse")}
+            user_binding[label] = {"local_users": list(child_users), "effective_bindings": mapping,
+                                  "steps": leaves,
+                                  "session_policies": {step["id"]: step.get("session", "reuse") for step in child_raw["steps"]}}
         sites.append({"step_id": call.get("id") if isinstance(call.get("id"), str) else None, "position": i + 1,
                       "target_path": entry["path"], "expected_pin": pin,
                       "actual_sha256": after_hash, "pin_match": match,

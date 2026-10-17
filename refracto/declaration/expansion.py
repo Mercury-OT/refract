@@ -41,7 +41,7 @@ def expansion_view(scenario):
     steps = []
     for step in scenario.steps:
         item = {"id": step.id, "source": copy.deepcopy(scenario.source_lookup.get(step.id)),
-                "user": scenario.effective_user(step), "session": step.session or "reuse",
+                "user": scenario.selected_user(step) or "anonymous", "session": step.session or "reuse",
                 "on_failure": step.on_failure,
                 "do": {"request": request(step.request)} if step.action == "request" else step.action}
         if step.target is not None:
@@ -68,6 +68,7 @@ def expansion_view(scenario):
             "users": list(scenario.users), "description": scenario.description,
             "grid": None if scenario.grid is None else {"level": scenario.grid.level, "module": scenario.grid.module},
             "dependencies": copy.deepcopy(scenario.include_dependencies),
+            "include_user_mappings": copy.deepcopy(scenario.include_user_mappings),
             "results": aliases(scenario.results),
             "included_results": {sid: aliases(items) for sid, items in scenario.included_results.items()},
             "parameters": {key: value(item) for key, item in parameters.items()}, "steps": steps}
