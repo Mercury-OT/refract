@@ -146,6 +146,12 @@ Collect the fulfilled browser response rather than labeling the bare fixture
 mapping a complete observation. Core consumption checks must detect header tampering, not
 only compare JSON bodies. Frontend remains mock evidence, never live proof.
 
+Freeze a finite receipt boundary after the final snapshot, then complete its
+actual mock header blocks within the existing action deadline. Later arrivals
+remain queued in order for the next collection. Do not wait for global background
+network idleness, promote background traffic, advance cursors beyond that frozen
+boundary, or treat a pending response event as proof of header absence.
+
 ## References, projections and contract
 
 Bindings resolve atomically across headers, body, path, query and expectations.

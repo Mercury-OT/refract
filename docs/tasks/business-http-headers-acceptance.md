@@ -57,8 +57,8 @@ Commands ran from the public repository root. All final checks exited 0.
 
 | Check | Actual result |
 | --- | --- |
-| `NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 uv run --locked --no-sync pytest -o addopts='' -q --tb=short` | 2405 passed with real Chromium, no skips, one existing Starlette/httpx warning; 295.64 s |
-| Fresh dev-only Python 3.12: `python -B -m pytest -o addopts='' -q --tb=short` | 2073 passed, one optional Demo collection skip; 35.19 s |
+| `NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 uv run --locked --no-sync pytest -o addopts='' -q --tb=short` | 2408 passed with real Chromium, no skips, one existing Starlette/httpx warning; 308.77 s after the CI correction below |
+| Fresh dev-only Python 3.12: `python -B -m pytest -o addopts='' -q --tb=short` | 2073 passed, one optional Demo collection skip; 35.65 s after the CI correction |
 | Fresh dev-only `tests/test_opensource_litmus.py` | 3 passed |
 | Core header, Documents header and header-documentation tests | 336 passed; 0.77 s |
 | Those checks plus Scenario/onboarding/include documentation | 357 passed; 0.56 s |
@@ -95,7 +95,8 @@ Two P2 findings were fixed and independently retested:
 Independent probes also checked duplicate detection after an earlier mismatch,
 raw-pair mutation, invalid-reference atomicity and both polling outcomes. No
 independent finding remains. Architect acceptance includes the final full-suite
-and isolated results above. The task adds 427 tests over its starting baseline.
+and isolated results above. The task adds 430 tests over its starting baseline,
+including the three CI-follow-up controls below.
 
 Development diagnostics were retained honestly: an exploratory `--ignore` test
 command still collected browser tests because of an existing collection hook,
@@ -104,6 +105,39 @@ not acceptance evidence. Corrected grouped checks passed. An exploratory audit
 command named nonexistent files and ran no tests; corrected invocations passed.
 The browser wire-block experiment exposed transport-added headers and led to the
 explicit observation-boundary documentation, not fabricated observations.
+
+## CI follow-up acceptance: 2026-10-18
+
+The initial accepted local full suite passed 2405 tests in 295.64 s. On task
+commit `e30fc85`, PR-trigger run 39047347095 passed all four jobs, but push-trigger
+run 39047326088 failed the full suite with two mock background-traffic cases:
+`test_background_headers_cannot_gain_current_action_origin[mock]` and the existing
+`test_matching_unassigned_query_does_not_satisfy_action[mock]`. Merge was stopped;
+the failed run is not treated as an acceptance pass.
+
+An actual fulfilled mock response can be recorded before its response event is
+delivered. The old collector rejected this interval prematurely; its callback
+also removed the pending association before a yielding header read. The correction
+stores response events without yielding, freezes finite receipt boundaries after
+the snapshot, then completes those actual header blocks under the existing action
+deadline. Later arrivals remain queued without cursor loss or reordering.
+Background traffic retains diagnostic-only identity. No global network-idle wait,
+expectation injection, increased production timeout, retries or weakened existing
+assertions were introduced.
+
+The independent auditor loaded the committed helper in memory and reproduced
+the new deterministic regression failing against it, without editing the checkout.
+With the corrected helper, the regression, missing-event and failed-header-read
+controls, plus both unchanged CI cases passed: **5 passed in 4.29 s**. The test
+also verifies a second response arriving during collection is retained for the
+next action, with fixture order and generated Content-Length preserved. Missing
+events and read errors fail with cleanup, not a fabricated empty header block.
+
+Independent follow-up review: **PASS**, no unresolved findings. Architect follow-up
+acceptance: **PASS**, based on that review and the fresh 2408-test full suite,
+2073-test dev-only suite, lock, hygiene and diff checks. Changes remain within the
+accepted 39-file scope. Fresh CI for the corrected commit and post-merge main
+remain mandatory delivery gates; the initial PR run does not replace them.
 
 ## Public information and scope
 

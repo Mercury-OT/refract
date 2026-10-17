@@ -256,6 +256,14 @@ fixture mapping alone is not treated as a complete response block. Core checks
 supplied fixture headers against the recorded complete observations and detects
 header tampering. This remains mock evidence, not live provider proof.
 
+After the final UI snapshot, the helper freezes the received traffic, diagnostics
+and mock-recording boundaries. It completes actual response-header collection for
+that finite set within the existing action deadline. Requests arriving during
+collection remain queued for the next collection; cursors do not skip them.
+Delayed background responses remain diagnostics, not evidence for the current
+action. Missing response events or failed header reads fail and close the context;
+they never turn an incomplete observation into an empty header block.
+
 For a multi-context run, core supplies the same `MockResponseQueue` to each
 `open_stepwise` call. Forward it as `mock_queue`; do not create a new queue when
 switching users or replacing a session. Consumption order is global to that
