@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from refracto import ports
+from refracto.headers import business_headers, header_map, match_headers, require_header_items
 from refracto.query import parse_query
 
 from ._instrument import SCRIPT
@@ -73,6 +74,8 @@ class _Context:
     diagnostics: list = field(default_factory=list)
     mock_recordings: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    credential_header_names: frozenset = field(default_factory=frozenset)
+    pending_mock_responses: dict = field(default_factory=dict)
     traffic_cursor: int = 0
     diagnostic_cursor: int = 0
     mock_cursor: int = 0
@@ -142,7 +145,9 @@ class BrowserSupport:
         plan = copy.deepcopy(list(mock_plan or []))
         queue = mock_queue or ports.MockResponseQueue(plan)
         context = _Context(self, mode, queue.plan, mock_queue=queue, user=user,
-                           session_generation=session_generation, context_id=context_id)
+                           session_generation=session_generation, context_id=context_id,
+                           credential_header_names=frozenset(
+                               name.lower() for name in options.get("extra_http_headers", {})))
         try:
             # Import lazily: even importing this package needs no browser extra.
             context.playwright = _acquire_playwright()
@@ -154,6 +159,7 @@ class BrowserSupport:
             context.browser_context.add_init_script(SCRIPT)
             context.browser_context.route("**/*", lambda route: self._route(context, route))
             context.page = context.browser_context.new_page()
+            context.page.on("response", lambda response: self._capture_mock_headers(context, response))
             context.page.on("pageerror", lambda _: context.errors.append("browser event handler failed"))
             context.page.on("worker", lambda _: context.errors.append("browser workers are unsupported"))
             context.page.on("websocket", lambda _: context.errors.append("browser streaming transport is unsupported"))
@@ -167,6 +173,27 @@ class BrowserSupport:
         if context.closed:
             raise ValueError("browser context is closed")
         return context
+
+    def validate_request_headers(self, context, headers):
+        """Reject credential-name collisions without applying expected values."""
+        context = self._context(context)
+        declared = business_headers({} if headers is None else headers)
+        if context.credential_header_names.intersection(declared):
+            raise ValueError("business request headers collide with browser credentials")
+
+    def _capture_mock_headers(self, context, response):
+        recording = context.pending_mock_responses.pop(response.request, None)
+        if recording is None:
+            return
+        try:
+            # Observe the fulfilled browser response, including headers added by
+            # Playwright (for example Content-Length), before claiming completeness.
+            items = [(item["name"], item["value"]) for item in response.headers_array()]
+            require_header_items(items)
+            recording.header_items = items
+            recording.headers = {name.lower(): value for name, value in items}
+        except Exception:
+            context.errors.append("browser response header recording failed")
 
     def _remaining(self, context):
         remaining = self._timeout_ms if context.deadline is None else (context.deadline - time.monotonic()) * 1000
@@ -263,6 +290,8 @@ class BrowserSupport:
             if permit.action == "open":
                 self._settle(context, permit.action_id)
             self._check(context)
+            if any(recording.header_items is None for recording in context.mock_recordings[mock_start:]):
+                raise RuntimeError("browser mock response headers were not observed")
             rendered = self.snapshot(context)
             self._remaining(context)
             current, diagnostics = [], list(context.diagnostics[diagnostic_start:])
@@ -315,7 +344,9 @@ class BrowserSupport:
                     "document", "stylesheet", "script", "image", "font", "media", "texttrack", "manifest",
             } or request.method not in {"GET", "HEAD"}):
                 raise ValueError("browser request transport is unsupported")
-            headers = dict(request.headers)
+            request_items = [(item["name"], item["value"]) for item in request.headers_array()]
+            require_header_items(request_items)
+            headers = dict(request.all_headers())
             action_id = headers.get("x-refract-action-id") if api else None
             request_id = headers.get("x-refract-request-id") if api else None
             permit = context.permits.get(action_id)
@@ -328,6 +359,15 @@ class BrowserSupport:
             if api and "x-refract-traceparent" in headers:
                 headers["traceparent"] = headers["x-refract-traceparent"]
             traceparent = headers.get("traceparent")
+            # The effective transport removes private markers and replaces any
+            # application trace. Preserve the complete browser-observed block,
+            # including credentials. route.fetch can add transport-owned headers;
+            # this observation is not a packet capture of that forwarding hop.
+            request_items = [(name, value) for name, value in request_items
+                             if not name.lower().startswith("x-refract-")
+                             and name.lower() != "traceparent"]
+            if traceparent is not None:
+                request_items.append(("traceparent", traceparent))
             trace_id = traceparent.split("-")[1] if traceparent and len(traceparent.split("-")) == 4 else None
             actual_url = urlsplit(request.url)
             actual_path = actual_url.path
@@ -354,12 +394,16 @@ class BrowserSupport:
                     raise ValueError("browser traffic does not match the next mock fixture")
                 if fixture.query is not None and fixture.query != spec.query:
                     raise ValueError("browser traffic does not match the next mock fixture query")
-                context.mock_queue.index += 1
-                fixture_id = fixture.fixture_id
+                if fixture.request_headers is not None and not match_headers(fixture.request_headers, request_items):
+                    raise ValueError("browser traffic does not match the next mock fixture headers")
                 response_body, status = copy.deepcopy(fixture.response), fixture.status
                 text = json.dumps(response_body)
                 response_headers = {"content-type": "application/json"}
-                route.fulfill(status=status, body=text, headers=response_headers)
+                response_headers.update(header_map(
+                    {} if fixture.response_headers is None else fixture.response_headers))
+                context.mock_queue.index += 1
+                fixture_id = fixture.fixture_id
+                response_items = None
             else:
                 response = route.fetch(
                     headers={name: value for name, value in headers.items() if not name.startswith("x-refract-")},
@@ -367,6 +411,8 @@ class BrowserSupport:
                 )
                 try:
                     status, response_headers = response.status, dict(response.headers)
+                    response_items = [(item["name"], item["value"]) for item in response.headers_array]
+                    require_header_items(response_items)
                     if 300 <= status < 400 and "location" in response_headers:
                         raise ValueError("browser redirects are unsupported")
                     if "text/event-stream" in response_headers.get("content-type", "").lower():
@@ -386,9 +432,11 @@ class BrowserSupport:
                     step_id=permit.step_id if permit else None, actual_path=actual_path,
                     request_id=request_id, mock_fixture_id=fixture_id,
                     user=context.user, session_generation=context.session_generation,
+                    request_header_items=request_items, header_items=response_items,
                 )
                 if context.mode == "mock":
                     context.mock_recordings.append(recorded)
+                    context.pending_mock_responses[request] = recorded
                 if permit is None:
                     context.diagnostics.append(recorded)
                 else:
@@ -401,6 +449,8 @@ class BrowserSupport:
                         mock_fixture_id=fixture_id,
                         user=permit.user, session_generation=permit.session_generation, context_id=permit.context_id,
                     ))
+                if context.mode == "mock":
+                    route.fulfill(status=status, body=text, headers=response_headers)
         except Exception:
             context.errors.append("browser request transport or recording failed")
             try:

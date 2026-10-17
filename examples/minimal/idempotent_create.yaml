@@ -1,0 +1,69 @@
+schema_version: 1
+scenario: records.idempotent_create
+users: [creator]
+description: Retry one record creation and verify that the immediate list contains exactly one matching record.
+parameters:
+  idempotency_key: record-create-example-001
+  record_name: idempotency-example-record
+steps:
+  # The harness supplies a fresh synthetic service with complete immediate
+  # lists, no name uniqueness rule, and no concurrent writer.
+  - id: first_submit
+    do:
+      request:
+        method: POST
+        path: [records]
+        headers:
+          Idempotency-Key: {from_parameter: idempotency_key}
+        body:
+          name: {from_parameter: record_name}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: has, field: id}
+        - check: field_equals
+          field: name
+          value: {from_parameter: record_name}
+        - {check: header_equals, header: Cache-Control, value: no-store}
+        - {check: header_absent, header: X-Internal-Debug}
+  - id: repeat_submit
+    do:
+      request:
+        method: POST
+        path: [records]
+        headers:
+          Idempotency-Key: {from_parameter: idempotency_key}
+        body:
+          name: {from_parameter: record_name}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - check: field_equals
+          field: id
+          value: {from_step: first_submit, response_field: id}
+        - check: field_equals
+          field: name
+          value: {from_parameter: record_name}
+  - id: read_back
+    do:
+      request:
+        method: GET
+        path: [records]
+        query:
+          name: {from_parameter: record_name}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        # Reusing the first identifier in a retry response alone cannot show
+        # that the service avoided creating another matching record.
+        - check: collection_matching_count
+          field: records
+          matching:
+            name: {from_parameter: record_name}
+          count: 1
+        - check: collection_matching_count
+          field: records
+          matching:
+            id: {from_step: first_submit, response_field: id}
+            name: {from_parameter: record_name}
+          count: 1

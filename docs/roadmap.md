@@ -23,7 +23,8 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Mixed anonymous users and included-user mappings](tasks/anonymous-users-inclusion.md) | Implemented, independently audited and architect-accepted; see the [acceptance record](tasks/anonymous-users-inclusion-acceptance.md). Format 1 and one-level inclusion retained. | Public submission is authorized after local gates; merged history and CI establish publication. Preserve the accepted boundaries. |
+| 1 | [Business request headers and response-header checks](tasks/business-http-headers.md) | Implemented; independent audit and architect acceptance passed. See the [local acceptance record](tasks/business-http-headers-acceptance.md). Format 1 and the existing structure retained. | Authorized public delivery uses the PR/CI workflow; preserve the accepted header-evidence boundaries. |
+| Delivered | [Mixed anonymous users and included-user mappings](tasks/anonymous-users-inclusion.md) | Delivered through PR #24 in main `0c14865`; see the [local acceptance record](tasks/anonymous-users-inclusion-acceptance.md). Format 1 and one-level inclusion retained. | Preserve user/session isolation and explicit complete mappings. |
 | Delivered | [Explicit request query parameters](tasks/request-query-parameters.md) | Delivered through PR #23 in main `68af23a`. Approved five-step example, actual browser query checks, format 1 and existing assertion vocabulary retained. | Preserve the accepted query and evidence boundaries. |
 | Delivered | [Response-based rejection evidence](tasks/response-rejection-evidence.md) | Delivered through PR #22 in main `eaca8cb`. Approved four-step example; no new vocabulary or runtime semantics. | Preserve the accepted response-evidence boundary. |
 | Delivered | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Delivered through PR #21 in main `b2fdab2`. Its original single-user child restriction is being extended by the separately approved mixed-user task. | Preserve identity, session, evidence, and one-level boundaries. |
@@ -42,6 +43,18 @@ the bounded collection expression. Those two tasks have been delivered on main.
 Browser support, inclusion, and named results have subsequently been merged.
 The approved expression remains the basis of execution;
 implementation convenience must not silently change its meaning.
+
+The accepted header slice checks declared business headers against actual API
+and browser observations, and selected response headers against complete raw
+pair lists. It preserves duplicates and distinguishes unknown evidence from
+absence. The approved retry/read example and a separate Documents consumer catch
+duplicate creation even when a defective retry echoes the original ID. Final
+regression passed 2405 tests with real Chromium, no skips and one existing warning;
+fresh dev-only regression passed 2073 with one optional collection skip. Two
+independent findings concerning polling aggregation and observed-header error
+privacy were fixed and retested. This is synthetic capability evidence, not
+production adoption or universal packet-level capture. The acceptance record
+does not substitute for the subsequent PR, merge and hosted CI checks.
 
 The accepted query slice exposes per-request filters and pagination values in
 the existing request mapping. Actual browser URLs supply observed evidence;

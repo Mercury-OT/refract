@@ -27,6 +27,8 @@ _TERMS = {
         "has": ("field",),
         "field_equals": ("field", "value"),
         "field_absent": ("field",),
+        "header_equals": ("header", "value"),
+        "header_absent": ("header",),
         "collection_matching_count": ("field", "matching", "count"),
     },
     "backend_state": {

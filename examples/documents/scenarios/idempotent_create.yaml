@@ -1,0 +1,73 @@
+schema_version: 1
+scenario: documents.idempotent_create
+users: [editor]
+description: Retry a document creation and verify its title and server identifier in the immediate filtered list.
+parameters:
+  document_key: document-create-example-001
+  document_title: retry-notes
+steps:
+  # The harness owns a fresh isolated target. This service has no title
+  # uniqueness constraint; its transport envelope is independent of records.
+  - id: create_document
+    do:
+      request:
+        method: POST
+        path: [documents]
+        headers:
+          Idempotency-Key: {from_parameter: document_key}
+        body:
+          title: {from_parameter: document_title}
+          category: memo
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+        - check: field_equals
+          field: title
+          value: {from_parameter: document_title}
+        - {check: header_equals, header: Cache-Control, value: no-store}
+        - {check: header_absent, header: X-Internal-Debug}
+  - id: retry_document
+    do:
+      request:
+        method: POST
+        path: [documents]
+        headers:
+          idempotency-key: {from_parameter: document_key}
+        body:
+          title: {from_parameter: document_title}
+          category: memo
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - check: field_equals
+          field: document_id
+          value: {from_step: create_document, response_field: document_id}
+        - check: field_equals
+          field: title
+          value: {from_parameter: document_title}
+        - {check: header_equals, header: cache-control, value: no-store}
+  - id: find_document
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+        query:
+          title: {from_parameter: document_title}
+          limit: 100
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: next_cursor, value: null}
+        - check: collection_matching_count
+          field: documents
+          matching:
+            title: {from_parameter: document_title}
+          count: 1
+        - check: collection_matching_count
+          field: documents
+          matching:
+            document_id: {from_step: create_document, response_field: document_id}
+            title: {from_parameter: document_title}
+          count: 1

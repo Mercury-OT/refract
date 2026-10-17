@@ -10,6 +10,7 @@ import copy
 import secrets
 import time
 from refracto import asyncwait, ports
+from refracto import headers as header_ops
 from refracto.query import wire_query, require_wire_query, request_path
 from refracto.normalization import normalize_response
 from refracto.declaration import binding
@@ -28,7 +29,16 @@ def gen_traceparent() -> str:
     return f"00-{secrets.token_hex(16)}-{secrets.token_hex(8)}-01"
 
 
-def _eval_response(assertion, norm, bound_values=None, inputs=None, *, observed_status=None):
+def _eval_response(assertion, norm, bound_values=None, inputs=None, *, observed_status=None,
+                   observed_headers=None):
+    if assertion.check in header_ops.CHECKS:
+        expected = None
+        if assertion.check == "header_equals":
+            expected, error = values.resolve(assertion.params["value"], bound_values=bound_values, inputs=inputs)
+            if error is not None:
+                raise ValueError("response header reference is unavailable")
+        ok, detail = header_ops.evaluate(assertion.check, assertion.params["header"], expected, observed_headers)
+        return CheckResult("response", assertion.check, ok, detail)
     if assertion.check in http_status.CHECKS:
         observed = http_status.require_observed(observed_status)
         expected = http_status.allowed(assertion)
@@ -204,6 +214,8 @@ def _check_option_b(step, template, spec):
         raise TypeError("resolver must return RequestSpec")
     request_path(spec.path, {})
     require_wire_query(spec.query)
+    if header_ops.business_headers(template.headers or {}) != header_ops.business_headers(spec.headers):
+        raise ValueError("resolver changed declared business headers")
     if wire_query(template.query or {}) != spec.query:
         raise ValueError("resolver changed declared query; transport mapping must not invent values")
     if step.request.method.upper() != spec.method.upper():
@@ -214,10 +226,11 @@ def _check_option_b(step, template, spec):
             "resolver changed declared business body; transport mapping must not invent values")
 
 
-def _send_verified(api, spec, session):
+def _send_verified(api, spec, session, *, sensitive_headers=False):
     """Preserve the outbound request before handing a copy to the driver."""
     expected = copy.deepcopy(spec)
-    response = api.send(copy.deepcopy(expected), session)
+    response = header_ops.call_port("ApiDriver", api.send, copy.deepcopy(expected), session,
+        sensitive=bool(expected.headers) or sensitive_headers)
     if type(response) is not ports.RecordedResponse or type(response.request) is not ports.RequestSpec:
         raise TypeError("ApiDriver.send must return RecordedResponse with RequestSpec")
     if not all(_evidence_equal(getattr(response.request, field.name), getattr(expected, field.name))
@@ -237,13 +250,14 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
     """
     attempts = {"n": 0}
     last = {}
+    request_history = []
 
     def _attempt():
         traceparent = gen_traceparent()
         # Each attempt gets its own RequestSpec instance so earlier recordings
         # keep their original trace identity.
         attempt_spec = dataclasses.replace(copy.deepcopy(spec), traceparent=traceparent)
-        resp = _send_verified(api, attempt_spec, session)
+        resp = _send_verified(api, attempt_spec, session, sensitive_headers=header_ops.declared(step))
 
         resp.step_id = step.id
         resp.attempt_index = attempts["n"]
@@ -253,9 +267,14 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         resp.actual_path = attempt_spec.path
         try:
             observed_status = _capture_status(step, resp)
+            observed_headers = copy.deepcopy(resp.header_items)
+            request_checks = _request_header_checks(spec, resp)
             norm = normalize_response(normalizer, resp)
-            ok = all(_eval_response(a, norm, bound_values, inputs, observed_status=observed_status).ok
-                     for a in step.expect.response)
+            response_checks = [_eval_response(a, norm, bound_values, inputs, observed_status=observed_status,
+                                              observed_headers=observed_headers)
+                               for a in step.expect.response]
+            request_history.extend(request_checks)
+            ok = all(c.ok for c in response_checks)
         except Exception:
             recorder.record(copy.deepcopy(resp))
             raise
@@ -264,7 +283,8 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         attempts["n"] += 1
         last["resp"], last["norm"], last["traceparent"] = resp, norm, traceparent
         last["status"] = observed_status
-        return ok, (resp, norm, traceparent, observed_status)
+        last["checks"] = list(request_history) + response_checks
+        return ok, (resp, norm, traceparent, list(request_history) + response_checks)
 
     timeout = poll_config.timeout if poll_config else 30
     interval = poll_config.interval if poll_config else 1
@@ -275,10 +295,7 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
                                        on_timeout=on_timeout, now=now, sleep=sleep)
     except asyncwait.WaitTimeout:
         resp, norm, traceparent = last["resp"], last["norm"], last["traceparent"]
-        response_checks = [
-            _eval_response(a, norm, bound_values, inputs, observed_status=last["status"])
-            for a in step.expect.response
-        ]
+        response_checks = last["checks"]
         for c in response_checks:
             c.step = step.id
         trace_id = resp.trace_id or traceparent.split("-")[1]
@@ -289,17 +306,15 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
     if result.skipped:
         resp, norm, traceparent = last["resp"], last["norm"], last["traceparent"]
         trace_id = resp.trace_id or traceparent.split("-")[1]
-        return StepResult(step.id, SKIPPED, skipped=["poll timed out (SKIP)"],
+        for check in request_history:
+            check.step = step.id
+        return StepResult(step.id, SKIPPED, checks=request_history, skipped=["poll timed out (SKIP)"],
                           attempts=attempts["n"], trace_id=trace_id,
                           response_origin=ResponseOrigin(step.id, attempts["n"] - 1, False, True)), norm
 
-    winning_resp, winning_norm, winning_traceparent, winning_status = result.value
+    winning_resp, winning_norm, winning_traceparent, response_checks = result.value
     winning_resp.is_final = True
 
-    response_checks = [
-        _eval_response(a, winning_norm, bound_values, inputs, observed_status=winning_status)
-        for a in step.expect.response
-    ]
     for c in response_checks:
         c.step = step.id
 
@@ -326,7 +341,7 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
                                bound_values, inputs)
 
     spec.traceparent = gen_traceparent()
-    resp = _send_verified(api, spec, session)
+    resp = _send_verified(api, spec, session, sensitive_headers=header_ops.declared(step))
 
     # Record the step identity and the three path identities used by the run.
     resp.step_id = step.id
@@ -338,12 +353,16 @@ def _run_step(step, template, spec, api, session, recorder, normalizer, state,
     recorder.record(copy.deepcopy(resp))
 
     observed_status = _capture_status(step, resp)
+    observed_headers = copy.deepcopy(resp.header_items)
+    request_checks = _request_header_checks(spec, resp)
     norm = normalize_response(normalizer, resp)
 
     response_checks = [
-        _eval_response(a, norm, bound_values, inputs, observed_status=observed_status)
+        _eval_response(a, norm, bound_values, inputs, observed_status=observed_status,
+                       observed_headers=observed_headers)
         for a in step.expect.response
     ]
+    response_checks = request_checks + response_checks
     if step.request_asserted:
         response_checks.insert(0, CheckResult("request", "request", True,
             "declared transport request sent; UI behavior is not checked"))
@@ -370,6 +389,14 @@ def _capture_status(step, response):
     if any(a.check in http_status.CHECKS for a in step.expect.response):
         return http_status.require_observed(observed)
     return observed
+
+
+def _request_header_checks(spec, response):
+    if not spec.headers:
+        return []
+    ok = header_ops.match_headers(spec.headers, response.request_header_items)
+    return [CheckResult("request", "headers", ok,
+                        "" if ok else "actual request business headers differ from their declaration")]
 
 
 def _require_live_response(response):
@@ -405,7 +432,9 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
         raise ValueError("request action has no request")
     # The mapper receives an independent value and cannot mutate the declaration
     # to make its own changed output compare equal.
-    spec = resolve_request(scenario, copy.deepcopy(step), copy.deepcopy(template))
+    spec = header_ops.call_port("Request resolver", resolve_request,
+        scenario, copy.deepcopy(step), copy.deepcopy(template),
+        sensitive=any(header_ops.declared(item) for item in scenario.steps))
     _check_option_b(step, template, spec)
     return _run_step(step, template, spec, api, session, recorder, normalizer,
                      state, poll_config, now, sleep, bound_values, scenario.inputs)

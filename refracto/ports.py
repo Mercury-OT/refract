@@ -33,12 +33,13 @@ class RequestSpec:
     body: dict | None = None
     traceparent: str | None = None
     query: dict[str, str] = field(default_factory=dict, kw_only=True, repr=False, metadata={"sensitive": True})
+    headers: dict[str, str] = field(default_factory=dict, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
 class RecordedResponse:
     status: int
-    headers: dict
+    headers: dict = field(repr=False, metadata={"sensitive": True})
     json: dict | None
     text: str
     trace_id: str | None
@@ -54,6 +55,8 @@ class RecordedResponse:
     mock_fixture_id: str | None = field(default=None, kw_only=True)
     user: str | None = field(default=None, kw_only=True)
     session_generation: int | None = field(default=None, kw_only=True)
+    request_header_items: list[tuple[str, str]] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    header_items: list[tuple[str, str]] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
@@ -112,6 +115,8 @@ class MockResponse:
     response: dict = field(repr=False, metadata={"sensitive": True})
     status: int = 200
     query: dict[str, str] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    request_headers: dict[str, str] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    response_headers: dict[str, str] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass

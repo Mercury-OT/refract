@@ -31,6 +31,8 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
                                   context_options=getattr(session, "context", None))
 
     def perform_step(self, scenario, step, context, permit):
+        if step.request is not None:
+            self._browser.validate_request_headers(context, step.request.headers)
         if permit.action == "open":
             if permit.target not in {"items.page", "records.page"}:
                 raise ValueError("unknown page target")

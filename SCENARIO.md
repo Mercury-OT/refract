@@ -120,7 +120,7 @@ execution, not a multi-action adapter primitive.
 | Click | `do: click`, `target` | activate one logical control |
 | Fill | `do: fill`, `target`, `value` | fill one logical input |
 | Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
-| API request | `do: {request: {method, path, query?, body?}}` | send the declared request |
+| API request | `do: {request: {method, path, query?, headers?, body?}}` | send the declared request |
 
 Targets map to elements, not multi-action business scripts. A click must not
 secretly navigate, fill fields, and submit. Wait does not trigger a scheduled
@@ -129,8 +129,8 @@ job, change the host clock, or assert success.
 An API action stores its request under `do.request`, never under `expect`.
 A UI action may declare `expect.request` to constrain the traffic it causes.
 The same step cannot contain both request forms. Requests use an HTTP method,
-an explicit list of logical path segments, an optional query mapping, and an
-optional body mapping.
+an explicit list of logical path segments, optional query and business-header
+mappings, and an optional body mapping.
 Each path segment is encoded separately after resolving references.
 
 One step may have no expectations. The entire Scenario must have at least one
@@ -253,6 +253,82 @@ and change-impact inspection. The shared `refracto.query` utility supplies
 validation, serialization, URL encoding, and observed parsing. Runtime query
 values are sensitive and hidden from default request representations.
 
+### Business request headers
+
+Both request locations accept `headers`. Names are literal ASCII HTTP token
+names, compared case-insensitively; duplicate names with different casing are
+invalid. Values are strings or existing parameter, prior-response or included
+named-result references resolving to strings. This bounded sender accepts empty
+or visible ASCII strings with internal spaces, not surrounding whitespace,
+control characters, non-ASCII values, or implicit number/boolean conversion.
+Known invalid values fail loading; unavailable or invalid response-derived
+values block the dependent step before sending. No new reference source exists.
+
+```yaml
+- id: submit
+  do:
+    request:
+      method: POST
+      path: [records]
+      headers:
+        Idempotency-Key: {from_parameter: idempotency_key}
+      body:
+        name: {from_parameter: record_name}
+  expect:
+    response:
+      - check: status_equals
+        value: 201
+      - check: header_equals
+        header: Cache-Control
+        value: "no-store"
+      - check: header_absent
+        header: X-Internal-Debug
+```
+
+This fragment assumes the two declared string parameters. The complete
+[retry/read example](examples/minimal/idempotent_create.yaml) sends one key and
+body twice, compares the returned IDs, then counts all records matching the
+name and those matching both the original ID and name. It uses a fresh isolated
+synthetic target with complete, immediate list results and no name uniqueness
+constraint. A reused fixed test key or a truncated list could invalidate that
+reasoning. These are explicit harness/target assumptions, not hidden adapter
+preparation or general database/concurrent-idempotency guarantees.
+
+For API actions, resolvers must preserve exactly the declared business-header
+mapping, allowing only name casing differences. Reference drivers combine it
+with independently owned session and transport headers and capture the actual
+request. For UI actions, declared headers constrain a subset of the actual
+browser headers; automatic or other undeclared headers are allowed. Omission
+or `{}` adds no header constraint, unlike `query: {}` which requires no query.
+Expectations never inject or repair the browser's outgoing headers.
+
+Credentials and transport control are not business inputs. Declarations reject
+Authorization, Proxy-Authorization, Cookie, Set-Cookie, Host, Content-Length,
+Content-Type, Transfer-Encoding, Connection, TE, Trailer, Upgrade, Expect,
+Accept-Encoding, Origin, Referer, User-Agent, Traceparent and Tracestate, and the
+`proxy-`, `sec-`, and `x-refract-` prefixes, case-insensitively. Adapters also
+reject collisions with their custom session credential headers before sending
+or performing the constrained UI action. There is no silent precedence rule.
+
+`RequestTemplate.headers` holds declared values/references; `RequestSpec.headers`
+is a keyword-only business mapping with an independent empty default. Actual
+raw header evidence lives separately on `RecordedResponse.request_header_items`
+and `RecordedResponse.header_items`: complete ordered name/value pairs, or None
+when unavailable. An explicit empty list means an observed complete empty block.
+Flattened dictionaries and normalizer output cannot substitute for those lists.
+Drivers must capture actual transport data, not fill observations from assertions.
+Complete means the identified observation point, not network packet capture.
+The browser helper captures the full browser-provided request block and its
+effective trace/private-marker rewrite. Its forwarding transport may add owned
+headers such as Host or Content-Length; those additions are not invented as
+observations and cannot be declared as business inputs. Independent peer tests
+verify the supported business values received by the target. API capture is
+from the sent request object or exact in-process target invocation. No core
+mechanism can independently prove a driver's consistently fabricated evidence.
+Recorded raw blocks can contain credentials; all new fields and the legacy
+response-header map are hidden from default representations and marked sensitive.
+Do not serialize entire requests, recordings or reports generically.
+
 ### Request constraints
 
 A UI step's `expect.request` constrains method, logical path, and declared body
@@ -264,6 +340,13 @@ undeclared business inputs to satisfy the constraint.
 Declared query equality follows the exact decoded-string rules above, not the
 body's recursive subset comparison. Browser request evidence is extracted from
 the actual URL independently of these expected values.
+Declared business headers use case-insensitive names and exact string values
+against the complete actual request block. A missing or wrong value is a failed
+check; unavailable, malformed or repeated asserted-name evidence is an execution
+error. Unrelated repeated headers do not change another name's assertion. Where
+multiple requests already belong to the same action and method/path, explicit
+query and header constraints may identify exactly one; missing or ambiguous
+selection is an error. Background traffic never becomes action evidence.
 
 ### Response vocabulary
 
@@ -273,6 +356,8 @@ the actual URL independently of these expected values.
 | `failure` | none |
 | `status_equals` | `value` |
 | `status_in` | `values` |
+| `header_equals` | `header`, `value` |
+| `header_absent` | `header` |
 | `has` | `field` |
 | `field_equals` | `field`, `value` |
 | `field_absent` | `field` |
@@ -315,6 +400,24 @@ checks each attempt and keeps its existing final/timeout rules. A matching HTTP
 status alone does not prove a rejection mechanism or complete business success.
 See the executable [create/delete example](examples/documents/scenarios/http_status_create_delete.yaml)
 for 201 creation and an empty 204 deletion without a synthetic status field.
+
+`header_equals` requires one actual header with an exactly equal string value;
+its value accepts the existing references resolving to strings. `header_absent`
+requires no occurrence of the literal header name. Names are case-insensitive,
+but values are not trimmed, split on commas or interpreted. A present empty
+value fails an absence check. For example, `private, no-store` does not equal
+`no-store`. Duplicate constraints or equals/absent on the same case-folded name
+are invalid declarations.
+
+These checks use complete raw header pairs captured before normalization.
+Unknown evidence cannot prove absence. Multiple occurrences of an asserted
+name, even with equal values, are unsupported evidence and cause ERROR;
+unrelated repeated headers remain allowed. Valid evidence with a missing or
+unequal equals target, or a present absence target, produces FAILED. Details do
+not expose observed or expected header values. Polling checks each actual
+attempt. Mock headers must come from explicit fixtures and actual fulfilled
+browser responses; they are not live backend evidence. No response-header
+reference syntax or multi-value interpretation is introduced.
 
 `field_absent` checks membership, not truthiness: a present null, zero, false,
 empty string, list, or mapping fails. Failure details name the field, not its
@@ -796,6 +899,12 @@ not a standalone gate: failed, empty, or unselected reports may have none.
 A pass covers performed checks, not omitted obligations or the correctness and
 completeness of the human-approved baseline.
 
+Any performed failing check makes the domain and run FAILED, even when its step
+also has a tolerated control-flow outcome. In particular, polling with
+`on_timeout: SKIP` still blocks later steps, but cannot hide an actual request-header
+mismatch observed during an attempt. A response-readiness timeout alone retains
+the existing SKIPPED step and DEGRADED aggregate.
+
 ## Contract identity
 
 Contract consumes backend recordings without sending requests. Its identity is
@@ -814,8 +923,11 @@ verify a flow with `session: new`; it reports an error instead of inferring whic
 renewal steps actually ran. Only final polling recordings
 contribute. Response requirements retain success/failure/don't-care, an optional
 exact HTTP status or allowed status set, required
-fields, expected values, forbidden fields, and all collection matching
-constraints. Collection checks evaluate final provider collections with the
+fields, expected values, forbidden fields, selected response-header equality or
+absence, and all collection matching constraints. Header checks use the complete
+raw response pair list captured before normalization; missing or ambiguous
+header evidence is an error, not proof of absence. Headers do not change endpoint
+identity or make contract an independent observer. Collection checks evaluate final provider collections with the
 same strict matching rules and actual provider-reference values; contract does
 not reduce them to presence checks. HTTP-status requirements use the original
 recording status, independently of normalized success/failure; missing, malformed,

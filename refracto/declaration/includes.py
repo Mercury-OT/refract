@@ -13,6 +13,7 @@ from pathlib import PurePosixPath
 from refracto.declaration.model import Assertion, Binding, Expect, ValueRef
 from refracto.declaration.collections import is_scalar
 from refracto.query import wire_query
+from refracto import headers as header_ops
 
 
 def is_include(item):
@@ -228,7 +229,7 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
                             else quote(str(v), safe="") for v in segments)
             request = replace(request, path=path, declared_path=path,
                               path_segments=segments, body=_map(request.body, convert),
-                              query=_map(request.query, convert))
+                              query=_map(request.query, convert), headers=_map(request.headers, convert))
         expect = Expect(**{point: [Assertion(a.check, _map(a.params, convert))
                                   for a in getattr(original.expect, point)]
                            for point in ("frontend", "response", "backend_state")})
@@ -273,8 +274,22 @@ def validate_instantiated(scenario):
                         wire_query({key: value})
                     except ValueError:
                         _error("instantiated query value must be a finite non-null scalar")
+            for declared in (step.request.headers or {}).values():
+                value = known(declared)
+                if value is not unknown:
+                    try:
+                        header_ops.validate_value(value)
+                    except ValueError:
+                        _error("instantiated header value must be a bounded string")
         for point in ("frontend", "response", "backend_state"):
             for assertion in getattr(step.expect, point):
+                if assertion.check == "header_equals":
+                    value = known(assertion.params["value"])
+                    if value is not unknown:
+                        try:
+                            header_ops.validate_value(value)
+                        except ValueError:
+                            _error("instantiated response header value must be a bounded string")
                 for key in {"value", "id"} & set(assertion.params):
                     value = known(assertion.params[key])
                     if value is not unknown and isinstance(value, (list, dict)):

@@ -67,6 +67,8 @@ class RecordsUi(ports.UiDriver, ports.StepwiseUiDriver):
         )
 
     def perform_step(self, scenario, step, context, permit):
+        if step.request is not None:
+            self.browser.validate_request_headers(context, step.request.headers)
         if permit.action == "open":
             if permit.target != "records.page":
                 raise ValueError("unknown page target")
@@ -140,6 +142,44 @@ one exact match; zero or multiple matches remain ambiguous errors. Unassigned
 or background traffic cannot satisfy an assertion, even with a matching query.
 See [the query contract](../SCENARIO.md#request-query-parameters).
 
+Optional `expect.request.headers` entries constrain the actual associated
+request by case-insensitive name and exact string value. Other browser headers
+are allowed, and omitted or empty mappings add no header constraint. The helper
+reads the complete browser-observed request header block, including cookies, then records the
+effective trace replacement and removal of internal association markers. It
+does not insert declared values into the page's request. `RequestSpec.headers`
+remains a business-input mapping; the browser's authoritative observations are
+`RecordedResponse.request_header_items`, not credential-bearing business inputs.
+This is the browser interception boundary, not packet capture: `route.fetch`
+can add transport-owned headers such as `Host` and `Content-Length` when it
+forwards the request. Those transport names cannot be business declarations.
+Actual-server tests compare the business and credential values, effective trace,
+and removal of private markers independently.
+
+Before performing a primitive, call `validate_request_headers(context, headers)`
+as in the adapter above. This mechanical name check rejects declared business
+headers that collide with the context's `extra_http_headers`, which the adapter
+supplied as session credentials. It does not use expected values to drive the
+page. Standard credential and transport header names are also forbidden as
+business declarations. Product-specific authentication mechanisms beyond these
+context headers remain the adapter's responsibility.
+
+When one associated method/path request exists, a wrong or missing declared
+header produces a failed request assertion. With several candidates, an explicit
+query narrows the set first and declared headers can then select exactly one.
+Zero or multiple matches are errors. Unavailable header evidence cannot be
+silently discarded during selection, and headers never promote background or
+replayed traffic into the current action.
+
+Response `header_equals` and `header_absent` checks use the complete ordered
+`RecordedResponse.header_items` pairs before normalization. Names are
+case-insensitive; values are exact strings, with no splitting or semantic
+interpretation. An empty value is present. `None` means unavailable evidence,
+not absence; only an explicitly complete block can prove absence. Repeated
+entries are retained. A repeated asserted name is unsupported evidence and an
+error, while unrelated repeated entries such as `Set-Cookie` remain valid.
+These raw fields are sensitive and hidden from default representations.
+
 ## Request origins and completion
 
 Same-origin `fetch` and asynchronous `XMLHttpRequest` started in the targeted
@@ -206,6 +246,15 @@ an exact query match. `query={}` requires no parameters; the default `None`
 retains method/path-only fixture matching. A wrong-query fixture aborts the
 actual request without reaching a live API. Query evidence remains in the
 traffic/response pair and is checked against the Recorder and fixture plan.
+Optional `request_headers` fixture entries constrain only their named request
+headers. Optional `response_headers` supply independent response header values
+alongside the default JSON content type. Both mappings are authored independently
+of Scenario expectations. A wrong request-header fixture aborts without consuming
+it or contacting the API. Response evidence is collected from Chromium after
+fulfilment, including generated headers such as `Content-Length`; the supplied
+fixture mapping alone is not treated as a complete response block. Core checks
+supplied fixture headers against the recorded complete observations and detects
+header tampering. This remains mock evidence, not live provider proof.
 
 For a multi-context run, core supplies the same `MockResponseQueue` to each
 `open_stepwise` call. Forward it as `mock_queue`; do not create a new queue when
@@ -237,7 +286,7 @@ the Demo's backend-state trace; it is not proof of independent provenance.
 Instrumentation runs inside the tested browser and does not protect against a
 malicious application, adapter, or normalizer.
 
-Helper/context repr and helper error messages omit bodies, queries, browser handles,
+Helper/context repr and helper error messages omit bodies, queries, header values, browser handles,
 context options, bound values, selectors, and URLs. Raw port objects still hold
 sensitive request/response data and are not a safe logging or export format.
 The rendering callback must interpret existing UI state without clicking,

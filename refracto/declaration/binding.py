@@ -22,6 +22,7 @@ from refracto.declaration.model import RequestTemplate, ValueRef, Assertion, Exp
 from refracto.declaration import values as value_ops
 from refracto.declaration.collections import is_scalar, resolve_matching
 from refracto.query import wire_query, request_path
+from refracto import headers as header_ops
 
 _PLACEHOLDER_RE = re.compile(r"\{([^}]+)\}")
 
@@ -126,7 +127,8 @@ def substitute(template, values):
     new_path = _substitute_path(template.path, values)
     new_body = None if template.body is None else _substitute_body(template.body, values)
     return replace(template, path=new_path, body=new_body,
-                   query=None if template.query is None else dict(template.query))
+                   query=None if template.query is None else dict(template.query),
+                   headers=None if template.headers is None else dict(template.headers))
 
 
 def prepare_step(step, scenario, prior_norms):
@@ -198,14 +200,25 @@ def prepare_step(step, scenario, prior_norms):
             except ValueError:
                 invalid(request.query, "resolved query requires nonempty string keys and finite scalar values")
         request_path(path, {})
+        headers = None if request.headers is None else concrete(request.headers)
+        if headers is not None:
+            try:
+                header_ops.business_headers(headers)
+            except ValueError:
+                invalid(request.headers, "resolved business headers require valid names and bounded string values")
         request = replace(request, path=path, body=body,
-                          declared_path=request.declared_path or request.path, query=query)
+                          declared_path=request.declared_path or request.path, query=query, headers=headers)
     expect = Expect(**{
         point: [Assertion(a.check, concrete(a.params)) for a in getattr(step.expect, point)]
         for point in ("frontend", "response", "backend_state")
     })
     for point in ("frontend", "response", "backend_state"):
         for original, assertion in zip(getattr(step.expect, point), getattr(expect, point)):
+            if assertion.check == "header_equals":
+                try:
+                    header_ops.validate_value(assertion.params["value"])
+                except ValueError:
+                    invalid(original.params["value"], "resolved response header value must be a bounded string")
             for key in {"value", "id"} & set(assertion.params):
                 if not is_scalar(assertion.params[key]):
                     invalid(original.params[key], "resolved assertion value/id must be a finite scalar")

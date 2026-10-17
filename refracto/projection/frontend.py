@@ -8,6 +8,7 @@ from refracto.report import CheckResult, DomainResult, StepResult, PASSED, FAILE
 from refracto.declaration import values
 from refracto.projection import ui_stepwise
 from refracto.query import wire_query
+from refracto import headers as header_ops
 
 
 def _objects_at(rendered, anchor):
@@ -94,12 +95,14 @@ def _eval_frontend(assertion, rendered, bound_values=None, inputs=None):
     return CheckResult("frontend", assertion.check, False, "unknown frontend check")
 
 
-def _eval_request_shape(request, outgoing):
+def _eval_request_shape(request, outgoing, *, request_header_items=None):
+    headers_ok = header_ops.match_headers(request.headers or {}, request_header_items)
     ok = len(outgoing) == 1 and (
         outgoing[0].method == request.method
         and outgoing[0].path == request.path
         and (request.query is None or outgoing[0].query == wire_query(request.query))
         and (request.body is None or ui_stepwise._subset(outgoing[0].body, request.body))
+        and headers_ok
     )
     return CheckResult("request", "request", ok,
                        "" if ok else "associated UI request violates its declaration")

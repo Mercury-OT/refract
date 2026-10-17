@@ -29,7 +29,7 @@ class ValueRef:
 @dataclass
 class Assertion:
     check: str
-    params: dict = field(default_factory=dict)
+    params: dict = field(default_factory=dict, repr=False, metadata={"sensitive": True})
 
 @dataclass
 class RequestTemplate:
@@ -39,6 +39,7 @@ class RequestTemplate:
     path_segments: list | None = field(default=None, kw_only=True)
     declared_path: str | None = field(default=None, kw_only=True)
     query: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    headers: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 @dataclass(frozen=True)
 class Binding:
