@@ -1,10 +1,32 @@
 """Shared minimal ResponseNormalizer port-result validation."""
 import copy
+from dataclasses import replace
 
 from refracto.ports import NormalizedResponse, RequestSpec
 from refracto.declaration.values import equal
 from refracto.projection.recording import _evidence_equal
 from refracto import headers as header_ops
+
+
+def _snapshot_containers(value, memo=None):
+    """Own built-in data containers without copying unrelated opaque leaves.
+
+    Presence/success checks do not impose the comparison data domain on every
+    normalized field. Preserve opaque leaves and cycles here; an actual value
+    comparison/reference validates its own data before using it.
+    """
+    if type(value) not in (dict, list):
+        return value
+    memo = {} if memo is None else memo
+    if id(value) in memo:
+        return memo[id(value)]
+    result = {} if type(value) is dict else []
+    memo[id(value)] = result
+    if type(value) is dict:
+        result.update((key, _snapshot_containers(item, memo)) for key, item in value.items())
+    else:
+        result.extend(_snapshot_containers(item, memo) for item in value)
+    return result
 
 
 def normalize_response(normalizer, response):
@@ -35,4 +57,7 @@ def normalize_response(normalizer, response):
         if (not _evidence_equal(getattr(supplied, name, None), expected)
                 or (norm.raw is not None and not _evidence_equal(getattr(norm.raw, name, None), expected))):
             raise ValueError("Normalizer changed protected header evidence")
-    return norm
+    # The adapter may reuse its result buffer on the next call. A retained
+    # observation must remain the value observed at this call's boundary.
+    fields = norm.fields if type(norm.fields) is dict else dict(norm.fields)
+    return replace(norm, fields=_snapshot_containers(fields))

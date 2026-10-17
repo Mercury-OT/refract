@@ -493,7 +493,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         context, context_id = context_for(lease)
                         permit = _issue_permit(secret, execution_id, step, bound, mode, lease, context_id)
                         outcome = header_ops.call_port("UI action", ui.perform_step,
-                            scenario, step, context, permit, sensitive=sensitive_headers)
+                            scenario, copy.deepcopy(step), context, permit, sensitive=sensitive_headers)
                         sensitive_headers = sensitive_headers or _has_returned_headers(outcome)
                         evidence = _validate_evidence(outcome, permit, secret, accepted_tokens,
                                                       seen_requests, seen_traces, retained_plan, consumed)

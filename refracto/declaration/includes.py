@@ -12,6 +12,7 @@ from pathlib import PurePosixPath
 
 from refracto.declaration.model import Assertion, Binding, Expect, ValueRef
 from refracto.declaration.collections import is_scalar
+from refracto.declaration import field_comparison
 from refracto.query import wire_query
 from refracto import headers as header_ops
 
@@ -292,7 +293,8 @@ def validate_instantiated(scenario):
                             _error("instantiated response header value must be a bounded string")
                 for key in {"value", "id"} & set(assertion.params):
                     value = known(assertion.params[key])
-                    if value is not unknown and isinstance(value, (list, dict)):
+                    if (assertion.check not in field_comparison.CHECKS and value is not unknown
+                            and isinstance(value, (list, dict))):
                         _error("instantiated assertion value must be scalar")
                 if assertion.check == "collection_matching_count":
                     for declared in assertion.params["matching"].values():

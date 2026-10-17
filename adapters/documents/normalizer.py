@@ -10,6 +10,8 @@ def _document_fields(document: object) -> dict:
     properties = properties if isinstance(properties, dict) else {}
     sources = (
         ("document_id", document, "identifier"),
+        # Expose the whole observed value; never reconstruct a selected subset.
+        ("content", document, "content"),
         ("title", properties, "title"),
         ("category", properties, "category"))
     return {field: source[key] for field, source, key in sources if key in source}

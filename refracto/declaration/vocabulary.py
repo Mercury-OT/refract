@@ -26,6 +26,7 @@ _TERMS = {
         "status_in": ("values",),
         "has": ("field",),
         "field_equals": ("field", "value"),
+        "field_not_equals": ("field", "value"),
         "field_absent": ("field",),
         "header_equals": ("header", "value"),
         "header_absent": ("header",),

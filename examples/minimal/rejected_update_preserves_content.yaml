@@ -1,0 +1,89 @@
+# Rejection is checked separately from the unchanged-content obligation.
+schema_version: 1
+scenario: records.rejected_update_preserves_content
+description: A non-owner update is refused and the creator reads unchanged content
+users: [creator, peer]
+
+parameters:
+  original_content:
+    title: Original record
+    status: draft
+    tags: [review, shared]
+  attempted_content:
+    title: Unexpected change
+    status: published
+    tags: [edited]
+
+steps:
+  # Preparation is an explicit request, not hidden adapter setup.
+  - id: create
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          content: {from_parameter: original_content}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: id}
+
+  # Establish a successful observation of the same record before the attempt.
+  - id: read_before
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [records, {from_step: create, response_field: id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: id
+          value: {from_step: create, response_field: id}
+        - check: field_equals
+          field: content
+          value: {from_parameter: original_content}
+
+  - id: peer_attempts_update
+    user: peer
+    do:
+      request:
+        method: PATCH
+        path: [records, {from_step: create, response_field: id}]
+        body:
+          content: {from_parameter: attempted_content}
+    expect:
+      response:
+        - {check: status_equals, value: 403}
+        - {check: failure}
+        # This is the synthetic service's reported reason, not independent proof.
+        - {check: field_equals, field: error_code, value: owner_required}
+
+  # Ordinary assertion failure above still permits this independent read-back.
+  - id: read_after
+    user: creator
+    do:
+      request:
+        method: GET
+        path: [records, {from_step: create, response_field: id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: id
+          value: {from_step: create, response_field: id}
+        # Compare all members, list order and exact types in the selected field.
+        - check: field_equals
+          field: content
+          value: {from_step: read_before, response_field: content}
+        # Complementary check; equality above is the unchanged-content proof.
+        - check: field_not_equals
+          field: content
+          value: {from_parameter: attempted_content}

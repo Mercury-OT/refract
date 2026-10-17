@@ -101,6 +101,16 @@ all of those into a truthful `NormalizedResponse`. In this example, bare JSON
 becomes the normalized field map, while 204 becomes `succeeded=True` with
 `fields={}`.
 
+Use response `field_equals` to compare an entire normalized object or list with
+a parameter or earlier response. `field_not_equals` requires a present, valid
+value that differs; absence is not evidence of inequality. Object keys must match
+completely and list order matters. Keep success/status and object-identity checks
+so two error payloads or two different resources cannot prove an unchanged
+business record. See the [comparison rules](../SCENARIO.md#complete-response-field-comparison)
+and the complete [read/refusal/read example](../examples/minimal/rejected_update_preserves_content.yaml).
+Its tests use an independently implemented synthetic target; it does not claim
+that the introductory minimal driver supplies every example capability.
+
 ## Projection capabilities
 
 Run `contract` together with `backend`. Contract consumes the recordings made by

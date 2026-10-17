@@ -571,7 +571,7 @@ def dynamic_use_bundle(tmp_path, position):
 
 
 @pytest.mark.parametrize("position,value", [
-    ("assertion", {"secret": "SENSITIVE-DYNAMIC"}), ("assertion", []),
+    ("state", {"secret": "SENSITIVE-DYNAMIC"}), ("id", []),
     ("assertion", float("nan")), ("assertion", float("inf")),
     ("id", {"secret": "SENSITIVE-DYNAMIC"}), ("state", []),
     ("body", []), ("body", "SENSITIVE-DYNAMIC"),
@@ -607,6 +607,7 @@ def test_dynamic_invalid_use_fails_before_consumer_mapping_and_send(tmp_path, po
 
 @pytest.mark.parametrize("position,value", [
     ("assertion", 0), ("assertion", False), ("assertion", True), ("assertion", ""),
+    ("assertion", []), ("assertion", {"nested": [None, False]}),
     ("body", {}), ("body", {"nested": [False, 0, ""]}),
     ("path", 0), ("path", "actual"),
 ])

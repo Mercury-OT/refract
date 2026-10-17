@@ -23,7 +23,8 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Business request headers and response-header checks](tasks/business-http-headers.md) | Implemented; independent audit and architect acceptance passed. See the [local acceptance record](tasks/business-http-headers-acceptance.md). Format 1 and the existing structure retained. | Authorized public delivery uses the PR/CI workflow; preserve the accepted header-evidence boundaries. |
+| 1 | [Complete response-field equality and inequality](tasks/response-field-comparison.md) | Implemented; independent audit and architect acceptance passed. See the [local acceptance record](tasks/response-field-comparison-acceptance.md). Format 1 and the existing structure retained. | Authorized public delivery uses the PR/CI workflow; preserve the selected-field evidence boundary. |
+| Delivered | [Business request headers and response-header checks](tasks/business-http-headers.md) | Delivered through PR #25 in main `73b356f`; see the [local acceptance record](tasks/business-http-headers-acceptance.md). Format 1 and the existing structure retained. | Preserve the accepted header-evidence boundaries. |
 | Delivered | [Mixed anonymous users and included-user mappings](tasks/anonymous-users-inclusion.md) | Delivered through PR #24 in main `0c14865`; see the [local acceptance record](tasks/anonymous-users-inclusion-acceptance.md). Format 1 and one-level inclusion retained. | Preserve user/session isolation and explicit complete mappings. |
 | Delivered | [Explicit request query parameters](tasks/request-query-parameters.md) | Delivered through PR #23 in main `68af23a`. Approved five-step example, actual browser query checks, format 1 and existing assertion vocabulary retained. | Preserve the accepted query and evidence boundaries. |
 | Delivered | [Response-based rejection evidence](tasks/response-rejection-evidence.md) | Delivered through PR #22 in main `eaca8cb`. Approved four-step example; no new vocabulary or runtime semantics. | Preserve the accepted response-evidence boundary. |
@@ -44,6 +45,18 @@ Browser support, inclusion, and named results have subsequently been merged.
 The approved expression remains the basis of execution;
 implementation convenience must not silently change its meaning.
 
+The approved comparison slice extends response `field_equals` to complete
+objects/lists and adds `field_not_equals`. Both require usable evidence; missing
+fields cannot satisfy inequality. It preserves one-level inclusion, users,
+sessions and failure continuation. The approved creator-read/peer-refusal/read
+example compares the selected normalized content, not all stored state or raw
+HTTP responses. Public synthetic Records and Documents consumers and real
+browser controls passed. Final regression passed 2727 tests with real Chromium,
+no skips and one existing warning; isolated dev-only regression passed 2354 with
+one optional Demo collection skip. Independent review's unrelated-field copying
+finding was fixed and retested. No private-product migration is included. Local
+acceptance does not claim that publication or hosted CI has finished.
+
 The accepted header slice checks declared business headers against actual API
 and browser observations, and selected response headers against complete raw
 pair lists. It preserves duplicates and distinguishes unknown evidence from
@@ -56,7 +69,9 @@ privacy were fixed and retested. A subsequent CI failure exposed delayed mock
 response-header collection; deterministic regression, independent audit and full
 local reruns passed after correction. This is synthetic capability evidence, not
 production adoption or universal packet-level capture. The acceptance record
-does not substitute for the subsequent PR, merge and hosted CI checks.
+does not substitute for the subsequent PR, merge and hosted CI checks. The slice
+was subsequently delivered through PR #25 in main `73b356f`; PR checks and all
+four post-merge main jobs passed.
 
 The accepted query slice exposes per-request filters and pagination values in
 the existing request mapping. Actual browser URLs supply observed evidence;

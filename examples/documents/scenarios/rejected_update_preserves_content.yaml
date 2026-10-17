@@ -1,0 +1,85 @@
+# A separate consumer with an enveloped response and document-specific mapping.
+schema_version: 1
+scenario: documents.rejected_update_preserves_content
+description: A refused document edit leaves its complete content unchanged
+users: [creator, peer]
+parameters:
+  original_content:
+    sections:
+      - heading: Overview
+        paragraphs: [First paragraph, Second paragraph]
+    metadata:
+      published: false
+      revision: 1
+  attempted_content:
+    sections: []
+    metadata:
+      published: true
+      revision: 2
+steps:
+  - id: create
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: Content comparison document
+          category: memo
+          content: {from_parameter: original_content}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+  - id: read_before
+    user: creator
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: create, response_field: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: document_id
+          value: {from_step: create, response_field: document_id}
+        # The adapter retains the entire content value, including unknown members.
+        - check: field_equals
+          field: content
+          value: {from_parameter: original_content}
+  - id: peer_attempts_update
+    user: peer
+    do:
+      request:
+        method: PATCH
+        path: [documents, {from_step: create, response_field: document_id}]
+        body:
+          content: {from_parameter: attempted_content}
+    expect:
+      response:
+        - {check: status_equals, value: 403}
+        - {check: failure}
+        - {check: field_equals, field: error_code, value: owner_required}
+  - id: read_after
+    user: creator
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: create, response_field: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: document_id
+          value: {from_step: create, response_field: document_id}
+        - check: field_equals
+          field: content
+          value: {from_step: read_before, response_field: content}
+        - check: field_not_equals
+          field: content
+          value: {from_parameter: attempted_content}

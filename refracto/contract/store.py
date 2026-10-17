@@ -12,6 +12,8 @@ from typing import Literal
 from refracto.declaration import values
 from refracto.declaration import collections
 from refracto.declaration import http_status
+from refracto.declaration import field_comparison
+from refracto.declaration.model import Assertion
 from refracto.normalization import normalize_response
 from refracto import headers as header_ops
 
@@ -25,7 +27,7 @@ DONT_CARE: StatusExpectation = "dont_care"
 @dataclass(frozen=True)
 class EndpointShape:
     response_fields: frozenset[str]
-    response_values: dict = field(default_factory=dict)
+    response_values: dict = field(default_factory=dict, repr=False, metadata={"sensitive": True})
     status_expectation: StatusExpectation = DONT_CARE
     succeeded: bool | None = None
     forbidden_fields: frozenset[str] = field(
@@ -38,6 +40,7 @@ class EndpointShape:
     http_status: int | None = field(default=None, kw_only=True)
     header_constraints: list = field(default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
     header_items: list | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    field_constraints: list = field(default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
@@ -50,7 +53,7 @@ class ContractMismatch:
     endpoint: tuple
     missing_fields: frozenset
     note: str = ""
-    wrong_values: dict = field(default_factory=dict)
+    wrong_values: dict = field(default_factory=dict, repr=False, metadata={"sensitive": True})
     value_errors: dict = field(default_factory=dict)
     unexpected_fields: frozenset[str] = field(
         default_factory=frozenset,
@@ -58,6 +61,7 @@ class ContractMismatch:
     )
     collection_errors: list[str] = field(default_factory=list, kw_only=True)
     header_errors: list[str] = field(default_factory=list, kw_only=True)
+    field_errors: list[str] = field(default_factory=list, kw_only=True)
 
 
 def consumer_contract(scenario) -> Contract:
@@ -91,7 +95,7 @@ def consumer_contract(scenario) -> Contract:
             status_expectation = DONT_CARE
         fields = frozenset(
             a.params["field"] for a in step.expect.response
-            if a.check in ("has", "field_equals", "collection_matching_count")
+            if a.check in ("has", "field_equals", "field_not_equals", "collection_matching_count")
         )
         response_values = {
             a.params["field"]: a.params["value"]
@@ -114,6 +118,7 @@ def consumer_contract(scenario) -> Contract:
             allowed_http_statuses=next((http_status.allowed(a) for a in step.expect.response
                                        if a.check in http_status.CHECKS), None),
             header_constraints=[copy.deepcopy(a) for a in step.expect.response if a.check in header_ops.CHECKS],
+            field_constraints=[copy.deepcopy(a) for a in step.expect.response if a.check in field_comparison.CHECKS],
         )
     return Contract(entries=entries)
 
@@ -184,7 +189,9 @@ def provider_binding_values(scenario, provider: Contract) -> dict:
             if (source_shape is None or binding.field not in source_shape.response_values
                     or source_shape.response_values[binding.field] is None):
                 continue
-            step_values[binding.placeholder] = source_shape.response_values[binding.field]
+            value = source_shape.response_values[binding.field]
+            field_comparison.require_data(value)
+            step_values[binding.placeholder] = copy.deepcopy(value)
         resolved[step.id] = step_values
     return resolved
 
@@ -207,6 +214,7 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
         value_errors = {}
         collection_errors = []
         header_errors = []
+        field_errors = []
         step_id = key[0]
         for constraint in want.header_constraints:
             expected = None
@@ -225,13 +233,17 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
                 constraint["count"], bound_values=bound_values_by_step.get(step_id), inputs=inputs)
             if not ok:
                 collection_errors.append(detail)
-        for field_name, declared in want.response_values.items():
+        constraints = want.field_constraints or [
+            Assertion("field_equals", {"field": name, "value": declared})
+            for name, declared in want.response_values.items()]
+        for constraint in constraints:
+            field_name, declared = constraint.params["field"], constraint.params["value"]
             if field_name in missing:
                 continue
             if field_name not in have.response_values:
                 value_errors[field_name] = "provider field value is unavailable"
                 continue
-            expected, error = values.resolve(
+            expected, error = field_comparison.resolve_expected(
                 declared,
                 bound_values=bound_values_by_step.get(step_id),
                 inputs=inputs,
@@ -240,8 +252,13 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
                 value_errors[field_name] = error
                 continue
             observed = have.response_values[field_name]
-            if not values.equal(observed, expected):
-                wrong_values[field_name] = (expected, observed)
+            ok, detail = field_comparison.evaluate(constraint.check, have.response_values, field_name, expected)
+            if not ok:
+                if (constraint.check == "field_equals" and type(expected) not in (list, dict)
+                        and type(observed) not in (list, dict)):
+                    wrong_values[field_name] = (expected, observed)
+                else:
+                    field_errors.append(detail)
         status_note = ""
         if want.status_expectation == REQUIRES_SUCCESS and not have.succeeded:
             status_note = "status mismatch"
@@ -251,7 +268,7 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
                 not http_status.valid(have.http_status) or have.http_status not in want.allowed_http_statuses):
             status_note = "; ".join(filter(None, [status_note,
                 http_status.mismatch(want.allowed_http_statuses, have.http_status)]))
-        if missing or unexpected or status_note or wrong_values or value_errors or collection_errors or header_errors:
+        if missing or unexpected or status_note or wrong_values or value_errors or collection_errors or header_errors or field_errors:
             out.append(ContractMismatch(
                 endpoint=key,
                 missing_fields=missing,
@@ -261,5 +278,6 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
                 unexpected_fields=unexpected,
                 collection_errors=collection_errors,
                 header_errors=header_errors,
+                field_errors=field_errors,
             ))
     return out

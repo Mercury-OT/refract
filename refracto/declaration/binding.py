@@ -13,13 +13,14 @@ Missing/null response bindings and invalid response-derived use sites block only
 the consumer. Other runtime errors still stop execution; literals are never code.
 """
 
-import math
+import copy
 import re
 import urllib.parse
 from dataclasses import replace
 
 from refracto.declaration.model import RequestTemplate, ValueRef, Assertion, Expect
 from refracto.declaration import values as value_ops
+from refracto.declaration import field_comparison
 from refracto.declaration.collections import is_scalar, resolve_matching
 from refracto.query import wire_query, request_path
 from refracto import headers as header_ops
@@ -44,19 +45,10 @@ class InvalidDependency(DependencyUnavailable, ValueError):
 
 def _require_data(value):
     """Mirror the loader's finite JSON-like domain without printing values."""
-    if value is None or type(value) in (str, bool, int):
-        return
-    if type(value) is float and math.isfinite(value):
-        return
-    if isinstance(value, list):
-        for item in value:
-            _require_data(item)
-        return
-    if isinstance(value, dict) and all(type(key) is str for key in value):
-        for item in value.values():
-            _require_data(item)
-        return
-    raise ValueError("resolved action value requires finite JSON-like data")
+    try:
+        field_comparison.require_data(value)
+    except (ValueError, RecursionError):
+        raise ValueError("resolved action value requires finite JSON-like data") from None
 
 
 def resolve_bindings(step, prior_norms):
@@ -89,7 +81,14 @@ def resolve_bindings(step, prior_norms):
                 f"'{binding.from_step}', field '{binding.field}') binds "
                 f"{binding.placeholder} to a null value", [binding.from_step]
             )
-        values[binding.placeholder] = value
+        try:
+            _require_data(value)
+        except ValueError:
+            raise InvalidDependency("response-derived value requires finite JSON-like data",
+                                    [binding.from_step]) from None
+        # Each consumer owns its values; callbacks cannot rewrite the retained
+        # prior observation through a response-derived container.
+        values[binding.placeholder] = copy.deepcopy(value)
     return values
 
 
@@ -170,7 +169,7 @@ def prepare_step(step, scenario, prior_norms):
                 _require_data(value)
             except ValueError:
                 invalid(node, "response-derived value requires finite JSON-like data")
-            return value
+            return copy.deepcopy(value)
         if isinstance(node, dict):
             return {key: concrete(value) for key, value in node.items()}
         if isinstance(node, list):
@@ -220,6 +219,12 @@ def prepare_step(step, scenario, prior_norms):
                 except ValueError:
                     invalid(original.params["value"], "resolved response header value must be a bounded string")
             for key in {"value", "id"} & set(assertion.params):
+                if assertion.check in field_comparison.CHECKS and key == "value":
+                    try:
+                        field_comparison.require_data(assertion.params[key])
+                    except (ValueError, RecursionError):
+                        invalid(original.params[key], "resolved response comparison value must be finite JSON-like data")
+                    continue
                 if not is_scalar(assertion.params[key]):
                     invalid(original.params[key], "resolved assertion value/id must be a finite scalar")
             if assertion.check == "collection_matching_count":

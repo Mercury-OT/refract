@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 from refracto.declaration import vocabulary as vocab
 from refracto.declaration import http_status
+from refracto.declaration import field_comparison
 from refracto.declaration.collections import is_scalar
 from refracto.query import wire_query
 from refracto import headers as header_ops
@@ -119,6 +120,8 @@ def _data(value, parameters, prior, bindings, where):
     if ref is not None:
         return ref
     if isinstance(value, dict):
+        if any(type(key) is not str for key in value):
+            raise DeclarationError(f"{where} requires string-keyed objects")
         return {k: _data(v, parameters, prior, bindings, where) for k, v in value.items()}
     if isinstance(value, list):
         return [_data(v, parameters, prior, bindings, where) for v in value]
@@ -254,7 +257,8 @@ def _assertions(point, raw, parameters, prior, bindings):
             if check == "header_equals":
                 continue
             value = _data(params[key], parameters, prior, bindings, f"{point}.{check}.{key}")
-            if not isinstance(value, ValueRef) and isinstance(value, (list, dict)):
+            if (check not in field_comparison.CHECKS and not isinstance(value, ValueRef)
+                    and isinstance(value, (list, dict))):
                 raise DeclarationError(f"{point}.{check}.{key} must be scalar or a reference")
             if key == "id" and not isinstance(value, ValueRef):
                 raise DeclarationError("object_field_equals.id must be a value reference")
@@ -280,15 +284,15 @@ def _response_constraints(assertions):
         raise DeclarationError("at most one HTTP status constraint is allowed per step")
     if {"success", "failure"} <= checks:
         raise DeclarationError("response success and failure are mutually exclusive")
-    for check in ("field_equals", "field_absent"):
+    for check in ("field_equals", "field_not_equals", "field_absent"):
         fields = [a.params["field"] for a in assertions if a.check == check]
         if len(fields) != len(set(fields)):
             raise DeclarationError(f"duplicate {check} constraint")
     required = {a.params["field"] for a in assertions
-                if a.check in ("has", "field_equals", "collection_matching_count")}
+                if a.check in ("has", "field_equals", "field_not_equals", "collection_matching_count")}
     forbidden = {a.params["field"] for a in assertions if a.check == "field_absent"}
     if required & forbidden:
-        raise DeclarationError("field_absent conflicts with has/field_equals/collection_matching_count")
+        raise DeclarationError("field_absent conflicts with has/field_equals/field_not_equals/collection_matching_count")
 
 
 def _decode_document(data):
