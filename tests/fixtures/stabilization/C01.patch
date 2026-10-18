@@ -1,0 +1,10 @@
+diff --git a/refracto/projection/continuation.py b/refracto/projection/continuation.py
+--- a/refracto/projection/continuation.py
++++ b/refracto/projection/continuation.py
+@@ -35,5 +35,5 @@ class FlowState:
+             self.origins[step.id] = result.response_origin
+         if result.status == FAILED:
+             self.failures.append(step.id)
+-        if result.status in (ERROR, SKIPPED) or (result.status == FAILED and step.on_failure == "stop"):
++        if result.status in (ERROR, SKIPPED, FAILED):
+             self.stopper = step.id

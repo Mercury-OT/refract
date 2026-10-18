@@ -108,3 +108,11 @@ tests/test_numeric_check_documentation.py
 tests/test_numeric_length_inclusion.py
 tests/test_response_numeric_length.py
 ```
+
+## Subsequent delivery note — 2026-10-18
+
+The accepted change was subsequently committed as
+`936c50aee490ff9d97ec7ee8bbd207f94de5eda5`, present in main. This later Git-history
+observation does not alter the dated local acceptance above and does not itself
+reverify the hosted PR/main CI or branch cleanup. The current status is maintained
+in the [public roadmap](../roadmap.md).

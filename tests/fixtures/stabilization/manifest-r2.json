@@ -1,0 +1,945 @@
+{
+  "archived_evidence": {
+    "audit-results.json": "9f580d408298d311a71c081cb54c1caf47e5ca9d0fbe2ae509983df457fbf5bc",
+    "manifest.json": "d8c5a3c69432a22ba0b39175b472edec17577c130bf6854f37d5f773b82da55f",
+    "results.json": "9f580d408298d311a71c081cb54c1caf47e5ca9d0fbe2ae509983df457fbf5bc"
+  },
+  "current_rows": [
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "8de915175ba549d4eb6f61745dfba39cc24f02eb498c0a442ad2ddeecf7f0686",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 3,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "F01",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 3,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create",
+            "PASSED"
+          ],
+          [
+            "read",
+            "PASSED"
+          ],
+          [
+            "delete",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "create",
+          "status_equals"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/continue_after_failure.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "8de915175ba549d4eb6f61745dfba39cc24f02eb498c0a442ad2ddeecf7f0686",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 3,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "F02",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 3,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create",
+            "PASSED"
+          ],
+          [
+            "read",
+            "PASSED"
+          ],
+          [
+            "delete",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "create",
+          "field_equals"
+        ],
+        [
+          "read",
+          "collection_matching_count"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/continue_after_failure.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "2b64afdd07e984bdb144e002ce3d233d11719a7c954d395c31cfa9316e7e85cb",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 6,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "F03",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 6,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "member_profile",
+            "PASSED"
+          ],
+          [
+            "setup/create",
+            "PASSED"
+          ],
+          [
+            "read_before",
+            "PASSED"
+          ],
+          [
+            "revoke_read",
+            "PASSED"
+          ],
+          [
+            "old_session",
+            "PASSED"
+          ],
+          [
+            "new_session",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "old_session",
+          "status_equals"
+        ],
+        [
+          "old_session",
+          "failure"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/permission_sessions.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "926cb7b6b8d5d282a2f8a90760dd709aa754177c1ada27ffbdf5749ce40983dd",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 0,
+      "fault_layer": "authenticator",
+      "fault_reach_count": 2,
+      "id": "G01",
+      "lane": "guard",
+      "neighbor_expectation": {
+        "action_count": 5,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "creator_profile",
+            "PASSED"
+          ],
+          [
+            "setup/create",
+            "PASSED"
+          ],
+          [
+            "creator_reads",
+            "PASSED"
+          ],
+          [
+            "peer_profile",
+            "PASSED"
+          ],
+          [
+            "peer_reads",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [],
+      "scenario": "examples/documents/scenarios/owner_peer.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "bb0decd06406c8ca9c63c905704bf10434905b11c1a3329fac6fa39adf376bed",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 4,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "F04",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 4,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create",
+            "PASSED"
+          ],
+          [
+            "creator_reads",
+            "PASSED"
+          ],
+          [
+            "peer_profile",
+            "PASSED"
+          ],
+          [
+            "peer_reads",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "peer_reads",
+          "field_equals"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/owner_access.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "ce9d8b2cb9721bf8287b7b9b3509c1146f00376e9236168d96359402a50fd944",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 5,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 2,
+      "id": "F05",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 5,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create_first",
+            "PASSED"
+          ],
+          [
+            "create_other_category",
+            "PASSED"
+          ],
+          [
+            "create_second",
+            "PASSED"
+          ],
+          [
+            "first_page",
+            "PASSED"
+          ],
+          [
+            "next_page",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "next_page",
+          "collection_matching_count"
+        ],
+        [
+          "next_page",
+          "field_equals"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/filter_and_next_page.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "1ec82f36e0cdd68060ffbbec49e7f5c48f77f5048bddf594d2b3a1e0af6b0502",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 5,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 2,
+      "id": "F06",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 5,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "access/create",
+            "PASSED"
+          ],
+          [
+            "access/creator_reads",
+            "PASSED"
+          ],
+          [
+            "access/reader_denied",
+            "PASSED"
+          ],
+          [
+            "exact_refusal",
+            "PASSED"
+          ],
+          [
+            "creator_returns",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "access/reader_denied",
+          "status_in"
+        ],
+        [
+          "access/reader_denied",
+          "failure"
+        ],
+        [
+          "access/reader_denied",
+          "has"
+        ],
+        [
+          "exact_refusal",
+          "status_equals"
+        ],
+        [
+          "exact_refusal",
+          "failure"
+        ],
+        [
+          "exact_refusal",
+          "field_equals"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/mapped_anonymous_access.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "7f63ce3e3c5f86ef2642c2e1e94d8c31918ff417654892e74701927ffa1d1b8f",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 3,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "F07",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 3,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create_document",
+            "PASSED"
+          ],
+          [
+            "retry_document",
+            "PASSED"
+          ],
+          [
+            "find_document",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "find_document",
+          "collection_matching_count"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/idempotent_create.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "40a61d0e89511dea844a1a587014619d0a527bb3833c65761662849598f621b2",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 1,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "F08",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 1,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "create",
+          "header_equals"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/continue_after_failure.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "b600c810ed9249e4b01eec0a3979a44b72012307553b9c71d85309c7b978eb33",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 4,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "F09",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 4,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create",
+            "PASSED"
+          ],
+          [
+            "read_before",
+            "PASSED"
+          ],
+          [
+            "peer_attempts_update",
+            "PASSED"
+          ],
+          [
+            "read_after",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "read_after",
+          "field_equals"
+        ],
+        [
+          "read_after",
+          "field_not_equals"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/rejected_update_preserves_content.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "45c0260e5688566ab7a2e2ee8bb7539bbc6aaf13b5f25485fd7702efe0d3d980",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 3,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "G02",
+      "lane": "guard",
+      "neighbor_expectation": {
+        "action_count": 5,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create_other",
+            "PASSED"
+          ],
+          [
+            "create",
+            "PASSED"
+          ],
+          [
+            "locate",
+            "PASSED"
+          ],
+          [
+            "update",
+            "PASSED"
+          ],
+          [
+            "read",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [],
+      "scenario": "examples/documents/scenarios/locate_update_read.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "dec0282d9f7ea160db28f3be33dfcee0d5763801cb002e5aa2bae6322d8dfcb6",
+      "detector": "tests/stabilization_controls.py::classify",
+      "fault_action_count": 4,
+      "fault_layer": "synthetic-target",
+      "fault_reach_count": 1,
+      "id": "F10",
+      "lane": "assertion",
+      "neighbor_expectation": {
+        "action_count": 5,
+        "reach_count": 0,
+        "status": "PASSED",
+        "steps": [
+          [
+            "create_first",
+            "PASSED"
+          ],
+          [
+            "create_other_category",
+            "PASSED"
+          ],
+          [
+            "create_second",
+            "PASSED"
+          ],
+          [
+            "first_page",
+            "PASSED"
+          ],
+          [
+            "next_page",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": null,
+      "required_failed_checks": [
+        [
+          "first_page",
+          "field_compare"
+        ],
+        [
+          "first_page",
+          "collection_length"
+        ],
+        [
+          "first_page",
+          "field_not_equals"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/check_page_limits.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "8de915175ba549d4eb6f61745dfba39cc24f02eb498c0a442ad2ddeecf7f0686",
+      "detector": "tests/stabilization_controls.py::engine_assertion",
+      "fault_action_count": 3,
+      "fault_layer": "engine",
+      "fault_reach_count": 1,
+      "id": "C01",
+      "lane": "engine",
+      "neighbor_expectation": {
+        "action_count": 3,
+        "reach_count": 1,
+        "status": "FAILED",
+        "steps": [
+          [
+            "create",
+            "FAILED"
+          ],
+          [
+            "read",
+            "FAILED"
+          ],
+          [
+            "delete",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": "tests/fixtures/stabilization/C01.patch",
+      "required_failed_checks": [
+        [
+          "create",
+          "field_equals"
+        ],
+        [
+          "read",
+          "collection_matching_count"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/continue_after_failure.yaml"
+    },
+    {
+      "baseline_applicability": "not_compared",
+      "declaration_sha256": "8de915175ba549d4eb6f61745dfba39cc24f02eb498c0a442ad2ddeecf7f0686",
+      "detector": "tests/stabilization_controls.py::engine_assertion",
+      "fault_action_count": 3,
+      "fault_layer": "engine",
+      "fault_reach_count": 1,
+      "id": "C02",
+      "lane": "engine",
+      "neighbor_expectation": {
+        "action_count": 3,
+        "reach_count": 1,
+        "status": "FAILED",
+        "steps": [
+          [
+            "create",
+            "FAILED"
+          ],
+          [
+            "read",
+            "FAILED"
+          ],
+          [
+            "delete",
+            "PASSED"
+          ]
+        ]
+      },
+      "patch": "tests/fixtures/stabilization/C02.patch",
+      "required_failed_checks": [
+        [
+          "create",
+          "field_equals"
+        ],
+        [
+          "read",
+          "collection_matching_count"
+        ]
+      ],
+      "scenario": "examples/documents/scenarios/continue_after_failure.yaml"
+    }
+  ],
+  "frozen_historical_assets": {
+    "tests/include_fault_controls.py": "caf1932c715316b95859c2554e5370f1a00d3f11b84a5505cc31e3f800739733",
+    "tests/include_fault_controls_baseline.json": "3057742b7d89587e1ad5a64c38a2b0a8a757a1539ad76825427f5449bb1c9d36",
+    "tests/include_fault_controls_candidate.json": "3e448db12df795d66bf5994e5f9b648bc7d5d4085cf05e46a8c80d7e878ec18b"
+  },
+  "historical_declarations": {
+    "baseline": {
+      "tests/include_fault_controls.py::CHILD_CREATE": "38497c62fed6ba6fe4495b6dbde40cf2179aa7da2be9ee60bb6fa508850b9293",
+      "tests/include_fault_controls.py::CHILD_REJECTION": "6cda2b254b88a327b73717eaf0d36ec76c3ea15d1c5f0f696d8fcb09a04dea02",
+      "tests/include_fault_controls.py::FLAT_COLLECTION": "cbb440b799882828b97d7ad9b91a36810eb6162c0f7617d94d888e2b8052783d",
+      "tests/include_fault_controls.py::FLAT_REJECTION": "901292693e6eacca67e94e88272aedb7693d72f21c40ea3cffca208e9199e303",
+      "tests/include_fault_controls.py::FLAT_WRONG_OBJECT": "a9a99059938278430018c14f2b599cc0a5819887dc8d56e21ba1130162e8580a",
+      "tests/include_fault_controls.py::INCLUDE_COLLECTION": "fe971aaef8dba01c09daac6a6293ff03cd4d1fd951a66fc9df0dafa443b911fa",
+      "tests/include_fault_controls.py::INCLUDE_REJECTION": "e9eba18b1b2f45a935d12daf9e0725e02f3e9f2ac79f66a68c46a60cdf8a9f36",
+      "tests/include_fault_controls.py::INCLUDE_WRONG_OBJECT": "2d9a96b2fea3fb7039d382b61a5378f1fc1216e51cad9d468ab050b9b06f40de",
+      "tests/named_results_fault_controls.py::CHILD_CREATE": "e0874cb47ec6331fbb61d75664b54c68de8d5c480bef09445135a06ab93c3977",
+      "tests/named_results_fault_controls.py::INCLUDE_COLLECTION": "11aaa6aa5496a44bcaceb0a917734b5a9a293497f10048b0f157a84848c538b2",
+      "tests/named_results_fault_controls.py::INCLUDE_WRONG_OBJECT": "f762acb89f1c73e84df1623d5b627e26d034d6518d9f2c6166434df105debba9"
+    },
+    "current": {
+      "tests/include_fault_controls.py::CHILD_CREATE": "38497c62fed6ba6fe4495b6dbde40cf2179aa7da2be9ee60bb6fa508850b9293",
+      "tests/include_fault_controls.py::CHILD_REJECTION": "6cda2b254b88a327b73717eaf0d36ec76c3ea15d1c5f0f696d8fcb09a04dea02",
+      "tests/include_fault_controls.py::FLAT_COLLECTION": "cbb440b799882828b97d7ad9b91a36810eb6162c0f7617d94d888e2b8052783d",
+      "tests/include_fault_controls.py::FLAT_REJECTION": "901292693e6eacca67e94e88272aedb7693d72f21c40ea3cffca208e9199e303",
+      "tests/include_fault_controls.py::FLAT_WRONG_OBJECT": "a9a99059938278430018c14f2b599cc0a5819887dc8d56e21ba1130162e8580a",
+      "tests/include_fault_controls.py::INCLUDE_COLLECTION": "fe971aaef8dba01c09daac6a6293ff03cd4d1fd951a66fc9df0dafa443b911fa",
+      "tests/include_fault_controls.py::INCLUDE_REJECTION": "e9eba18b1b2f45a935d12daf9e0725e02f3e9f2ac79f66a68c46a60cdf8a9f36",
+      "tests/include_fault_controls.py::INCLUDE_WRONG_OBJECT": "2d9a96b2fea3fb7039d382b61a5378f1fc1216e51cad9d468ab050b9b06f40de",
+      "tests/named_results_fault_controls.py::CHILD_CREATE": "facede23497a9354f96e41bbf9d9536f45aab6986089ef3734d28a059c8054ff",
+      "tests/named_results_fault_controls.py::CHILD_REJECTION": "4fb6ea48078a6743a1611590144739e6a6cc9ef8da095625808a93cf0e91da69",
+      "tests/named_results_fault_controls.py::FLAT_COLLECTION": "94fab4088827c36050fc09216bb351dc4693ca9b0834ae6fc1b85730a3397fbb",
+      "tests/named_results_fault_controls.py::FLAT_REJECTION": "ef3a8c094e4f19e567fd806690dcaa7e498919c5cba5a94613d9764dfe74fced",
+      "tests/named_results_fault_controls.py::FLAT_WRONG_OBJECT": "bad81f45516610caea16f9f58b87a29d52a135fc4314c193c411342016e5cc0b",
+      "tests/named_results_fault_controls.py::INCLUDE_COLLECTION": "e6d3305beb3260a7edeaceb5e7f541c376b2ad996cc1c04a495be6341ac81dc2",
+      "tests/named_results_fault_controls.py::INCLUDE_REJECTION": "62c13672650b6fa882ba1a86d19c6cdc9af77214e543477e4a712413d8dc1a1e",
+      "tests/named_results_fault_controls.py::INCLUDE_WRONG_OBJECT": "49bb0b66f10ad2a77c4640549cab2c0e5ce96f3edac7e3142f91d13c7aba42f4"
+    }
+  },
+  "historical_executions": [
+    {
+      "fault": "accepted_rejection",
+      "form": "flat",
+      "injected": false,
+      "revision": "baseline"
+    },
+    {
+      "fault": "accepted_rejection",
+      "form": "flat",
+      "injected": true,
+      "revision": "baseline"
+    },
+    {
+      "fault": "accepted_rejection",
+      "form": "include",
+      "injected": false,
+      "revision": "baseline"
+    },
+    {
+      "fault": "accepted_rejection",
+      "form": "include",
+      "injected": true,
+      "revision": "baseline"
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "flat",
+      "injected": false,
+      "revision": "baseline"
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "flat",
+      "injected": true,
+      "revision": "baseline"
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "include",
+      "injected": false,
+      "revision": "baseline"
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "include",
+      "injected": true,
+      "revision": "baseline"
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "flat",
+      "injected": false,
+      "revision": "baseline"
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "flat",
+      "injected": true,
+      "revision": "baseline"
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "include",
+      "injected": false,
+      "revision": "baseline"
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "include",
+      "injected": true,
+      "revision": "baseline"
+    },
+    {
+      "fault": "accepted_rejection",
+      "form": "flat",
+      "injected": false,
+      "revision": "current"
+    },
+    {
+      "fault": "accepted_rejection",
+      "form": "flat",
+      "injected": true,
+      "revision": "current"
+    },
+    {
+      "fault": "accepted_rejection",
+      "form": "include",
+      "injected": false,
+      "revision": "current"
+    },
+    {
+      "fault": "accepted_rejection",
+      "form": "include",
+      "injected": true,
+      "revision": "current"
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "flat",
+      "injected": false,
+      "revision": "current"
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "flat",
+      "injected": true,
+      "revision": "current"
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "include",
+      "injected": false,
+      "revision": "current"
+    },
+    {
+      "fault": "changed_collection_target",
+      "form": "include",
+      "injected": true,
+      "revision": "current"
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "flat",
+      "injected": false,
+      "revision": "current"
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "flat",
+      "injected": true,
+      "revision": "current"
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "include",
+      "injected": false,
+      "revision": "current"
+    },
+    {
+      "fault": "wrong_object_read",
+      "form": "include",
+      "injected": true,
+      "revision": "current"
+    }
+  ],
+  "manifest_version": 1,
+  "projection": "backend",
+  "result_path": "tests/fixtures/stabilization/results-r2.json",
+  "revisions": {
+    "baseline": "67ce17f8855f976d138ee84e34e2df5fdde31cbe",
+    "current": "936c50aee490ff9d97ec7ee8bbd207f94de5eda5"
+  },
+  "sources": {
+    "scripts/measure_stabilization.py": "926007c76c100ae810bf7b6cd945d213977def3afd2748c9c548e92f7c9eae6b",
+    "tests/fixtures/stabilization/C01.patch": "92a43276081b9e1ed4711ff05824df63f102827cd39a1511796b1f7619124838",
+    "tests/fixtures/stabilization/C02.patch": "55eb92ca76c7dc1463569fcb3c7a74de5a8ac59a1ea5ea9e00cbd9d98702835f",
+    "tests/stabilization_controls.py": "159c2317d7433e97851eac3104679441c06f5ac9fe1fc99d9a8ce67548d0a1af",
+    "tests/test_stabilization_measurements.py": "1b50828844c890f4c6b1972dbebeaee47acf7e73f02df034271f9816fe5312c5"
+  },
+  "subject_sources": {
+    "baseline": {
+      "adapters/documents/__init__.py": "41c3c5f0a8ece6c11048722ae3b76ced9c4934bf69efe0df239d66d9e61ddb6a",
+      "adapters/documents/api.py": "9ae10a6886a302b5ea84230826182201f370d56d71977935c13c801b0aba310c",
+      "adapters/documents/auth.py": "d65cf50c6cc5224d86a7bb4e49357ee2c3b927c00dac38d0328600fbfc390154",
+      "adapters/documents/normalizer.py": "439021d8350d4c97c6a08396b31612c51817a7b8aa2a43a68a26bf640ee13022",
+      "adapters/documents/resolver.py": "d23f4b3dc029fc7e918912bfc7c54c935e27c27b50a31ebf573456e475f8f518",
+      "adapters/documents/wiring.py": "53d2767600ef22adee28c530009084848ad118103caed23a0330d9ed5de32aea",
+      "examples/documents/__init__.py": "b9e7110dc0382a027b267190c3120cfd5fa5c79af0906352c21c8e3f872b8d84",
+      "examples/documents/app.py": "0804f40086b296a6db20ded1d9d79556c5b7f709e0e93292d41993d01d0aa77b",
+      "examples/documents/scenarios/create_list_delete.yaml": "c56b9237980801ed0c85674879b54eb43fa585fdd07ec6e94bb12397c88e2426",
+      "examples/documents/scenarios/rejected_create.yaml": "fb94fa5b3e1478b56a0fdccb91da43bea44056535b023409e75150e75b69b20e",
+      "pyproject.toml": "8632b56e3bf455a404f1a128fd88130318d28e83acd5d59c4cd81c04ae12d9cb",
+      "refracto/__init__.py": "7b14120d9ff4141e3a1ed0ecab9be65021d7fb041cf7634d4a0d66fb90b13baf",
+      "refracto/__main__.py": "2080595926d444fd11210a841c753a41837350b0b975bad95997fdb0086ecfe7",
+      "refracto/asyncwait.py": "5604af198c54846cd6e2fd7677c60372a7c2925e979f02c2586e352292868282",
+      "refracto/cli.py": "8c3d802f0508d82dfa939e117ddec38a89a12799cba19240e9009748b5cb7179",
+      "refracto/contract/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "refracto/contract/store.py": "d6c023fe32185482762b8de78a0e6e1971c1e434388378455ed10cc1ebcba75c",
+      "refracto/declaration/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "refracto/declaration/binding.py": "99ef9751d6f09f6076c56f2d3029063e061890fcf5b9edf0196e75fe06e2bc57",
+      "refracto/declaration/collections.py": "7bd73ea42dde39a8687554f74f45e9f0e4d7eb0d6b1c1bdc02089be4d287891d",
+      "refracto/declaration/expansion.py": "d895f3bd0fa71d5b6c872cc188b9bf8d292a626541a4441a7bfe34eb327eb7d8",
+      "refracto/declaration/impact.py": "6df6ea5c6b99858c0f11a27e55e1262d100d5f459bf92547461b75a1da1e27a7",
+      "refracto/declaration/includes.py": "5cc04a407422412f73994989b996f144fc8113bc77a3de6ef89b3a8b99e0d3df",
+      "refracto/declaration/loader.py": "8d8ca6f1735f55170f74961bae266feccc50adff4560158bd1a8e4d62e40c3c6",
+      "refracto/declaration/model.py": "0edb10ffdd103359fa764eab5c4605ef499a8f2754182bf64de3ad1f6635ca76",
+      "refracto/declaration/values.py": "d20d1f1860c1a4be7079963178116e1fa83037ab6b11ab5b7bd0643c6b267ad2",
+      "refracto/declaration/vocabulary.py": "db7f9563214e310483729871ce1fa6f1b807ddb7f10eda7abe0ac13a41bfbd3d",
+      "refracto/grid.py": "6c85ba5b83fef0cc76e0c16eda8cbcf13de3ad0c61e9a30cf6e93e0042dcc098",
+      "refracto/ports.py": "7b2b0be85f909906a17b6c47b294829d0ac45896543145e6ebde84ec51b3f50b",
+      "refracto/projection/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "refracto/projection/backend.py": "59d39d10152ba754f25e7754af8bce0a579b646a9ea66b92828842b7f2ea9fec",
+      "refracto/projection/contract.py": "f0c1d7e2d55eaeeec6690eff5e3a24a07f588da30ed68da7f4efb99e6f67b83c",
+      "refracto/projection/e2e.py": "030caad8b5fd6897c8af82099c6ca59d4656a54200a7f61da509a7f206dedc5c",
+      "refracto/projection/frontend.py": "f349869978b64f6bac2f680a119e6cbdbeaf5c133ec8604e2c876fa750398e74",
+      "refracto/projection/ui_stepwise.py": "26494f33863fdb4de4c37704c967c01fedccfc65ccae94361c8d89b0f4211bb7",
+      "refracto/recorder.py": "fcedebaf1b0c398298296675c9465709f3b240e786a7c59fb61948097f26e8b6",
+      "refracto/report.py": "27b5cea8e076a20b149755cefea373ab356ce8b23b4e48cc5e9a6f006c1098b8",
+      "refracto/runner.py": "53492f04fc495c7fc62f0610b7e4c8fa0943bd934764d1fb23da1ed591baf1d0",
+      "tests/include_fault_controls.py": "caf1932c715316b95859c2554e5370f1a00d3f11b84a5505cc31e3f800739733",
+      "tests/include_fault_controls_baseline.json": "3057742b7d89587e1ad5a64c38a2b0a8a757a1539ad76825427f5449bb1c9d36",
+      "tests/include_fault_controls_candidate.json": "3e448db12df795d66bf5994e5f9b648bc7d5d4085cf05e46a8c80d7e878ec18b",
+      "tests/named_results_fault_controls.py": "0d8e7239c2f93c0887d11f810e41e61281262c98d863988d8920f273fda9a7dd",
+      "uv.lock": "80e4d1811e52964ace339eb9520235f7759d13e1ffbd4a44b3dd333736b972c8"
+    },
+    "current": {
+      "adapters/documents/__init__.py": "41c3c5f0a8ece6c11048722ae3b76ced9c4934bf69efe0df239d66d9e61ddb6a",
+      "adapters/documents/api.py": "1d76de7f68ee9bc86f97289051061c587b1f532eca0edc9c5d483bdcf1d35b9c",
+      "adapters/documents/auth.py": "68a8b3a6c1697257c072de88dfb55c3ba45959248dc31cb0714f931a988d5bcb",
+      "adapters/documents/normalizer.py": "850700e3032587798ec824e56f98986da4d63fb9428e1af506b21f843cf81afc",
+      "adapters/documents/resolver.py": "89fc8f8bbea9b459db992a85b3cb4f34b7664cd9452d96bb9f0c2a4d396081d9",
+      "adapters/documents/wiring.py": "ab9e5dda5c5294d2dfe8f00a26334a91eca20fd5fbd8ec5686f2f9b445e42e6a",
+      "examples/documents/__init__.py": "b9e7110dc0382a027b267190c3120cfd5fa5c79af0906352c21c8e3f872b8d84",
+      "examples/documents/app.py": "aaf7c71fe7d8ccff4be0b05296fc32c756fc4d15f46ee70cc3343877e950c06b",
+      "examples/documents/scenarios/check_page_limits.yaml": "2e3382169bae47f4aa6be1208e90aef02b3afc3211484774d5f376231d0c0ec8",
+      "examples/documents/scenarios/continue_after_failure.yaml": "0155a7a3f0dbb7839b6fa1f8ee53d31852684ae32c1e5ea57171339026c15f70",
+      "examples/documents/scenarios/create_list_delete.yaml": "d9ed0fb517f0f781e52e37c4d4ba0fae08212b6aeff666e9ec0437a8a86943f3",
+      "examples/documents/scenarios/dictionary_document_reference.yaml": "36b3e66a5f4b8234bcfd17a0651e20a971578bf402e1807fd89698a5b75dfae6",
+      "examples/documents/scenarios/filter_and_next_page.yaml": "0dd3bf99d6813d5d8f1c56f536d388dc0fbf25c542a7ba0c8489b30489c49aa9",
+      "examples/documents/scenarios/http_status_create_delete.yaml": "ae7c2a26d61db1b277a1373756eb56b89a4effcd19c4c780b11579adadd3a87f",
+      "examples/documents/scenarios/idempotent_create.yaml": "a350d1e71c9e7e4369c33cd93fc40203cb1e49cffb48bb3419a81e21c6047ff5",
+      "examples/documents/scenarios/locate_update_read.yaml": "c3aabbfd2bf6a225c274ed45a57274ae1ccbacdc2971c14cfae019af5e5dc2a1",
+      "examples/documents/scenarios/mapped_anonymous_access.includes.json": "a1574d1dcf031f234c2555e51262ec78f50de4882aa70132755a009c6cb6a645",
+      "examples/documents/scenarios/mapped_anonymous_access.yaml": "97050f7696e80cca32747c8a2a9c2243eff70e38442a1508fcf6fb692bcb7f59",
+      "examples/documents/scenarios/mapped_peer_access.includes.json": "a1574d1dcf031f234c2555e51262ec78f50de4882aa70132755a009c6cb6a645",
+      "examples/documents/scenarios/mapped_peer_access.yaml": "d9ccdf1e801352a53d0ca49316cba1f66f4338737c678f0438a09ce62597e74d",
+      "examples/documents/scenarios/owner_access.yaml": "f743e7fee47eb69b326ea1643f0c9545162ce51a1a62c78738e3d7a1aaf16594",
+      "examples/documents/scenarios/owner_peer.includes.json": "34cd9da3ea985866c2b56a27994b0f6d3b923f9968346deb13fb23eadaba9380",
+      "examples/documents/scenarios/owner_peer.yaml": "acf81903a03810af2f83ba910e941112d1c7b371498c9d7fe833e8d073b59f3a",
+      "examples/documents/scenarios/permission_sessions.includes.json": "34cd9da3ea985866c2b56a27994b0f6d3b923f9968346deb13fb23eadaba9380",
+      "examples/documents/scenarios/permission_sessions.yaml": "a475133a81822c20131b213f8389ddf7ade2ef9d002aac8c49a90d2ed7da5cda",
+      "examples/documents/scenarios/rejected_create.yaml": "bbb60cdc3a434aeeee5949bb2b1a95a897053756192a2d95beaa23e73307bca9",
+      "examples/documents/scenarios/rejected_update_preserves_content.yaml": "a44fe18736ea8bf7a1ca1777831efa4b97e42ea292589c14071e22901e7c2e22",
+      "examples/documents/scenarios/shared/access_document.yaml": "4f7a16eb5363209e057d9eeb88a5c11512bb6e749d1ba772e0404029e8f661b9",
+      "examples/documents/scenarios/shared/create_document.yaml": "ec3be5b99633b30bd5414b5df7f8e18d42f635f766a73d0939b605a40b149654",
+      "pyproject.toml": "8632b56e3bf455a404f1a128fd88130318d28e83acd5d59c4cd81c04ae12d9cb",
+      "refracto/__init__.py": "7b14120d9ff4141e3a1ed0ecab9be65021d7fb041cf7634d4a0d66fb90b13baf",
+      "refracto/__main__.py": "2080595926d444fd11210a841c753a41837350b0b975bad95997fdb0086ecfe7",
+      "refracto/asyncwait.py": "b4d9a0d4449ba6905cf9415d777b0052aec0d5db53862fb4cb28a1c52fb1365e",
+      "refracto/cli.py": "8c3d802f0508d82dfa939e117ddec38a89a12799cba19240e9009748b5cb7179",
+      "refracto/contract/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "refracto/contract/store.py": "64a12ae22ae74e81d3235eff7e3fae738cdc0251c13df4384e597948a5b6b3c8",
+      "refracto/declaration/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "refracto/declaration/binding.py": "5d805a9bcdf9013688de6fc2547cd2750ce8f676e0ae7ddb90ed2bd39771aa57",
+      "refracto/declaration/collections.py": "7bd73ea42dde39a8687554f74f45e9f0e4d7eb0d6b1c1bdc02089be4d287891d",
+      "refracto/declaration/expansion.py": "a433e8e79a72a121f1d47c8e3c4e0f3862dc71a9e6dd5ef5d3b277b5a1ea2bdb",
+      "refracto/declaration/field_comparison.py": "a7ddd9b2bcc69d07d94c2de542940b5a0c20fe2768a889159e7fdd22f0474b9e",
+      "refracto/declaration/http_status.py": "cd0db23b8a477fe97c8be9be5e38d034f5acc5222997217691bf1eaa61c2225e",
+      "refracto/declaration/impact.py": "f47caa89a6c36662deb505b5f8bc0d6db6c9a80cac38f7b57ae4a52815627c9a",
+      "refracto/declaration/includes.py": "67ecd38b6f31bc0e7956a8842c4053a41a6e74b347ea7713e09a08c317a52891",
+      "refracto/declaration/loader.py": "2e4de45168f9368196afb8963280e854f560c720990eab791f44f2c4589cd396",
+      "refracto/declaration/model.py": "18a22e618435a6bcf0a872e595880cef7c7ca6852b545ccde792325af266a7a3",
+      "refracto/declaration/numeric_comparison.py": "16018d1e517449519c5dccff41dcdd261528421f051424414cd246708a732f40",
+      "refracto/declaration/values.py": "d20d1f1860c1a4be7079963178116e1fa83037ab6b11ab5b7bd0643c6b267ad2",
+      "refracto/declaration/vocabulary.py": "254e24d8b7a6f74cde2dfead19f56178d61f7bc5f4d9468d406b5ea2b83acfb1",
+      "refracto/grid.py": "6c85ba5b83fef0cc76e0c16eda8cbcf13de3ad0c61e9a30cf6e93e0042dcc098",
+      "refracto/headers.py": "00b85cdf87c399232c9648c4225429cb18973fe24ba41edf412f16f84e571daf",
+      "refracto/normalization.py": "735d806f736defc56c34719db2f56174cce2beb69117a54f71b90bece221d917",
+      "refracto/ports.py": "a7d1af177d3e200a9601e39313ea30438ce936e1160e4a3e0bdc45c3afb35535",
+      "refracto/projection/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "refracto/projection/backend.py": "1b37c05a1a1d86d75a24b45b745d4fef2da7dbdb888633da30e75e5aa35f4d86",
+      "refracto/projection/continuation.py": "11edc5c8e23c621cce839971fe924f89b1959ae14d78dc9c2a3b894e0a423d83",
+      "refracto/projection/contract.py": "5ea95fbdb832f1824ae957d7668ca209247c529210bd1ef3abcc09dd12684652",
+      "refracto/projection/e2e.py": "030caad8b5fd6897c8af82099c6ca59d4656a54200a7f61da509a7f206dedc5c",
+      "refracto/projection/frontend.py": "508510282e033044ffce57d895871c888844cdb6f810f6ed9a859c84440f8b30",
+      "refracto/projection/recording.py": "43bc624256239c357935603e0f14fddadf7262c0c4955ce559d29adf2f236cd7",
+      "refracto/projection/sessions.py": "a81c58ecf760eb3d03b18a1723cbb0a8db14461ab9c2f38a1d2ce6533501f914",
+      "refracto/projection/ui_stepwise.py": "877015796e6626866570394b40b403f4a52476c84aed8cb8543c11b35376b13a",
+      "refracto/query.py": "16081988b9c59d994febdb0b3260edb3bc0670ac8371f1876562a88b862d626a",
+      "refracto/recorder.py": "fcedebaf1b0c398298296675c9465709f3b240e786a7c59fb61948097f26e8b6",
+      "refracto/report.py": "66d2e504736cae21a1a6c782b13549740345ac725ced4fbe96d7df1db29c72cb",
+      "refracto/runner.py": "42ba96d22fc40de4776090bee5c25689556f7afb3d0835942e60f9e396ab6c3e",
+      "tests/include_fault_controls.py": "caf1932c715316b95859c2554e5370f1a00d3f11b84a5505cc31e3f800739733",
+      "tests/include_fault_controls_baseline.json": "3057742b7d89587e1ad5a64c38a2b0a8a757a1539ad76825427f5449bb1c9d36",
+      "tests/include_fault_controls_candidate.json": "3e448db12df795d66bf5994e5f9b648bc7d5d4085cf05e46a8c80d7e878ec18b",
+      "tests/named_results_fault_controls.py": "be52f5d2b9fc945599df57e8e831b97e2f2325611e9e9db05cf4a96740a66caf",
+      "tests/test_documents_failure_continuation.py": "9bcdc98b19aa20f7d94248ee873ceabdc23ee1d2941d2d0c0d0727e2261b0f89",
+      "tests/test_field_comparison_consumers.py": "780ca47130ebb4b21f225e10f8ae0c8126fd54489dc614c4fc842e1305db7019",
+      "tests/test_header_documents.py": "c455fc14bff53ed6d7a891f1dc131860d99945e0a1d6fbe94deac7ac4c07beda",
+      "tests/test_member_reference_consumers.py": "d5e50719611f4ee152f6d6a3f2d76000eafb3cedf4ab215e0728c76c1beb56ba",
+      "tests/test_numeric_check_consumers.py": "53f5598babf5369812ec3b246654e89970a54f98ab82fb182d8955b716fe7e89",
+      "tests/test_rejection_evidence.py": "391d6babd5fb8afec14c03cd69d6f76a0174b9eef2abb07474043bf1ba1b1e2e",
+      "uv.lock": "80e4d1811e52964ace339eb9520235f7759d13e1ffbd4a44b3dd333736b972c8"
+    }
+  }
+}
