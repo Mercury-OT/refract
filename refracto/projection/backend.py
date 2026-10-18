@@ -18,6 +18,7 @@ from refracto.declaration import values
 from refracto.declaration import collections
 from refracto.declaration import http_status
 from refracto.declaration import field_comparison
+from refracto.declaration import numeric_comparison
 from refracto.report import CheckResult, DomainResult, StepResult, ResponseOrigin, PASSED, FAILED, SKIPPED, BLOCKED, ERROR
 from refracto.projection.continuation import FlowState
 from refracto.projection.sessions import SessionManager
@@ -32,6 +33,13 @@ def gen_traceparent() -> str:
 
 def _eval_response(assertion, norm, bound_values=None, inputs=None, *, observed_status=None,
                    observed_headers=None):
+    if assertion.check in numeric_comparison.CHECKS:
+        params = assertion.params
+        expected = numeric_comparison.resolve_expected(
+            assertion.check, params["value"], bound_values=bound_values, inputs=inputs)
+        ok, detail = numeric_comparison.evaluate(
+            assertion.check, norm.fields, params["field"], params["op"], expected)
+        return CheckResult("response", assertion.check, ok, detail)
     if assertion.check in header_ops.CHECKS:
         expected = None
         if assertion.check == "header_equals":

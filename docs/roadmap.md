@@ -23,7 +23,8 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Bounded response member references](tasks/response-member-references.md) | Implemented; independent audit and architect acceptance passed. See the [local acceptance record](tasks/response-member-references-acceptance.md). Format 1 and the existing structure retained. | Authorized public submission, required PR CI, merge and main CI. |
+| 1 | [Response numeric and list length checks](tasks/response-numeric-length-checks.md) | Implemented; independent audit and architect acceptance passed. See the [local acceptance record](tasks/response-numeric-length-checks-acceptance.md). Format 1 and the existing structure retained. | Authorized public submission, required PR CI, merge and main CI. |
+| Delivered | [Bounded response member references](tasks/response-member-references.md) | Delivered through PR #27 in main `75db346`; see the [local acceptance record](tasks/response-member-references-acceptance.md). Format 1 and the existing structure retained. | Preserve selection, evidence and use-site boundaries. |
 | Delivered | [Complete response-field equality and inequality](tasks/response-field-comparison.md) | Delivered through PR #26 in main `b7996c4`; see the [local acceptance record](tasks/response-field-comparison-acceptance.md). Format 1 and the existing structure retained. | Preserve the selected-field evidence boundary. |
 | Delivered | [Business request headers and response-header checks](tasks/business-http-headers.md) | Delivered through PR #25 in main `73b356f`; see the [local acceptance record](tasks/business-http-headers-acceptance.md). Format 1 and the existing structure retained. | Preserve the accepted header-evidence boundaries. |
 | Delivered | [Mixed anonymous users and included-user mappings](tasks/anonymous-users-inclusion.md) | Delivered through PR #24 in main `0c14865`; see the [local acceptance record](tasks/anonymous-users-inclusion-acceptance.md). Format 1 and one-level inclusion retained. | Preserve user/session isolation and explicit complete mappings. |
@@ -46,6 +47,18 @@ Browser support, inclusion, and named results have subsequently been merged.
 The approved expression remains the basis of execution;
 implementation convenience must not silently change its meaning.
 
+The approved numeric/length slice checks finite numeric response bounds and
+actual list-length bounds, using the existing reference mechanisms. It preserves
+strict equality, rejects coercion and keeps missing/wrong-type current values,
+invalid evidence and unavailable dependencies distinct. The Documents pagination
+example and independent Records consumer must check actual lists even when a
+reported count appears correct. No arithmetic, automatic pagination, broader
+schema engine or private-product migration is included.
+Final regression passed 3419 tests with real Chromium, no skips and one existing
+warning; a fresh dev-only environment passed 2943 with one optional Demo
+collection skip. Independent audit passed without unresolved findings. Local
+acceptance does not itself establish publication or hosted CI.
+
 The approved member-reference slice reads a literal dictionary key or a field
 from exactly one matching observed list member. Whole-field references remain
 unchanged. It does not add recursive paths, automatic pagination, result-interface
@@ -56,7 +69,9 @@ exercise real observations; no private-product migration is included. Final
 regression passed 3029 tests with real Chromium, no skips and one existing warning;
 fresh dev-only regression passed 2598 with one optional Demo collection skip.
 Independent audit's contract use-site finding was fixed and independently
-retested. Local acceptance does not itself establish publication or hosted CI.
+retested. Its local acceptance record remains historical. The slice was
+subsequently delivered through PR #27 in main `75db346`; all eight branch/PR
+checks and all four post-merge main jobs passed.
 
 The approved comparison slice extends response `field_equals` to complete
 objects/lists and adds `field_not_equals`. Both require usable evidence; missing

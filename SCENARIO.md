@@ -361,6 +361,8 @@ selection is an error. Background traffic never becomes action evidence.
 | `has` | `field` |
 | `field_equals` | `field`, `value` |
 | `field_not_equals` | `field`, `value` |
+| `field_compare` | `field`, `op`, `value` |
+| `collection_length` | `field`, `op`, `value` |
 | `field_absent` | `field` |
 | `collection_matching_count` | `field`, `matching`, `count` |
 
@@ -423,6 +425,82 @@ or a different object from establishing the unchanged-content claim. This proves
 only the selected normalized content, not all database state or an independently
 observed authorization decision.
 
+### Numeric fields and list lengths
+
+`field_compare` compares one actual normalized numeric field with a threshold.
+`collection_length` compares the length of an actual normalized list. Both use
+`field`, `op` and `value`; `op` is `>`, `>=`, `<`, `<=` or `==`. The field name
+is a nonblank literal, not a path. Thresholds use existing literals, parameters,
+prior-response references (including member selection) or included named results.
+There is no arithmetic or new reference syntax.
+
+For example, with a declared integer `page_size` parameter:
+
+```yaml
+- check: field_compare
+  field: returned
+  op: ">="
+  value: 1
+- check: field_compare
+  field: returned
+  op: "<="
+  value: {from_parameter: page_size}
+- check: collection_length
+  field: documents
+  op: ">="
+  value: 1
+- check: collection_length
+  field: documents
+  op: "<="
+  value: {from_parameter: page_size}
+```
+
+Numeric operands are finite integers or floats, excluding booleans. Ordering
+compares integer/float numeric values without converting large integers to
+floats; `==` keeps type-strict equality, so 1 differs from 1.0. Negative numbers
+and zero are valid. Numeric strings are never converted.
+
+List-length thresholds must be nonnegative integers, excluding booleans and
+floats such as 1.0. All elements count, including duplicates, nulls and mixed
+finite JSON-like members. Only a list is measured: strings and mappings are not
+collections for this check. Length does not filter members, fetch other pages,
+prove database totals or assert the types of individual members. Keep existing
+`collection_matching_count` checks when exact content matters.
+
+| Evidence or declaration | Result |
+| --- | --- |
+| Current field missing, null, or a valid JSON-like value of the wrong type | FAILED |
+| Valid operands outside the declared bound | FAILED |
+| Invalid fixed threshold or parameter, including an include override | DeclarationError before execution |
+| Unavailable or invalid response-derived threshold | Local BLOCKED before action, without partial bindings |
+| Examined data contains non-finite numbers, cycles, unsupported objects or invalid mapping keys | ERROR |
+| Malformed normalizer port output | ERROR under the existing port rules |
+
+Missing evidence is never zero or an empty list. Validate the examined value's
+finite JSON-like data even when its type is wrong or a comparison would otherwise
+be trivial. Unrelated normalized fields do not acquire a new restriction.
+Ordinary failures continue unless `on_failure: stop` is declared; existing
+dependency blocking and ERROR/SKIPPED stopping rules remain.
+
+Multiple bounds are retained and all checked. Repeating the same check, field
+and operator is invalid, as is combining either check with `field_absent` on
+that field. There is no automatic range simplification. Existing equality,
+matching-count, UI-count and span comparison behavior is unchanged.
+
+Backend, API/live UI e2e, frontend mock responses and polling share these checks.
+Contract retains each constraint and reads actual provider values; unavailable
+or invalid referenced thresholds cause its existing aggregate ERROR, not a pass
+or a replacement request. Contract is not an independent observer. New details
+name the field, operator and reason without printing operands or list contents;
+this does not promise safe arbitrary serialization or change older diagnostics.
+
+See the [complete Documents pagination example](examples/documents/scenarios/check_page_limits.yaml)
+and the [independent Records declaration](examples/minimal/check_page_limits.yaml).
+Their preparation is explicit, with an isolated empty target and creation-order
+lists. `returned` describes the current page, not the filtered total. Reported
+count bounds and actual list-length bounds are separate checks, not a new
+same-response arithmetic or consistency relation.
+
 ### HTTP response status and headers
 
 `status_equals` checks one exact HTTP status; `status_in` checks membership in an
@@ -476,8 +554,8 @@ reference syntax or multi-value interpretation is introduced.
 `field_absent` checks membership, not truthiness: a present null, zero, false,
 empty string, list, or mapping fails. Failure details name the field, not its
 value. Duplicate absence checks, or absence combined with `has`,
-`field_equals`, `field_not_equals`, or `collection_matching_count` on the same
-field, are invalid.
+`field_equals`, `field_not_equals`, `field_compare`, `collection_length`, or
+`collection_matching_count` on the same field, are invalid.
 
 `collection_matching_count` checks an observed list of objects in one normalized
 field. `matching` is a nonempty mapping of field names to scalar literals or
@@ -1049,14 +1127,17 @@ renewal steps actually ran. Only final polling recordings
 contribute. Response requirements retain success/failure/don't-care, an optional
 exact HTTP status or allowed status set, required
 fields, all complete field-equality and field-inequality constraints, forbidden fields, selected response-header equality or
-absence, and all collection matching constraints. Header checks use the complete
+absence, all numeric/list-length bounds, and all collection matching constraints.
+Header checks use the complete
 raw response pair list captured before normalization; missing or ambiguous
 header evidence is an error, not proof of absence. Headers do not change endpoint
 identity or make contract an independent observer. Field comparisons retain both
 checks on the same field and use actual provider-reference values, including
 complete objects/lists and nested declared references. Missing or invalid
 evidence cannot pass inequality. Contract uses the same strict comparison as
-runtime and does not reduce these requirements to field presence. Collection checks evaluate final provider collections with the
+runtime and does not reduce these requirements to field presence. Numeric and
+length bounds retain every operator and resolve thresholds from provider
+observations; unavailable or invalid thresholds cannot pass. Collection checks evaluate final provider collections with the
 same strict matching rules and actual provider-reference values; contract does
 not reduce them to presence checks. HTTP-status requirements use the original
 recording status, independently of normalized success/failure; missing, malformed,

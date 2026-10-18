@@ -13,6 +13,7 @@ from refracto.declaration import values
 from refracto.declaration import collections
 from refracto.declaration import http_status
 from refracto.declaration import field_comparison
+from refracto.declaration import numeric_comparison
 from refracto.declaration.model import Assertion
 from refracto.declaration.binding import prepare_step
 from refracto.ports import NormalizedResponse
@@ -43,6 +44,7 @@ class EndpointShape:
     header_constraints: list = field(default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
     header_items: list | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
     field_constraints: list = field(default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
+    numeric_constraints: list = field(default_factory=list, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
@@ -98,6 +100,7 @@ def consumer_contract(scenario) -> Contract:
         fields = frozenset(
             a.params["field"] for a in step.expect.response
             if a.check in ("has", "field_equals", "field_not_equals", "collection_matching_count")
+            or a.check in numeric_comparison.CHECKS
         )
         response_values = {
             a.params["field"]: a.params["value"]
@@ -121,6 +124,7 @@ def consumer_contract(scenario) -> Contract:
                                        if a.check in http_status.CHECKS), None),
             header_constraints=[copy.deepcopy(a) for a in step.expect.response if a.check in header_ops.CHECKS],
             field_constraints=[copy.deepcopy(a) for a in step.expect.response if a.check in field_comparison.CHECKS],
+            numeric_constraints=[copy.deepcopy(a) for a in step.expect.response if a.check in numeric_comparison.CHECKS],
         )
     return Contract(entries=entries)
 
@@ -215,6 +219,10 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
     out = []
     bound_values_by_step = bound_values_by_step or {}
     for key, want in consumer.entries.items():
+        numeric_expected = [numeric_comparison.resolve_expected(
+            constraint.check, constraint.params["value"],
+            bound_values=bound_values_by_step.get(key[0]), inputs=inputs)
+            for constraint in want.numeric_constraints]
         have = provider.entries.get(key)
         if have is None:
             if want.header_constraints:
@@ -230,6 +238,12 @@ def diff(consumer: Contract, provider: Contract, *, inputs=None, bound_values_by
         header_errors = []
         field_errors = []
         step_id = key[0]
+        for constraint, expected in zip(want.numeric_constraints, numeric_expected):
+            params = constraint.params
+            ok, detail = numeric_comparison.evaluate(
+                constraint.check, have.response_values, params["field"], params["op"], expected)
+            if not ok:
+                field_errors.append(detail)
         for constraint in want.header_constraints:
             expected = None
             if constraint.check == "header_equals":
