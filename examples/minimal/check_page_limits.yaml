@@ -1,0 +1,105 @@
+schema_version: 1
+scenario: records.check_page_limits
+users: [creator]
+description: Check reported counts and actual list lengths on two filtered record pages.
+parameters:
+  category: guide
+  page_size: 1
+  first_title: First record
+  second_title: Second record
+steps:
+  # The harness owns a fresh isolated service that preserves creation order.
+  # These two matching records and page_size 1 determine the two expected pages.
+  - id: create_first
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          title: {from_parameter: first_title}
+          category: {from_parameter: category}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: id}
+  - id: create_other_category
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          title: Unrelated memo
+          category: memo
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: field_equals, field: category, value: memo}
+  - id: create_second
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          title: {from_parameter: second_title}
+          category: {from_parameter: category}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: id}
+  - id: first_page
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [records]
+        query:
+          category: {from_parameter: category}
+          limit: {from_parameter: page_size}
+          cursor: 0
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_compare, field: returned, op: ">=", value: 1}
+        - {check: field_compare, field: returned, op: "<=", value: {from_parameter: page_size}}
+        - {check: collection_length, field: records, op: ">=", value: 1}
+        - {check: collection_length, field: records, op: "<=", value: {from_parameter: page_size}}
+        - check: collection_matching_count
+          field: records
+          matching:
+            id: {from_step: create_first, response_field: id}
+            title: {from_parameter: first_title}
+            category: {from_parameter: category}
+          count: 1
+        - {check: field_not_equals, field: next_cursor, value: null}
+  - id: next_page
+    do:
+      request:
+        method: GET
+        path: [records]
+        query:
+          category: {from_parameter: category}
+          limit: {from_parameter: page_size}
+          cursor: {from_step: first_page, response_field: next_cursor}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_compare, field: returned, op: ">=", value: 1}
+        - {check: field_compare, field: returned, op: "<=", value: {from_parameter: page_size}}
+        - {check: collection_length, field: records, op: ">=", value: 1}
+        - {check: collection_length, field: records, op: "<=", value: {from_parameter: page_size}}
+        - check: collection_matching_count
+          field: records
+          matching:
+            id: {from_step: create_second, response_field: id}
+            title: {from_parameter: second_title}
+            category: {from_parameter: category}
+          count: 1
+        - {check: field_equals, field: next_cursor, value: null}

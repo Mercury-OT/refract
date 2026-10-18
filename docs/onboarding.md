@@ -123,6 +123,15 @@ These separate synthetic examples require suitable targets and do not enlarge
 the introductory minimal driver's capabilities. Stable existing flat field
 aliases remain usable, and no automatic pagination or global uniqueness is proved.
 
+Use `field_compare` for a numeric response bound and `collection_length` for an
+actual list-length bound. A count reported by the service is not a substitute for
+checking its returned list. Keep content checks as well: a wrong page can have
+the correct size. The [pagination example](../examples/documents/scenarios/check_page_limits.yaml)
+creates its own documents, checks both bounds, and follows the actual cursor.
+See the [type and failure rules](../SCENARIO.md#numeric-fields-and-list-lengths);
+missing or invalid evidence is never coerced to zero. The separate synthetic
+examples do not extend the introductory minimal driver's supported operations.
+
 ## Projection capabilities
 
 Run `contract` together with `backend`. Contract consumes the recordings made by

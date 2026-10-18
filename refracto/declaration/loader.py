@@ -9,6 +9,7 @@ import yaml
 from refracto.declaration import vocabulary as vocab
 from refracto.declaration import http_status
 from refracto.declaration import field_comparison
+from refracto.declaration import numeric_comparison
 from refracto.declaration import values as value_ops
 from refracto.declaration.collections import is_scalar
 from refracto.query import wire_query
@@ -276,6 +277,19 @@ def _assertions(point, raw, parameters, prior, bindings):
                 raise DeclarationError("status_in.values must be a nonempty list of distinct literal integers from 100 through 599")
         for key in set(params) & {"anchor", "field", "span", "attr"}:
             _string(params[key], f"{point}.{check}.{key}")
+        if check in numeric_comparison.CHECKS:
+            value = _reference(params["value"], parameters, prior, bindings,
+                               f"{point}.{check}.value")
+            if value is None:
+                value = params["value"]
+            known = parameters[value.key] if isinstance(value, ValueRef) and value.source == "input" else value
+            try:
+                numeric_comparison.require_operator(params["op"])
+                if not isinstance(known, ValueRef):
+                    numeric_comparison.require_expected(check, known)
+            except ValueError as exc:
+                raise DeclarationError(str(exc)) from None
+            params["value"] = value
         if check in {"objects_matching_count", "collection_matching_count", "count_gt"}:
             count = params["count"]
             if check != "count_gt" and (type(count) is not int or count < 0):
@@ -299,7 +313,7 @@ def _assertions(point, raw, parameters, prior, bindings):
                 resolved[key] = value
             params["matching"] = resolved
         for key in set(params) & {"value", "id"}:
-            if check == "header_equals":
+            if check == "header_equals" or check in numeric_comparison.CHECKS:
                 continue
             value = _data(params[key], parameters, prior, bindings, f"{point}.{check}.{key}")
             if (check not in field_comparison.CHECKS and not isinstance(value, ValueRef)
@@ -333,11 +347,16 @@ def _response_constraints(assertions):
         fields = [a.params["field"] for a in assertions if a.check == check]
         if len(fields) != len(set(fields)):
             raise DeclarationError(f"duplicate {check} constraint")
+    numeric = [(a.check, a.params["field"], a.params["op"])
+               for a in assertions if a.check in numeric_comparison.CHECKS]
+    if len(numeric) != len(set(numeric)):
+        raise DeclarationError("duplicate response numeric comparison constraint")
     required = {a.params["field"] for a in assertions
-                if a.check in ("has", "field_equals", "field_not_equals", "collection_matching_count")}
+                if a.check in ("has", "field_equals", "field_not_equals", "collection_matching_count")
+                or a.check in numeric_comparison.CHECKS}
     forbidden = {a.params["field"] for a in assertions if a.check == "field_absent"}
     if required & forbidden:
-        raise DeclarationError("field_absent conflicts with has/field_equals/field_not_equals/collection_matching_count")
+        raise DeclarationError("field_absent conflicts with a response presence constraint")
 
 
 def _decode_document(data):

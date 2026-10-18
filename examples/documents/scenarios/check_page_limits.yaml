@@ -1,0 +1,106 @@
+schema_version: 1
+scenario: documents.check_page_limits
+users: [editor]
+description: Check numeric and actual page-length bounds while following an observed cursor.
+parameters:
+  category: guide
+  page_size: 1
+  first_title: Getting started
+  second_title: Advanced usage
+steps:
+  # The harness supplies a fresh isolated target with creation-order lists.
+  # Two matching guides and page_size 1 make exactly these two pages expected.
+  - id: create_first
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: first_title}
+          category: {from_parameter: category}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+  - id: create_other_category
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: Internal memo
+          category: memo
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: field_equals, field: category, value: memo}
+  - id: create_second
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: second_title}
+          category: {from_parameter: category}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document_id}
+  - id: first_page
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+        query:
+          category: {from_parameter: category}
+          limit: {from_parameter: page_size}
+          cursor: 0
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_compare, field: returned, op: ">=", value: 1}
+        - {check: field_compare, field: returned, op: "<=", value: {from_parameter: page_size}}
+        - {check: collection_length, field: documents, op: ">=", value: 1}
+        - {check: collection_length, field: documents, op: "<=", value: {from_parameter: page_size}}
+        - check: collection_matching_count
+          field: documents
+          matching:
+            document_id: {from_step: create_first, response_field: document_id}
+            title: {from_parameter: first_title}
+            category: {from_parameter: category}
+          count: 1
+        - {check: field_not_equals, field: next_cursor, value: null}
+  - id: next_page
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+        query:
+          category: {from_parameter: category}
+          limit: {from_parameter: page_size}
+          # The next request uses actual response evidence from first_page.
+          cursor: {from_step: first_page, response_field: next_cursor}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_compare, field: returned, op: ">=", value: 1}
+        - {check: field_compare, field: returned, op: "<=", value: {from_parameter: page_size}}
+        - {check: collection_length, field: documents, op: ">=", value: 1}
+        - {check: collection_length, field: documents, op: "<=", value: {from_parameter: page_size}}
+        - check: collection_matching_count
+          field: documents
+          matching:
+            document_id: {from_step: create_second, response_field: document_id}
+            title: {from_parameter: second_title}
+            category: {from_parameter: category}
+          count: 1
+        - {check: field_equals, field: next_cursor, value: null}
