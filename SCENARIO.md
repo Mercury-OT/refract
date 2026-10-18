@@ -572,6 +572,76 @@ binding aliases, expressions, arithmetic, concatenation, JSONPath, reference-val
 mapping keys, or coercion are supported. Frontend references read mock responses,
 which remain distinguishable from live responses.
 
+### Dictionary keys and unique collection members
+
+A whole-field reference is unchanged. Add a literal `key` to read one member of
+an observed dictionary:
+
+```yaml
+from_step: create
+response_field: record
+key: id
+```
+
+This reads the actual `record` dictionary's `id`, not a top-level `id` and not an
+expected value. Without `key`, the reference returns the entire `record` value.
+`key` must be a nonblank literal string. A dot or slash is part of that literal
+key, not a nested path. A selected object/list can be used whole at positions
+that already allow it, but selection cannot continue into it.
+
+For an observed list of objects, use both `matching` and `member_field`:
+
+```yaml
+from_step: locate
+response_field: records
+matching:
+  code: {from_parameter: record_code}
+member_field: id
+```
+
+Every predicate must match the same member, using the existing type-strict
+`collection_matching_count` rules. Exactly one member must match; the reference
+then reads its literal `member_field`. No `count`, index, first-item fallback,
+sorting or extra request is involved. This checks only the observed response/page,
+not all pages or global database uniqueness. The normalizer must retain the
+observed collection, not choose its member using Scenario expectations.
+
+Matching values accept finite scalar literals, parameters, ordinary prior
+response-field references and included named-result references. Literal or
+parameter null may match a present null, but not a missing member key. New
+selectors cannot be recursively nested inside matching values. Known nonscalar
+predicates fail loading; unavailable/nonscalar response-derived predicates block
+the consuming step.
+
+The three reference shapes are exclusive: `key` cannot accompany `matching` or
+`member_field`, and both list-selector fields are required together. Unknown
+fields, dynamic keys, forward/self sources, and selector additions to parameter
+or included-result references are invalid. Sources remain earlier local
+request-bearing steps. Named-result definitions keep their existing two fields;
+this extension does not expose child internals or change that interface. Child
+steps may use selectors internally, and callers may pass selected values through
+existing `with` parameters. Expanded review retains the selector meaning.
+
+A wrong container type, malformed list member, missing key/member field,
+zero/multiple matches, selected null or unusable selected value produces atomic
+local `BLOCKED` before the consuming action, with no partial resolved bindings.
+Selection verifies uniqueness itself even without a preceding count assertion.
+Zero, false and empty strings are preserved where permitted; paths still reject
+booleans and empty strings. Whole objects/lists remain finite JSON-like values,
+and runtime data resembling reference syntax is never executed. Evidence is not
+mutated, and mutable selected values are isolated from later callbacks.
+
+New selection diagnostics explain the source and structural reason without
+printing matching values or selected contents. This is not a guarantee for
+generic serialization or all existing scalar assertion details. Backend, e2e,
+frontend mock references and contract share the selection rules; contract uses
+actual provider evidence, not expected data or a new independent observation.
+
+See the complete [create/list/update/read example](examples/minimal/create_locate_update_read.yaml)
+and [dictionary reference example](examples/minimal/dictionary_record_reference.yaml).
+Their supplied record codes require an isolated target with those codes initially
+unused; no automatic unique-value generator or hidden preparation is implied.
+
 ## Including a pinned, reviewed Scenario
 
 A Scenario may include all steps of a local single- or multi-user child, mapping

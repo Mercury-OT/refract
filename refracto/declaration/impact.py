@@ -370,6 +370,10 @@ def _references(value, location):
         if "from_step" in value or "response_field" in value:
             if set(value) == {"from_step", "result"} and all(isinstance(v, str) for v in value.values()):
                 yield value["from_step"], value["result"], location
+            if (set(value) == {"from_step", "response_field", "matching", "member_field"}
+                    and isinstance(value["matching"], dict)):
+                for key, item in sorted(value["matching"].items()):
+                    yield from _references(item, location + "/matching/" + _pointer(key))
             return
         if set(value) & {"from_input", "from_bind"}:
             return
@@ -386,6 +390,13 @@ def _wiring(value, show_values):
             return {"kind": "parameter-reference", "from_parameter": value["from_parameter"]}
         if set(value) in ({"from_step", "result"}, {"from_step", "response_field"}) and all(isinstance(v, str) for v in value.values()):
             return {"kind": "step-reference", **value}
+        if set(value) == {"from_step", "response_field", "key"} and all(isinstance(v, str) for v in value.values()):
+            return {"kind": "step-reference", **value}
+        if (set(value) == {"from_step", "response_field", "matching", "member_field"}
+                and isinstance(value["matching"], dict)):
+            return {"kind": "step-reference", "from_step": value["from_step"],
+                    "response_field": value["response_field"], "member_field": value["member_field"],
+                    "matching": {key: _wiring(item, show_values) for key, item in sorted(value["matching"].items())}}
         return {"kind": "object", "entries": {k: _wiring(v, show_values) for k, v in sorted(value.items())}}
     if isinstance(value, list):
         return {"kind": "array", "items": [_wiring(v, show_values) for v in value]}

@@ -1,0 +1,39 @@
+schema_version: 1
+scenario: documents.dictionary_document_reference
+description: Use a literal member of the complete observed document envelope
+users: [editor]
+parameters:
+  title: Dictionary document
+  category: memo
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: title}
+          category: {from_parameter: category}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: document}
+  - id: read
+    do:
+      request:
+        method: GET
+        path:
+          - documents
+          # The normalized envelope retains the target's actual identifier key.
+          - {from_step: create, response_field: document, key: identifier}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: document_id
+          value: {from_step: create, response_field: document, key: identifier}
+        - {check: field_equals, field: title, value: {from_parameter: title}}
+        - {check: field_equals, field: category, value: {from_parameter: category}}

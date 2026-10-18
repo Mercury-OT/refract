@@ -32,6 +32,8 @@ class DocumentResponseNormalizer(ports.ResponseNormalizer):
             fault = body.get("fault")
             if isinstance(resource, dict) and isinstance(resource.get("document"), dict):
                 fields = _document_fields(resource["document"])
+                # Preserve the complete observed dictionary alongside stable aliases.
+                fields["document"] = resource["document"]
             elif isinstance(resource, dict) and isinstance(resource.get("normalized"), dict):
                 fields = dict(resource["normalized"])
             elif isinstance(resource, dict) and isinstance(resource.get("account"), dict):

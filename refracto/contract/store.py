@@ -14,6 +14,8 @@ from refracto.declaration import collections
 from refracto.declaration import http_status
 from refracto.declaration import field_comparison
 from refracto.declaration.model import Assertion
+from refracto.declaration.binding import prepare_step
+from refracto.ports import NormalizedResponse
 from refracto.normalization import normalize_response
 from refracto import headers as header_ops
 
@@ -174,7 +176,19 @@ def provider_binding_values(scenario, provider: Contract) -> dict:
     """Resolve each step's bindings from provider response evidence."""
     steps = {step.id: step for step in scenario.steps}
     resolved = {}
+    observations = {}
+    for source in scenario.steps:
+        if source.request is not None:
+            shape = provider.entries.get((source.id, source.request.method, source.request.path))
+            if shape is not None:
+                observations[source.id] = NormalizedResponse(shape.succeeded, shape.response_values, shape.http_status, None)
     for step in scenario.steps:
+        if any(binding.key is not None or binding.matching is not None for binding in step.bind):
+            # Selection must also be legal at its declared use site. Otherwise
+            # successful downstream recordings could mask a value that could
+            # never have produced that request under the execution rules.
+            _, resolved[step.id] = prepare_step(step, scenario, observations)
+            continue
         step_values = {}
         for binding in step.bind:
             source = steps.get(binding.from_step)

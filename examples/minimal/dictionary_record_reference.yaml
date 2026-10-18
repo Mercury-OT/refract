@@ -1,0 +1,38 @@
+# The target exposes record as a complete normalized dictionary.
+schema_version: 1
+scenario: records.dictionary_record_reference
+description: Read a created record using its observed dictionary member
+users: [creator]
+parameters:
+  record_code: dictionary-example-001
+  record_name: Dictionary reference record
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records, enveloped]
+        body:
+          code: {from_parameter: record_code}
+          name: {from_parameter: record_name}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: record}
+  - id: read
+    do:
+      request:
+        method: GET
+        path:
+          - records
+          # Literal key lookup in the already observed dictionary; no request or search.
+          - {from_step: create, response_field: record, key: id}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: id, value: {from_step: create, response_field: record, key: id}}
+        - {check: field_equals, field: code, value: {from_parameter: record_code}}
+        - {check: field_equals, field: name, value: {from_parameter: record_name}}
