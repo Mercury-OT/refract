@@ -6,7 +6,8 @@ from refracto.declaration.model import ValueRef
 
 def expansion_view(scenario):
     parameters = scenario.parameters
-    bindings = {binding.placeholder: binding for step in scenario.steps for binding in step.bind}
+    bindings = dict(scenario.reference_bindings)
+    bindings.update({binding.placeholder: binding for step in scenario.steps for binding in step.bind})
 
     def aliases(items):
         return {name: {"from_step": source.from_step, "response_field": source.response_field}
@@ -18,7 +19,13 @@ def expansion_view(scenario):
                 return {"kind": "reference", "from_parameter": node.key}
             binding = bindings.get(node.key)
             if binding is not None:
-                return {"kind": "reference", "from_step": binding.from_step, "response_field": binding.field}
+                result = {"kind": "reference", "from_step": binding.from_step, "response_field": binding.field}
+                if binding.key is not None:
+                    result["key"] = binding.key
+                if binding.matching is not None:
+                    result["matching"] = {key: value(item) for key, item in binding.matching.items()}
+                    result["member_field"] = binding.member_field
+                return result
             # An unused with parameter still belongs in the explicit view, but
             # has no consuming leaf's Binding. Keys use loader's length prefix.
             length, _, rest = node.key.partition(":")

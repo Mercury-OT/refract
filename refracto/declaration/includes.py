@@ -158,8 +158,9 @@ def participant_mapping(call, child_users, parent_users):
     return dict(mapping)
 
 
-def instantiate(call, dependencies, parameters, prior, mapping, caller_parameters, *, implicit_anonymous=False):
-    from refracto.declaration.loader import _data, _mapping
+def instantiate(call, dependencies, parameters, prior, mapping, caller_parameters, *, implicit_anonymous=False,
+                reference_bindings=None):
+    from refracto.declaration.loader import _data, _mapping, _binding
     _mapping(call, {"id", "do", "with", "user", "with_users"}, "include step")
     sid = call["id"]
     child, pin, _ = dependencies[call["do"]["include"]]
@@ -182,23 +183,23 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
         parameters[generated] = value
         namespace[key] = generated
     external_bindings = {binding.placeholder: binding for binding in external}
+    if reference_bindings is not None:
+        reference_bindings.update(external_bindings)
     result, sources = [], {}
     for original in child.steps:
         local_user = child.selected_user(original) or "anonymous"
         user = mapping[local_user]
         if user == "anonymous" and original.session is not None:
             _error("anonymous include mapping cannot replace a session")
+        originals = {binding.placeholder: binding for binding in original.bind}
         rewritten = {}
-        for binding in original.bind:
-            source = f"{sid}/{binding.from_step}"
-            key = f"{len(source)}:{source}:{binding.field}"
-            rewritten[binding.placeholder] = Binding(key, source, binding.field)
         used = {}
 
         def visit_external(node):
             if isinstance(node, ValueRef):
                 if node.source == "bind":
                     binding = external_bindings[node.key]
+                    visit_external(binding.matching)
                     used[binding.placeholder] = binding
                 elif node.source == "input":
                     visit_external(parameters[node.key])
@@ -218,6 +219,13 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
                     # offline contract comparison sees the same runtime source.
                     return parameters[key]
                 return ValueRef("input", key)
+            if ref.key not in rewritten:
+                original_binding = originals[ref.key]
+                matching = _map(original_binding.matching, convert)
+                binding = _binding(list(used.values()), f"{sid}/{original_binding.from_step}",
+                    original_binding.field, key=original_binding.key, matching=matching,
+                    member_field=original_binding.member_field)
+                rewritten[ref.key] = binding
             binding = rewritten[ref.key]
             used[binding.placeholder] = binding
             return ValueRef("bind", binding.placeholder)
@@ -239,6 +247,8 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
                        expect=expect, value=value, bind=list(used.values()),
                        user=None if implicit_anonymous else user)
         result.append(step)
+        if reference_bindings is not None:
+            reference_bindings.update(used)
         sources[step.id] = {"scenario_id": child.id, "step_id": original.id,
                             "include_step_id": sid, "sha256": pin,
                             "source_user": local_user, "effective_user": user}
@@ -260,6 +270,11 @@ def validate_instantiated(scenario):
         return node
 
     for step in scenario.steps:
+        for binding in step.bind:
+            for declared in (binding.matching or {}).values():
+                value = known(declared)
+                if value is not unknown and not is_scalar(value):
+                    _error("instantiated response reference matching value must be a finite scalar")
         if step.request is not None:
             for segment in step.request.path_segments:
                 value = known(segment)

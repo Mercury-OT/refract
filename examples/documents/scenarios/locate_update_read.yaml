@@ -1,0 +1,93 @@
+# Preparation stays visible. The target document is not the first list member.
+schema_version: 1
+scenario: documents.locate_update_read
+description: Select a unique document from an observed page, update its content, and read it back
+users: [editor]
+parameters:
+  title: Selected document
+  category: guide
+  new_content: {sections: [Updated section], revision: 2}
+steps:
+  - id: create_other
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body: {title: Other document, category: guide}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: title}
+          category: {from_parameter: category}
+          content: {sections: [Original section], revision: 1}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+  - id: locate
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+        query: {category: {from_parameter: category}, limit: 10}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: collection_matching_count
+          field: documents
+          matching:
+            title: {from_parameter: title}
+            category: {from_parameter: category}
+          count: 1
+  - id: update
+    on_failure: stop
+    do:
+      request:
+        method: PATCH
+        path:
+          - documents
+          - from_step: locate
+            response_field: documents
+            matching:
+              title: {from_parameter: title}
+              category: {from_parameter: category}
+            member_field: document_id
+        body: {content: {from_parameter: new_content}}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: document_id
+          value:
+            from_step: locate
+            response_field: documents
+            matching:
+              title: {from_parameter: title}
+              category: {from_parameter: category}
+            member_field: document_id
+        - {check: field_equals, field: title, value: {from_parameter: title}}
+        - {check: field_equals, field: content, value: {from_parameter: new_content}}
+  - id: read
+    do:
+      request:
+        method: GET
+        path: [documents, {from_step: update, response_field: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: document_id, value: {from_step: update, response_field: document_id}}
+        - {check: field_equals, field: title, value: {from_parameter: title}}
+        - {check: field_equals, field: content, value: {from_parameter: new_content}}

@@ -111,6 +111,18 @@ and the complete [read/refusal/read example](../examples/minimal/rejected_update
 Its tests use an independently implemented synthetic target; it does not claim
 that the introductory minimal driver supplies every example capability.
 
+When an observed normalized field is already a dictionary, a response reference
+may add `key: id` to read one literal key. For a list, use `matching` plus
+`member_field` to read a field from exactly one matching member. Keep selection
+in the declaration rather than teaching the normalizer each Scenario's desired
+record. Missing, ambiguous or unusable values block the consumer before action;
+the resolver must not invent an ID. See the [member reference rules](../SCENARIO.md#dictionary-keys-and-unique-collection-members),
+the [create/list/update/read declaration](../examples/minimal/create_locate_update_read.yaml)
+and the [dictionary declaration](../examples/minimal/dictionary_record_reference.yaml).
+These separate synthetic examples require suitable targets and do not enlarge
+the introductory minimal driver's capabilities. Stable existing flat field
+aliases remain usable, and no automatic pagination or global uniqueness is proved.
+
 ## Projection capabilities
 
 Run `contract` together with `backend`. Contract consumes the recordings made by

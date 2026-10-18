@@ -309,7 +309,7 @@ def test_diagnostic_mapping_is_a_distinct_shallow_copy_of_execution_values(
     seen = {}
     original_run_step = backend._run_step
 
-    def fake_resolve_bindings(step, prior_norms):
+    def fake_resolve_bindings(step, prior_norms, *, inputs=None):
         if step.id == "target":
             return execution_mapping
         return {}

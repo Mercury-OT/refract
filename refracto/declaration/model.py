@@ -46,6 +46,9 @@ class Binding:
     placeholder: str
     from_step: str
     field: str
+    key: str | None = field(default=None, kw_only=True)
+    matching: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    member_field: str | None = field(default=None, kw_only=True)
 
 @dataclass(frozen=True)
 class ResultSource:
@@ -94,6 +97,7 @@ class Scenario:
     included_results: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     users: list[str] | None = field(default=None, kw_only=True)
     include_user_mappings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
+    reference_bindings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
 
     def __post_init__(self):
         # Bounded Python-constructor migration only. The YAML loader never

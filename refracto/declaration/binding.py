@@ -51,7 +51,7 @@ def _require_data(value):
         raise ValueError("resolved action value requires finite JSON-like data") from None
 
 
-def resolve_bindings(step, prior_norms):
+def resolve_bindings(step, prior_norms, *, inputs=None):
     """Return `{placeholder: value}` for every declared binding.
 
     Raises if a referenced prior step is missing, if the bound field is not
@@ -59,6 +59,7 @@ def resolve_bindings(step, prior_norms):
     `None`. Falsy-but-present values remain valid.
     """
     values = {}
+    source_by_key = {binding.placeholder: binding.from_step for binding in step.bind}
     for binding in step.bind:
         if binding.from_step not in prior_norms:
             raise MissingDependency(
@@ -75,6 +76,43 @@ def resolve_bindings(step, prior_norms):
                 f"response", [binding.from_step]
             )
         value = norm.fields[binding.field]
+        if binding.key is not None:
+            if type(value) is not dict or any(type(key) is not str for key in value):
+                raise InvalidDependency("response dictionary selection requires a string-keyed dictionary", [binding.from_step])
+            if binding.key not in value:
+                raise MissingDependency("response dictionary selection key is missing", [binding.from_step])
+            value = value[binding.key]
+        elif binding.matching is not None:
+            if (type(value) is not list or any(type(member) is not dict
+                    or any(type(key) is not str for key in member) for member in value)):
+                raise InvalidDependency("response collection selection requires a list of string-keyed dictionaries", [binding.from_step])
+            predicates = {}
+            for key, declared in binding.matching.items():
+                expected, error = declared, None
+                predicate_sources = []
+                # Include substitution can put a typed reference inside an input.
+                seen = set()
+                while isinstance(expected, ValueRef) and error is None:
+                    identity = (expected.source, expected.key)
+                    if identity in seen:
+                        error = "cyclic predicate reference"
+                        break
+                    seen.add(identity)
+                    if expected.source == "bind" and expected.key in source_by_key:
+                        predicate_sources.append(source_by_key[expected.key])
+                    expected, error = value_ops.resolve(expected, bound_values=values, inputs=inputs)
+                if error is not None or not is_scalar(expected):
+                    raise InvalidDependency("response collection predicate is unavailable or not a finite scalar",
+                                            predicate_sources or [binding.from_step])
+                predicates[key] = expected
+            matches = [member for member in value if all(
+                key in member and value_ops.equal(member[key], expected)
+                for key, expected in predicates.items())]
+            if len(matches) != 1:
+                raise InvalidDependency("response collection selection requires exactly one matching member", [binding.from_step])
+            if binding.member_field not in matches[0]:
+                raise MissingDependency("response collection selected member field is missing", [binding.from_step])
+            value = matches[0][binding.member_field]
         if value is None:
             raise InvalidDependency(
                 f"binding '{binding.placeholder}' (from step "
@@ -136,7 +174,7 @@ def prepare_step(step, scenario, prior_norms):
     The returned diagnostics isolate their top-level mapping; nested values retain
     the existing shallow-copy semantics. No declaration assertion is invented.
     """
-    bound = resolve_bindings(step, prior_norms)
+    bound = resolve_bindings(step, prior_norms, inputs=scenario.inputs)
     by_key = {item.placeholder: item.from_step for item in step.bind}
 
     def sources(node):

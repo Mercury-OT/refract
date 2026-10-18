@@ -209,7 +209,8 @@ def test_explicit_document_response_normalizes_observed_fields():
 
     result = response_normalizer.normalize(response)
     assert result.succeeded is True
-    assert result.fields == {"document_id": "document-sample", "category": "guide"}
+    assert result.fields == {"document_id": "document-sample", "category": "guide",
+                             "document": body["resource"]["document"]}
 
     partial_response = ports.RecordedResponse(
         status=200,
@@ -224,7 +225,7 @@ def test_explicit_document_response_normalizes_observed_fields():
     )
     partial = response_normalizer.normalize(partial_response)
     assert partial.succeeded is True
-    assert partial.fields == {"title": "partial"}
+    assert partial.fields == {"title": "partial", "document": {"properties": {"title": "partial"}}}
 
 
 def _normalize_result_set(result_set):

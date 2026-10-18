@@ -3,11 +3,13 @@ import math
 import numbers
 import urllib.parse
 import hashlib
+import json
 from pathlib import Path
 import yaml
 from refracto.declaration import vocabulary as vocab
 from refracto.declaration import http_status
 from refracto.declaration import field_comparison
+from refracto.declaration import values as value_ops
 from refracto.declaration.collections import is_scalar
 from refracto.query import wire_query
 from refracto import headers as header_ops
@@ -81,7 +83,30 @@ def _json(value, where):
     raise DeclarationError(f"{where} requires finite JSON-like data")
 
 
-def _reference(value, parameters, prior, bindings, where):
+def _binding(bindings, source, field, *, key=None, matching=None, member_field=None):
+    """Intern typed selectors without placing predicate data in report keys."""
+    for binding in bindings:
+        if (binding.from_step == source and binding.field == field
+                and binding.key == key and binding.member_field == member_field
+                and value_ops.equal(binding.matching, matching)):
+            return binding
+    def typed(node):
+        if isinstance(node, ValueRef):
+            return ["reference", node.source, node.key]
+        if type(node) is dict:
+            return ["object", [[name, typed(item)] for name, item in sorted(node.items())]]
+        return [type(node).__name__, node]
+
+    identity = json.dumps([source, field, key, typed(matching), member_field],
+                          ensure_ascii=True, separators=(",", ":"))
+    placeholder = (f"{len(source)}:{source}:{field}" if key is None and matching is None
+                   else "@member:" + hashlib.sha256(identity.encode("utf-8")).hexdigest())
+    binding = Binding(placeholder, source, field, key=key, matching=matching, member_field=member_field)
+    bindings.append(binding)
+    return binding
+
+
+def _reference(value, parameters, prior, bindings, where, *, selectors=True):
     if not isinstance(value, dict):
         return None
     if "from_parameter" in value:
@@ -101,15 +126,35 @@ def _reference(value, parameters, prior, bindings, where):
             alias = aliases[name]
             source, field = alias.from_step, alias.response_field
         else:
-            _mapping(value, {"from_step", "response_field"}, where)
+            _mapping(value, {"from_step", "response_field", "key", "matching", "member_field"}, where)
             field = _string(value.get("response_field"), where)
             if source not in prior or prior[source].request is None:
                 raise DeclarationError(f"{where}: response source must be an earlier request-bearing step")
-        # Length-prefix the source so dots/colons in identifiers cannot alias.
-        key = f"{len(source)}:{source}:{field}"
-        if not any(b.placeholder == key for b in bindings):
-            bindings.append(Binding(key, source, field))
-        return ValueRef("bind", key)
+        selection = set(value) & {"key", "matching", "member_field"}
+        if selection and not selectors:
+            raise DeclarationError("collection reference predicates cannot contain member selectors")
+        if selection not in (set(), {"key"}, {"matching", "member_field"}):
+            raise DeclarationError("response member reference requires either key or matching with member_field")
+        key, matching, member_field = None, None, None
+        if "key" in value:
+            key = _string(value["key"], "response reference key")
+        if "matching" in value:
+            member_field = _string(value["member_field"], "response reference member_field")
+            if type(value["matching"]) is not dict or not value["matching"]:
+                raise DeclarationError("response reference matching must be a nonempty mapping")
+            matching = {}
+            for name, declared in value["matching"].items():
+                _string(name, "response reference matching key")
+                predicate = _reference(declared, parameters, prior, bindings, where, selectors=False)
+                if predicate is None:
+                    if not is_scalar(declared):
+                        raise DeclarationError("response reference matching value must be a finite scalar or plain reference")
+                    predicate = declared
+                elif predicate.source == "input" and not is_scalar(parameters[predicate.key]):
+                    raise DeclarationError("response reference matching parameter must be a finite scalar")
+                matching[name] = predicate
+        binding = _binding(bindings, source, field, key=key, matching=matching, member_field=member_field)
+        return ValueRef("bind", binding.placeholder)
     if set(value) & {"from_bind", "from_input"}:
         raise DeclarationError(f"{where}: old reference syntax is unsupported")
     return None
@@ -341,7 +386,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         raise DeclarationError("steps must be a non-empty list")
     steps, prior, assertion_count = [], _ReferenceScope(), 0
     execution_ids = set()
-    source_lookup, source_ids, include_user_mappings = {}, set(), {}
+    source_lookup, source_ids, include_user_mappings, reference_bindings = {}, set(), {}, {}
     for item in raw["steps"]:
         if dependencies is not None:
             from refracto.declaration.includes import instantiate, is_include, participant_mapping
@@ -353,7 +398,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                 child = dependencies[item["do"]["include"]][0]
                 mapping = participant_mapping(item, child.users, users)
                 expanded, sources = instantiate(item, dependencies, parameters, prior, mapping,
-                                                declared_parameters, implicit_anonymous=not users)
+                                                declared_parameters, implicit_anonymous=not users,
+                                                reference_bindings=reference_bindings)
                 include_user_mappings[sid] = dict(mapping)
                 for step in expanded:
                     if step.id in execution_ids:
@@ -424,6 +470,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted,
                     on_failure=item.get("on_failure", "continue"), user=user, session=item.get("session"))
         steps.append(step)
+        reference_bindings.update({binding.placeholder: binding for binding in bindings})
         execution_ids.add(sid)
         prior[sid] = step
         if source_hash is not None:
@@ -450,7 +497,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                       include_dependencies={key: {"path": value[2], "sha256": value[1]}
                                             for key, value in (dependencies or {}).items()},
                       results=aliases, included_results=prior.include_results, users=list(users),
-                      include_user_mappings=include_user_mappings)
+                      include_user_mappings=include_user_mappings, reference_bindings=reference_bindings)
     if dependencies is not None:
         from refracto.declaration.includes import validate_instantiated
         if len(steps) > 1000:
