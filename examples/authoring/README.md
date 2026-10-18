@@ -14,16 +14,16 @@ Refracto has two orthogonal kinds of layering:
 ## Three roles and their files
 
 ```text
-Human (top)             AI (middle)                 Framework (bottom)
-examples/authoring/     .claude/skills/             refracto/
-*.case.yaml      ->     refract-authoring   ->      scenarios/*.yaml -> RunReport
-intent + oracle         structure from rules.md     frozen handoff       deterministic
+Human (top)             Drafting (middle)            Framework (bottom)
+examples/authoring/     human or AI                 refracto/
+*.case.yaml      ->     rules.md guidance    ->     scenarios/*.yaml -> RunReport
+intent + oracle         explicit transformation     frozen handoff       execution
 ```
 
 * Humans may write `cases/*.case.yaml`: intent plus oracle. These are optional
   drafting inputs, not another executable language or approval artifact.
-* AI structures those cases into deterministic `scenarios/*.yaml` according to
-  `rules.md`.
+* A human or optional AI tool drafts `scenarios/*.yaml` using `rules.md`.
+  No packaged authoring skill or automatic conversion tool is supplied here.
 * Humans approve the exact resulting `schema_version: 1` YAML, then the framework
   executes that frozen scenario. Validation is not approval or execution.
 
@@ -48,7 +48,7 @@ execution.
 
 ```text
 examples/authoring/cases/item_update.case.yaml
-    -> refract-authoring skill
+    -> optional drafting using rules.md
     -> human review and approval
     -> scenarios/demo_item_update.yaml
     -> refracto runner

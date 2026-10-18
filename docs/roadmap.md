@@ -23,14 +23,16 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| 1 | [Response numeric and list length checks](tasks/response-numeric-length-checks.md) | Implemented; independent audit and architect acceptance passed. See the [local acceptance record](tasks/response-numeric-length-checks-acceptance.md). Format 1 and the existing structure retained. | Authorized public submission, required PR CI, merge and main CI. |
+| Accepted | [Bounded stabilization](tasks/stabilization-20261018.md) | All four groups passed independent audit, architect acceptance and maintainer review. The maintainer separately authorized public submission on 2026-10-18; see the [local results and subsequent authorization](tasks/stabilization-20261018-consistency.md). No declaration or runtime changes. | The task PR and its checks establish publication, merge and CI status; local acceptance alone does not. |
+| 1 | Run-unique values | Expression review resumes after stabilization's submission workflow; no new YAML or implementation approved. Relative time, adapter-conformance features and satellites remain deferred. | Present a commented YAML proposal for maintainer confirmation; do not implement yet. |
+| Delivered | [Response numeric and list length checks](tasks/response-numeric-length-checks.md) | Delivered in main `936c50a`; see the [historical local acceptance record and subsequent delivery note](tasks/response-numeric-length-checks-acceptance.md). Format 1 and the existing structure retained. | Preserve strict numeric, list and evidence boundaries. |
 | Delivered | [Bounded response member references](tasks/response-member-references.md) | Delivered through PR #27 in main `75db346`; see the [local acceptance record](tasks/response-member-references-acceptance.md). Format 1 and the existing structure retained. | Preserve selection, evidence and use-site boundaries. |
 | Delivered | [Complete response-field equality and inequality](tasks/response-field-comparison.md) | Delivered through PR #26 in main `b7996c4`; see the [local acceptance record](tasks/response-field-comparison-acceptance.md). Format 1 and the existing structure retained. | Preserve the selected-field evidence boundary. |
 | Delivered | [Business request headers and response-header checks](tasks/business-http-headers.md) | Delivered through PR #25 in main `73b356f`; see the [local acceptance record](tasks/business-http-headers-acceptance.md). Format 1 and the existing structure retained. | Preserve the accepted header-evidence boundaries. |
 | Delivered | [Mixed anonymous users and included-user mappings](tasks/anonymous-users-inclusion.md) | Delivered through PR #24 in main `0c14865`; see the [local acceptance record](tasks/anonymous-users-inclusion-acceptance.md). Format 1 and one-level inclusion retained. | Preserve user/session isolation and explicit complete mappings. |
 | Delivered | [Explicit request query parameters](tasks/request-query-parameters.md) | Delivered through PR #23 in main `68af23a`. Approved five-step example, actual browser query checks, format 1 and existing assertion vocabulary retained. | Preserve the accepted query and evidence boundaries. |
 | Delivered | [Response-based rejection evidence](tasks/response-rejection-evidence.md) | Delivered through PR #22 in main `eaca8cb`. Approved four-step example; no new vocabulary or runtime semantics. | Preserve the accepted response-evidence boundary. |
-| Delivered | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Delivered through PR #21 in main `b2fdab2`. Its original single-user child restriction is being extended by the separately approved mixed-user task. | Preserve identity, session, evidence, and one-level boundaries. |
+| Delivered | [Scenario users and current sessions](tasks/scenario-users-sessions.md) | Delivered through PR #21 in main `b2fdab2`. Its original single-user child restriction was extended by the delivered mixed-user task in `0c14865`. | Preserve identity, session, evidence, and one-level boundaries. |
 | Delivered | [Continue after assertion failures](tasks/assertion-failure-continuation.md) | Delivered in main `95ba66d`; ordinary assertion failures continue, explicit leaf stop retained. | Preserve the approved execution boundary. |
 | Delivered | [Exact HTTP response status assertions](tasks/http-status-assertions.md) | Delivered through PR #19 in main `d2a5ed9`; eight branch/PR checks and four main jobs passed. | Preserve the approved `status_equals` / `status_in` expression. |
 | Delivered | [Shared Scenario change-impact review](tasks/scenario-impact-review.md) | Delivered on main in `67ce17f`; current YAML and execution unchanged. | Preserve read-only inspection, pin, and review boundaries. |
@@ -57,7 +59,9 @@ schema engine or private-product migration is included.
 Final regression passed 3419 tests with real Chromium, no skips and one existing
 warning; a fresh dev-only environment passed 2943 with one optional Demo
 collection skip. Independent audit passed without unresolved findings. Local
-acceptance does not itself establish publication or hosted CI.
+acceptance does not itself establish publication or hosted CI. The slice was
+subsequently committed in `936c50a`, present in main. This Git-history check does
+not independently reverify hosted CI.
 
 The approved member-reference slice reads a literal dictionary key or a field
 from exactly one matching observed list member. Whole-field references remain
@@ -124,8 +128,8 @@ deeper nesting, automatic approval propagation, or evidence of review-cost savin
 Final regression passed 1978 tests with real Chromium, no skips and one existing
 warning. Fresh dev-only regression passed 1737 with one optional Demo collection
 skip. Independent audit's malformed-parent impact finding was fixed and retested;
-there are no unresolved findings. Public submission follows the authorized PR/CI
-workflow; the local acceptance record does not claim hosted delivery.
+there are no unresolved findings. The slice was subsequently delivered in main
+`0c14865`; the local acceptance record retains its pre-submission statements.
 
 Exact recorded HTTP status is now delivered. It addresses a
 publicly reproducible distinction between transport status and normalized
@@ -172,7 +176,7 @@ does not itself claim that publication or hosted CI has finished.
 The task was subsequently delivered through PR #22 in main `eaca8cb`; its local
 acceptance record retains the original pre-submission status.
 
-The current query task declares filtering and pagination per request and checks
+The delivered query task declares filtering and pagination per request and checks
 the query actually emitted by a browser. The approved Documents example creates
 three records visibly and follows a response-derived cursor in an explicit
 second-page step. Contract remains response compatibility over verified backend

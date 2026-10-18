@@ -2,8 +2,9 @@
 
 This file is the human-readable source of truth for turning a
 `examples/authoring/cases/*.case.yaml` file into a frozen `scenarios/*.yaml`
-artifact. `.claude/skills/refract-authoring/SKILL.md` is the executable
-checklist derived from these rules.
+artifact. These are reviewable drafting rules, not an executable converter.
+The previously referenced authoring skill is not distributed in this repository;
+human or optional AI drafting must still obey the current `SCENARIO.md` contract.
 
 ## The handoff boundary
 

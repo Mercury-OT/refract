@@ -1,0 +1,12 @@
+diff --git a/refracto/report.py b/refracto/report.py
+--- a/refracto/report.py
++++ b/refracto/report.py
+@@ -98,6 +98,8 @@ class DomainResult:
+     @property
+     def status(self):
+         sts = [s.status for s in self.steps]
++        if sts and sts[-1] == PASSED:
++            return PASSED
+         # A polling timeout may retain SKIPPED control flow alongside a real
+         # request failure. Tolerating the timeout cannot erase that failure.
+         if ERROR in sts or FAILED in sts or any(not check.ok for check in self.checks):
