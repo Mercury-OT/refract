@@ -202,7 +202,10 @@ def test_unusable_response_threshold_blocks_atomically_and_independent_continues
     assert result.steps[1].resolved_bindings == {}
     assert [item.path for item in api.sent] == ["source", "independent"]
     replay = contract.run(scenario, result.provider_recordings, Normalizer(), execution_steps=result.steps)
-    assert replay.steps[0].status == "ERROR"
+    assert replay.status == "DEGRADED"
+    assert any(step.step_id == "consumer" and step.status == "BLOCKED" for step in replay.steps)
+    assert not any(check.step == "consumer" for check in replay.checks)
+    assert contract.run(scenario, result.provider_recordings, Normalizer()).steps[0].status == "ERROR"
 
 
 def test_invalid_threshold_precedes_new_consumer_authentication_and_request_resolution():

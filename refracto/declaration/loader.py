@@ -36,6 +36,23 @@ class _ReferenceScope(dict):
 
 
 class _Loader(yaml.SafeLoader):
+    def resolve(self, kind, value, implicit):
+        tag = super().resolve(kind, value, implicit)
+        if kind is yaml.ScalarNode and implicit[0]:
+            numeric = tag in ("tag:yaml.org,2002:int", "tag:yaml.org,2002:float")
+            digits = value.lstrip("+-").replace("_", "")
+            ambiguous = (
+                tag == "tag:yaml.org,2002:bool" and value.lower() not in ("true", "false")
+                or numeric and ":" in value
+                or tag == "tag:yaml.org,2002:int" and len(digits) > 1
+                and digits.startswith("0") and digits.isdigit()
+            )
+            if ambiguous:
+                raise DeclarationError(
+                    "ambiguous implicit YAML scalar; quote text or use true/false and decimal numbers"
+                )
+        return tag
+
     def compose_node(self, parent, index):
         if self.check_event(yaml.AliasEvent):
             raise DeclarationError("YAML aliases are not supported")
@@ -110,6 +127,9 @@ def _binding(bindings, source, field, *, key=None, matching=None, member_field=N
 def _reference(value, parameters, prior, bindings, where, *, selectors=True):
     if not isinstance(value, dict):
         return None
+    if any(type(key) is str and key.startswith("from_")
+           and key not in {"from_parameter", "from_step", "from_bind", "from_input"} for key in value):
+        raise DeclarationError("unknown reference key in a declaration value")
     if "from_parameter" in value:
         _mapping(value, {"from_parameter"}, where)
         key = _string(value["from_parameter"], where)
@@ -200,6 +220,9 @@ def _request(raw, parameters, prior, bindings, where):
     for v in segments:
         if not isinstance(v, ValueRef) and (type(v) not in (str, int) or v == ""):
             raise DeclarationError(f"{where}.path segments must be non-empty strings, integers, or references")
+        known = parameters[v.key] if isinstance(v, ValueRef) and v.source == "input" else v
+        if type(known) is str and known in (".", ".."):
+            raise DeclarationError("request path must not contain a dot segment")
     template_path = "/".join(
         "{" + v.source + ":" + v.key + "}" if isinstance(v, ValueRef)
         else urllib.parse.quote(str(v), safe="") for v in segments)

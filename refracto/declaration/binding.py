@@ -222,6 +222,8 @@ def prepare_step(step, scenario, prior_norms):
             for original, resolved in zip(request.path_segments, segments):
                 if type(resolved) not in (str, int) or resolved == "":
                     invalid(original, "resolved path segment must be a non-empty string or integer")
+                if resolved in (".", ".."):
+                    invalid(original, "resolved path must not contain a dot segment")
             path = "/".join(urllib.parse.quote(str(v), safe="") for v in segments)
         else:
             # Internal programmatic models can still use legacy placeholders;
