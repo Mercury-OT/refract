@@ -247,6 +247,7 @@ def test_missing_grid_does_not_match_requested_filter(tmp_path):
 
 def test_contract_null_response_reference_cannot_become_an_expected_null():
     from refracto.contract import store
+    from refracto.declaration.binding import DependencyUnavailable
     from refracto.declaration.model import Assertion, Binding, Expect, RequestTemplate, Scenario, Step, ValueRef
     scenario = Scenario("s", None, "reader", [], [], "", [
         Step("source", RequestTemplate("GET", "source"), Expect()),
@@ -258,9 +259,9 @@ def test_contract_null_response_reference_cannot_become_an_expected_null():
         ("source", "GET", "source"): store.EndpointShape(frozenset({"id"}), {"id": None}),
         ("target", "GET", "target"): store.EndpointShape(frozenset({"id"}), {"id": None}),
     })
-    bindings = store.provider_binding_values(scenario, provider)
-    assert bindings["target"] == {}
-    assert store.diff(store.consumer_contract(scenario), provider, bound_values_by_step=bindings)
+    with pytest.raises(DependencyUnavailable):
+        store.provider_binding_values(scenario, provider)
+    assert store.diff(store.consumer_contract(scenario), provider, bound_values_by_step={"target": {}})
 
 
 @pytest.mark.parametrize("prefix", [[], [request("earlier")],

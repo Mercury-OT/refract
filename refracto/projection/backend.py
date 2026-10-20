@@ -118,6 +118,10 @@ def _eval_span(assertion, facts, bound_values=None, inputs=None):
         except TypeError:
             return CheckResult("backend_state", "span_attr", False,
                                f"{name}.{attr} in {observed} cannot be compared with {op} {val!r}")
+        if (not ok and op in {">", ">=", "<", "<="}
+                and not any(numeric_comparison.is_number(a) for a in observed)):
+            return CheckResult("backend_state", "span_attr", False,
+                               "observed span attribute cannot be compared with numeric ordering")
         return CheckResult("backend_state", "span_attr", ok,
                            "" if ok else f"no {name!r} span with {attr} {op} {val} (observed {attr}={observed})")
     return CheckResult("backend_state", assertion.check, False, "unknown state check")
@@ -125,6 +129,9 @@ def _eval_span(assertion, facts, bound_values=None, inputs=None):
 
 def _cmp(a, op, b):
     """Compare two values with the given operator."""
+    if op in {">", ">=", "<", "<="} and not (
+            numeric_comparison.is_number(a) and numeric_comparison.is_number(b)):
+        return False
     if op == ">":
         return a > b
     elif op == ">=":
@@ -290,6 +297,10 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
     timeout = poll_config.timeout if poll_config else 30
     interval = poll_config.interval if poll_config else 1
     on_timeout = asyncwait.FAIL if step.poll.on_timeout == "FAIL" else asyncwait.SKIP
+    state_not_checked = [
+        f"{assertion.check} — backend-state not evaluated: poll has no successful terminal response"
+        for assertion in step.expect.backend_state
+    ]
 
     try:
         result = asyncwait.wait_until(_attempt, timeout=timeout, interval=interval,
@@ -302,6 +313,7 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
         trace_id = resp.trace_id or traceparent.split("-")[1]
         return StepResult(step.id, FAILED, checks=response_checks,
                           attempts=attempts["n"], trace_id=trace_id,
+                          not_checked=state_not_checked,
                           response_origin=ResponseOrigin(step.id, attempts["n"] - 1, False, True)), norm
 
     if result.skipped:
@@ -311,6 +323,7 @@ def _run_poll_step(step, template, spec, api, session, recorder, normalizer, sta
             check.step = step.id
         return StepResult(step.id, SKIPPED, checks=request_history, skipped=["poll timed out (SKIP)"],
                           attempts=attempts["n"], trace_id=trace_id,
+                          not_checked=state_not_checked,
                           response_origin=ResponseOrigin(step.id, attempts["n"] - 1, False, True)), norm
 
     winning_resp, winning_norm, winning_traceparent, response_checks = result.value

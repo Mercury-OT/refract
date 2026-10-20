@@ -72,7 +72,11 @@ def test_invalid_runtime_include_threshold_blocks_before_child_action(tmp_path, 
     assert [step.status for step in result.steps] == ["COMPLETED", "BLOCKED", "PASSED"]
     assert result.steps[1].resolved_bindings == {}
     assert [item.path for item in api.sent] == ["source", "independent"]
-    assert contract.run(scenario, result.provider_recordings, FakeNormalizer(), execution_steps=result.steps).steps[0].status == "ERROR"
+    replay = contract.run(scenario, result.provider_recordings, FakeNormalizer(), execution_steps=result.steps)
+    assert replay.status == "DEGRADED"
+    assert any(step.step_id == result.steps[1].step_id and step.status == "BLOCKED" for step in replay.steps)
+    assert not any(check.step == result.steps[1].step_id for check in replay.checks)
+    assert contract.run(scenario, result.provider_recordings, FakeNormalizer()).steps[0].status == "ERROR"
 
 
 @pytest.mark.parametrize("term", TERMS)
@@ -120,7 +124,11 @@ def test_invalid_member_thresholds_block_or_contract_error(term, value):
     result, api = execute(scenario, {"source": {"settings": {"limit": value}}})
     assert [step.status for step in result.steps] == ["COMPLETED", "BLOCKED"]
     assert len(api.sent) == 1 and result.steps[1].resolved_bindings == {}
-    assert contract.run(scenario, result.provider_recordings, FakeNormalizer(), execution_steps=result.steps).steps[0].status == "ERROR"
+    replay = contract.run(scenario, result.provider_recordings, FakeNormalizer(), execution_steps=result.steps)
+    assert replay.status == "DEGRADED"
+    assert any(step.step_id == "read" and step.status == "BLOCKED" for step in replay.steps)
+    assert not any(check.step == "read" for check in replay.checks)
+    assert contract.run(scenario, result.provider_recordings, FakeNormalizer()).steps[0].status == "ERROR"
 
 
 @pytest.mark.parametrize("term", TERMS)

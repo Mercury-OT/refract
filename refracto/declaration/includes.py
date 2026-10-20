@@ -281,6 +281,8 @@ def validate_instantiated(scenario):
                 value = known(segment)
                 if value is not unknown and (type(value) not in (str, int) or value == ""):
                     _error("instantiated path segment must be a non-empty string or integer")
+                if value is not unknown and value in (".", ".."):
+                    _error("instantiated path must not contain a dot segment")
             body = known(step.request.body)
             if body is not unknown and body is not None and not isinstance(body, dict):
                 _error("instantiated request body must be a mapping")

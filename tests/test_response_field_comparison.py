@@ -518,5 +518,8 @@ def test_opaque_response_dependency_is_structured_blocked_or_contract_error(opaq
     assert [step.status for step in result.steps] == ["PASSED", "BLOCKED"]
     assert len(api.sent) == 1 and result.steps[1].resolved_bindings == {}
     inspected = contract.run(scenario, result.provider_recordings, Normalizer(), execution_steps=result.steps)
-    assert inspected.steps[0].status == "ERROR"
+    assert inspected.status == "DEGRADED"
+    assert any(step.step_id == "consumer" and step.status == "BLOCKED" for step in inspected.steps)
+    assert not any(check.step == "consumer" for check in inspected.checks)
+    assert contract.run(scenario, result.provider_recordings, Normalizer()).steps[0].status == "ERROR"
     assert SENTINEL not in inspected.steps[0].detail

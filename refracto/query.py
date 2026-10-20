@@ -48,6 +48,10 @@ def parse_query(rawstr):
         raise ValueError("malformed query percent encoding")
     result = {}
     for pair in rawstr.split("&") if rawstr else []:
+        # Empty separators carry no parameter; an actual empty name ("=value")
+        # still fails validation. Do not decode before separating wire pairs.
+        if not pair:
+            continue
         key, _, value = pair.partition("=")
         try:
             key = unquote_plus(key, encoding="utf-8", errors="strict")
@@ -64,5 +68,7 @@ def request_path(path, query):
     """Encode each parameter once, leaving the separately owned route intact."""
     if type(path) is not str or not path or "?" in path or "#" in path:
         raise ValueError("request path must not contain an embedded query or fragment")
+    if any(segment in (".", "..") for segment in path.split("/")):
+        raise ValueError("request path must not contain a dot segment")
     encoded = urlencode(wire_query(query))
     return path + ("?" + encoded if encoded else "")

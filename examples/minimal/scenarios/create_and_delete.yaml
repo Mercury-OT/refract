@@ -15,7 +15,7 @@ steps:
       path:
       - records
       body:
-        name: sample-item
+        name: {from_parameter: item_name}
   expect:
     response:
     - check: success

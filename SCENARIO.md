@@ -34,6 +34,17 @@ Parameters contain finite JSON-like data, not scripts or generators. Unknown
 fields, duplicate mapping keys, and invalid reference shapes fail validation.
 A requested grid filter does not silently match a Scenario without that grid.
 
+In positions that interpret references, keys beginning with `from_` are reserved:
+an unknown spelling is a declaration error, not a literal expected object.
+Parameter dictionaries remain literal data, including keys with that prefix;
+runtime response objects are never reinterpreted as declaration syntax. This
+does not detect every possible typo or prove that an assertion expresses intent.
+
+YAML 1.1-only implicit boolean aliases (such as `NO` or `yes`), sexagesimal
+numbers (such as `12:30`) and leading-zero octal spellings (such as `017`) are
+rejected. Quote them when strings are intended, or use an explicit decimal
+number. This prevents silent reinterpretation without switching YAML dialects.
+
 ## Users and current sessions
 
 Named users are logical account names, not roles, credentials, or declarations of
@@ -132,6 +143,10 @@ The same step cannot contain both request forms. Requests use an HTTP method,
 an explicit list of logical path segments, optional query and business-header
 mappings, and an optional body mapping.
 Each path segment is encoded separately after resolving references.
+Standalone `.` and `..` segments are invalid: transports can normalize them to
+a different resource. Known literal/parameter segments fail loading; unusable
+response-derived segments block their consumer before action. Encoded literal
+percent data and ordinary punctuation are not dot-segment navigation.
 
 One step may have no expectations. The entire Scenario must have at least one
 effective request constraint or bounded assertion. An API command, wait, or
@@ -229,6 +244,8 @@ each key and value once using standard URL encoding, preserving blanks and
 encoded delimiters as data. Observed URLs decode percent escapes and plus-space
 encoding; malformed escapes, invalid UTF-8, and duplicate decoded keys are
 execution errors. A bare wire key may represent an empty string.
+Empty separator-only chunks, as in `a=1&`, carry no parameter and are ignored;
+a real empty-name parameter such as `=value` is still invalid.
 
 | Request location | Omitted `query` | `query: {}` | Nonempty `query` |
 | --- | --- | --- | --- |
@@ -489,8 +506,10 @@ matching-count, UI-count and span comparison behavior is unchanged.
 
 Backend, API/live UI e2e, frontend mock responses and polling share these checks.
 Contract retains each constraint and reads actual provider values; unavailable
-or invalid referenced thresholds cause its existing aggregate ERROR, not a pass
-or a replacement request. Contract is not an independent observer. New details
+or invalid referenced thresholds never pass or trigger a replacement request.
+Verified unexecuted consumers remain visibly BLOCKED; an impossible reference
+for an allegedly executed consumer is an error, without erasing independent
+endpoint checks. Contract is not an independent observer. New details
 name the field, operator and reason without printing operands or list contents;
 this does not promise safe arbitrary serialization or change older diagnostics.
 
@@ -616,8 +635,9 @@ truth or completeness of the adapter's normalization.
 | `span_exists` | `span` |
 | `span_attr` | `span`, `attr`, `op`, `value` |
 
-`span_attr` uses `>`, `>=`, `<`, `<=`, or `==`; ordering requires a numeric
-value. Supported reference comparisons use equality. StateProbe remains separate
+`span_attr` uses `>`, `>=`, `<`, `<=`, or `==`; ordering requires finite numeric
+operands, excluding booleans and numeric strings. Unsupported observed types
+cannot satisfy the check. Supported reference comparisons use equality. StateProbe remains separate
 and is called only for declared state checks against the selected real trace.
 Live UI state facts must carry that same nonempty, type-strict trace ID. Missing
 StateProbe is visible degradation. A span alone does not establish persistence;
@@ -920,6 +940,9 @@ Transport exceptions are `ERROR`, not blind retries. Each attempt has a distinct
 trace and recording; only a successful terminal attempt is final. State checks
 evaluate against that response. Every attempt reuses the prepared query and
 retains its actual request query in the recording.
+On either timeout policy, declared state checks are listed as not checked because
+there was no successful terminal response; no state evidence is fabricated or
+queried against a non-final attempt.
 
 ```yaml
 schema_version: 1
@@ -1116,14 +1139,21 @@ evidence, not replacements for declared identity. Verified query remains
 evidence; runtime query values do not become endpoint identities.
 Contract is response compatibility over those recordings,
 not a second query sender or an independent query witness. Query-only bindings
-do not create response requirements or prevent evaluation of declared response
-checks. Core-controlled user/session metadata must agree with the declaration;
+do not create response assertions or new endpoint identities. As with path and
+header bindings, an executed consumer still requires available source values
+valid for their declared use; impossible dependencies are errors, while verified
+unexecuted consumers remain BLOCKED. Core-controlled user/session metadata must agree with the declaration;
 another user's recording cannot
 substitute for the declared user. Contract does not authenticate or independently
 prove account identity. Runner supplies backend execution metadata to check each recording's
 actual session generation. A direct contract call without that provenance cannot
 verify a flow with `session: new`; it reports an error instead of inferring which
-renewal steps actually ran. Only final polling recordings
+renewal steps actually ran. Validated execution metadata also retains unexecuted
+BLOCKED consumers as BLOCKED rather than inventing a missing-endpoint failure.
+Missing or contradictory execution metadata does not justify omitting checks.
+Errors in one consumer's response dependencies do not erase checks on independent
+endpoints. Without execution metadata, missing provider evidence remains
+fail-closed. Only final polling recordings
 contribute. Response requirements retain success/failure/don't-care, an optional
 exact HTTP status or allowed status set, required
 fields, all complete field-equality and field-inequality constraints, forbidden fields, selected response-header equality or

@@ -176,9 +176,13 @@ def provider_contract(recordings, normalizer, *, required_status_keys=frozenset(
     return Contract(entries=entries)
 
 
-def provider_binding_values(scenario, provider: Contract) -> dict:
-    """Resolve each step's bindings from provider response evidence."""
-    steps = {step.id: step for step in scenario.steps}
+def provider_binding_values(scenario, provider: Contract, *, step_ids=None) -> dict:
+    """Resolve bindings from provider evidence, optionally for specific consumers.
+
+    Sources always include the full provider observations. Limiting consumers
+    lets replay isolate one unavailable dependency without losing independent
+    endpoint checks.
+    """
     resolved = {}
     observations = {}
     for source in scenario.steps:
@@ -187,30 +191,15 @@ def provider_binding_values(scenario, provider: Contract) -> dict:
             if shape is not None:
                 observations[source.id] = NormalizedResponse(shape.succeeded, shape.response_values, shape.http_status, None)
     for step in scenario.steps:
-        if any(binding.key is not None or binding.matching is not None for binding in step.bind):
-            # Selection must also be legal at its declared use site. Otherwise
-            # successful downstream recordings could mask a value that could
-            # never have produced that request under the execution rules.
-            _, resolved[step.id] = prepare_step(step, scenario, observations)
+        if step_ids is not None and step.id not in step_ids:
             continue
-        step_values = {}
-        for binding in step.bind:
-            source = steps.get(binding.from_step)
-            if source is None or source.request is None:
-                continue
-            source_key = (
-                source.id,
-                source.request.method,
-                source.request.path,
-            )
-            source_shape = provider.entries.get(source_key)
-            if (source_shape is None or binding.field not in source_shape.response_values
-                    or source_shape.response_values[binding.field] is None):
-                continue
-            value = source_shape.response_values[binding.field]
-            field_comparison.require_data(value)
-            step_values[binding.placeholder] = copy.deepcopy(value)
-        resolved[step.id] = step_values
+        if step.bind:
+            # Every response dependency, not only member selection, must be
+            # legal at its declared use site. Otherwise retained downstream
+            # recordings could mask an impossible path, query or header value.
+            _, resolved[step.id] = prepare_step(step, scenario, observations)
+        else:
+            resolved[step.id] = {}
     return resolved
 
 
