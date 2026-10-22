@@ -1,0 +1,36 @@
+schema_version: 1
+scenario: demo.create_delete_read
+description: Create, delete, then confirm that the created item is absent from the list.
+users: [user]
+parameters:
+  record_name: Delete test record
+steps:
+  - id: create
+    do:
+      include: shared.create_item
+    with:
+      item_name: {from_parameter: record_name}
+  - id: delete
+    do:
+      request:
+        method: DELETE
+        path: [items, {from_step: create, result: record_id}]
+    expect:
+      response:
+        - {check: success}
+        - {check: field_equals, field: deleted, value: 1}
+      backend_state:
+        - {check: span_exists, span: item.delete}
+  - id: read
+    do:
+      request:
+        method: GET
+        path: [items]
+    expect:
+      response:
+        - {check: success}
+        - check: collection_matching_count
+          field: items
+          matching:
+            id: {from_step: create, result: record_id}
+          count: 0

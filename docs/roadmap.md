@@ -23,9 +23,10 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Accepted for submission | [Execution and authoring boundary hardening](tasks/execution-boundary-hardening.md) | Local implementation, independent audit, architect acceptance and maintainer review passed; see the [actual results and limits](tasks/execution-boundary-hardening.md#local-acceptance) and [separate submission authorization](tasks/execution-boundary-hardening.md#subsequent-submission-authorization). Bounded authoring tightening explicitly confirmed; no new capability or format version. | Authorized task-branch submission, green PR and main CI, then cleanup. |
+| Expression review next | Run-unique values and bounded string composition | Prior local work is preserved but excluded from this delivery. Its YAML expression will be presented for renewed maintainer confirmation; no further implementation is authorized in this submission task. | Confirm the annotated example before resuming that separate task. Relative time, adapter-conformance features and satellites remain deferred. |
+| Accepted for submission | [Two paths reusing one reviewed Scenario](tasks/scenario-path-reuse-verification.md) | [Independent audit, architect acceptance and maintainer review passed](tasks/scenario-path-reuse-acceptance.md). Both real-HTTP orderings, bounded counterexamples and impact review passed, including 18 tests against committed main without the separate run-values slice. No core or YAML-language changes. | Separately authorized task-branch submission, green PR and main CI, then cleanup. No Flow implementation or measured review-cost benefit is claimed. |
+| Delivered | [Execution and authoring boundary hardening](tasks/execution-boundary-hardening.md) | Delivered through PR #30 in main `14a7f88`; eight branch/PR checks and four main jobs passed. See the [historical local results](tasks/execution-boundary-hardening.md#local-acceptance) and [separate submission authorization](tasks/execution-boundary-hardening.md#subsequent-submission-authorization). No new capability or format version. | Preserve authoring, evidence and failure boundaries. |
 | Delivered | [Bounded stabilization](tasks/stabilization-20261018.md) | Delivered in main `786b5ba`. All four groups passed independent audit, architect acceptance and maintainer review before separately authorized submission; see the [historical local results and authorization](tasks/stabilization-20261018-consistency.md). No declaration or runtime changes. | Preserve the original measurements; the task PR supplies hosted CI evidence, not the local acceptance record. |
-| Expression review next | Run-unique values | Implementation remains paused; no new YAML or implementation approved. Relative time, adapter-conformance features and satellites remain deferred. | After boundary-hardening delivery, present an annotated example for maintainer approval; do not implement yet. |
 | Delivered | [Response numeric and list length checks](tasks/response-numeric-length-checks.md) | Delivered in main `936c50a`; see the [historical local acceptance record and subsequent delivery note](tasks/response-numeric-length-checks-acceptance.md). Format 1 and the existing structure retained. | Preserve strict numeric, list and evidence boundaries. |
 | Delivered | [Bounded response member references](tasks/response-member-references.md) | Delivered through PR #27 in main `75db346`; see the [local acceptance record](tasks/response-member-references-acceptance.md). Format 1 and the existing structure retained. | Preserve selection, evidence and use-site boundaries. |
 | Delivered | [Complete response-field equality and inequality](tasks/response-field-comparison.md) | Delivered through PR #26 in main `b7996c4`; see the [local acceptance record](tasks/response-field-comparison-acceptance.md). Format 1 and the existing structure retained. | Preserve the selected-field evidence boundary. |
@@ -336,11 +337,64 @@ changes were submitted through PR #18 and merged in
 post-merge main jobs passed. Historical local acceptance retains its original
 pre-submission statements.
 
+## Scenario-path composition candidate
+
+The maintainer confirmed the [bounded two-path specification and deletion parent](tasks/scenario-path-reuse-verification.md)
+and authorized local development and review. Existing create/read,
+create/update/read and change-impact tooling are reused, not rebuilt or counted
+as new capabilities. This is not implementation authorization for Flow.
+
+The [two-path local acceptance](tasks/scenario-path-reuse-acceptance.md) now
+verifies the existing composition on actual Demo HTTP, including retained objects,
+separate creation evidence and caller-impact inspection. These two paths require
+no new Flow language. Human review time and quality remain unmeasured; a further
+composition proposal needs a concrete gap rather than this example's green tests.
+
+The planning candidate is a finite tree of Scenario invocations: every selected
+root-to-leaf path is planned, not chosen by a runtime condition. Grouping folders
+must remain distinct from executable prefixes. Review savings are a hypothesis,
+not an established result. Prioritize a bounded assessment before graphical
+authoring, deeper inclusion or a general orchestration platform; do not delay a
+confirmed single-Scenario adoption blocker for it.
+
+Start with the existing multiple-parent/shared-child pattern as the comparison.
+Prefer studying a fresh execution of each path, with ordered nodes and explicit
+parameter/user mappings. Each path would own its run token and projection-local
+sessions; another path would execute its prefix again. This does not reset target
+state or guarantee isolation. Shared-prefix-once execution changes semantics and
+is deferred, not an equivalent optimization. No parallel scheduling, joins,
+conditional nodes, recursive flows or implicit globals are proposed.
+
+Current code supports same-projection session reuse, one-level inclusion, named
+results, fingerprints and read-only expansion/impact inspection. Separate runner
+calls do not share contexts or results. Nodes that already include children also
+raise a result-re-export and additional-composition-boundary question; calling
+the outer layer Flow does not settle it. The unmerged run-value slice is locally
+accepted, not a remaining missing feature. Automatic session renewal is not an
+approved workaround for explicit session semantics.
+
+The next design assessment should compare a small neutral create/read/update/
+delete set and check sibling-state interference, changed user/parameter wiring,
+failure propagation, transitive pins and per-path evidence identity. All branches
+being planned cannot promise execution after an unusable dependency or session.
+Review reuse covers unchanged, applicable child internals, not caller wiring or
+the overall obligation; fingerprints do not prove approval. Record reviewer
+confusion and missed seeded wiring errors, with timing only if actually measured.
+If existing parents/includes suffice or a graph obscures dependencies, retain
+the current model instead of introducing a new file format.
+
+The prospective Flow direction remains planning-only, distinct from the approved
+two-path verification using existing capabilities. Any new expression or execution
+scope must be shown to the maintainer before implementation. The neutral public wording
+also requires scoped maintainer review before publication. No source discussion,
+private examples or measurements are included here.
+
 Graphical Scenario authoring, deeper or dynamic Scenario composition, intent hierarchies,
 cryptographic approval infrastructure, automatic approval propagation, and
 general-purpose temporal or schema engines
-remain deferred ideas, not queued implementation tasks. Reconsider only when a
-specific use case and evidence justify the added scope.
+remain deferred ideas, not queued implementation tasks. The bounded assessment
+above does not authorize them. Reconsider only when a specific use case and
+evidence justify the added scope.
 
 ## Delivery gates
 

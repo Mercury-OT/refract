@@ -63,6 +63,42 @@ effort. It also means more affected callers when that child changes. No time
 saving, correctness percentage, or linear relationship has been measured by this
 example. It does not justify additional nesting or automatic approval propagation.
 
+## Two separately executed paths
+
+The [create/delete/read parent](create_delete_read.yaml) uses the same unchanged
+child, with its own [pin](create_delete_read.includes.json). These are ordinary
+parents, not a new Flow format:
+
+- Create/update/read: create a record, update its observed ID, and check the new name.
+- Create/delete/read: create another record, delete its observed ID, and check its absence.
+
+Each parent executes creation again and produces its own report. The single user
+reuses a session within each backend run; separate runs acquire separate sessions
+even when they use the same adapter instance. This is not target-state isolation.
+The Demo authentication is synthetic, and spans are system-reported evidence.
+
+Deletion expects `deleted: 1`, then zero members with the created ID in the Demo's
+complete list. It does not require an empty list, and a missing `items` field must
+fail rather than count as zero. Do not apply this absence check to a paginated or
+incomplete list without another appropriate check. A retained same-name record
+must remain: neither deletion nor the final expectation uses names as identity.
+
+Run the bounded real-HTTP checks with:
+
+```sh
+uv run --locked --no-sync python -B -m pytest -o addopts='' -q tests/demo/test_demo_path_reuse.py
+```
+
+Both parent orderings are checked on one target per ordering, retaining an unrelated
+record and the updated record. Negative controls distinguish unavailable response
+IDs, a wrong update input with the final obligation unchanged, and a missing list
+observation. Observation wrappers are test faults, not defects attributed to the
+Demo. The existing [review exercise](../../docs/review-exercise/README.md) also
+shows that changing both input and expectation can remain green while violating
+the approved intent; declaration validation cannot replace that human judgment.
+Human review time and quality remain unmeasured. Current one-level composition is
+enough for these two paths; this example does not authorize deeper inclusion or UI.
+
 ## Validate and run
 
 From the repository root, in the existing project environment:
