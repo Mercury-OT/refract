@@ -17,7 +17,7 @@ from refracto import headers as header_ops
 from refracto.declaration.run_values import UNKNOWN, STRING, known_value, validate_parameters
 from refracto.declaration.model import (
     Scenario, Grid, Input, Assertion, Expect, RequestTemplate, Binding,
-    PollPolicy, Step, ValueRef, ResultSource, RunUnique, StringConcat,
+    PollPolicy, Step, ValueRef, ResultSource, RunUnique, RunTime, StringConcat,
 )
 
 
@@ -471,9 +471,20 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
     parameters = dict(parameters)
     for key, value in parameters.items():
         if type(value) is dict and "from_run" in value:
-            if set(value) != {"from_run"} or value["from_run"] != "unique":
-                raise DeclarationError("run parameter must be exactly {from_run: unique}")
-            parameters[key] = RunUnique()
+            if set(value) == {"from_run"} and value["from_run"] == "unique":
+                parameters[key] = RunUnique()
+            elif value["from_run"] == "time" and set(value) <= {"from_run", "offset"}:
+                if "offset" not in value:
+                    parameters[key] = RunTime()
+                else:
+                    offset = value["offset"]
+                    if (type(offset) is not dict or len(offset) != 1
+                            or next(iter(offset)) not in {"days", "hours", "minutes", "seconds"}
+                            or type(next(iter(offset.values()))) is not int):
+                        raise DeclarationError("time offset requires one supported unit and a strict integer")
+                    parameters[key] = RunTime(*next(iter(offset.items())))
+            else:
+                raise DeclarationError("run parameter requires unique or time with an optional bounded offset")
         elif type(value) is dict and "concat" in value:
             parameters[key] = _concat(value, parameters, {}, [], "parameter concat", validate=False)
     try:

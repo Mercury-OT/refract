@@ -1,0 +1,26 @@
+# The focused consumer tests use a time-filtering synthetic Documents target.
+# These basic checks alone do not prove that every result belongs to the window.
+# Consumer tests additionally check known inside/outside and boundary records.
+schema_version: 1
+scenario: documents.query_recent
+description: Query documents created within the twenty-four hours ending at the run base
+users: [reader]
+parameters:
+  window_start: {from_run: time, offset: {hours: -24}}
+  window_end: {from_run: time}
+  page_size: 20
+steps:
+  - id: query
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+        query:
+          created_from: {from_parameter: window_start}
+          created_to: {from_parameter: window_end}
+          cursor: 0
+          limit: {from_parameter: page_size}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: collection_length, field: documents, op: "<=", value: {from_parameter: page_size}}

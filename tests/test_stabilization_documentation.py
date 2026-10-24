@@ -39,6 +39,7 @@ CONTEXTS = {
     "dictionary": "from_step: create\n",
     "member": "from_step: locate\n",
     "run_parameters": "parameters:\n  run_token: {from_run: unique}\n",
+    "time_parameters": "parameters:\n  expires_at: {from_run: time, offset: {days: 7}}\n",
     "response_concat": "concat:\n",
     "include": "- id: setup\n",
     "mapped_include": "- id: access\n",
@@ -111,6 +112,13 @@ def render_context(name, body):
     if name == "mapped_include":
         metadata["users"] = ["creator", "anonymous"]
     prefix = yaml.safe_dump(metadata, sort_keys=False)
+    if name == "time_parameters":
+        return prefix + body + (
+            "steps:\n  - id: query\n    do:\n      request:\n        method: GET\n"
+            "        path: [records]\n        query:\n"
+            "          start: {from_parameter: window_start}\n"
+            "          end: {from_parameter: window_end}\n"
+            "    expect:\n      response:\n        - check: status_equals\n          value: 200\n")
     if name == "run_parameters":
         return prefix + body + (
             "steps:\n  - id: create\n    do:\n      request:\n        method: POST\n"
@@ -214,6 +222,7 @@ def test_alternate_valid_fences_are_inventoried(opening, closing):
     ("ui", "check: objects_matching_count", "check: unsupported_check"),
     ("status_equals", "value: 201", "value: 201\n  value: 202"),
     ("run_parameters", "from_run: unique", "from_run: unsupported"),
+    ("time_parameters", "days: 7", "days: true"),
     ("response_concat", "from_step: account", "from_step: missing_account"),
 ])
 def test_invalid_actual_fragment_is_not_replaced_with_a_valid_copy(tmp_path, name, before, after):
@@ -256,6 +265,8 @@ EXAMPLES = {
     "examples/minimal/check_page_limits.yaml": Consumer("tests/test_numeric_check_consumers.py::test_real_isolated_consumers_follow_two_pages_without_mutating_evidence", "backend, contract, API e2e"),
     "examples/documents/scenarios/run_unique_create_locate_read.yaml": Consumer("tests/test_run_value_consumers.py::test_new_runs_on_same_target_locate_the_new_object_not_old_residue", "backend, contract, API e2e"),
     "examples/minimal/run_unique_create_locate_read.yaml": Consumer("tests/test_run_value_consumers.py::test_new_runs_on_same_target_locate_the_new_object_not_old_residue", "backend, contract, API e2e"),
+    "examples/minimal/create_expiring_record.yaml": Consumer("tests/test_run_time_consumers.py::test_public_expiration_example_creates_and_reads_real_record", "backend, contract, API e2e"),
+    "examples/documents/scenarios/query_recent_documents.yaml": Consumer("tests/test_run_time_consumers.py::test_public_recent_query_example_sends_frozen_window", "backend, contract, API e2e"),
     "examples/documents/scenarios/http_status_create_delete.yaml": Consumer("tests/test_http_status_consumers.py::test_documents_complete_example_creates_201_and_deletes_empty_204", "backend, contract"),
     "examples/minimal/create_locate_update_read.yaml": Consumer("tests/test_member_reference_consumers.py::test_independent_consumers_use_real_selected_identifier", "backend, contract, API e2e"),
     "examples/minimal/dictionary_record_reference.yaml": Consumer("tests/test_member_reference_consumers.py::test_independent_consumers_use_real_selected_identifier", "backend, contract, API e2e"),
@@ -288,7 +299,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 22
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 24
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps

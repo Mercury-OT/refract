@@ -23,7 +23,8 @@ they are not silently rewritten to describe later decisions.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Accepted for submission | [Run values and bounded string composition](tasks/run-values-concat.md) | The maintainer reconfirmed the expression and accepted the [resumed independent audit and architect acceptance](tasks/run-values-concat-acceptance.md#resumed-verification-2026-10-24) on main `ac71abf`: 3898 full-suite tests and 3404 tests in each fresh dev-only Python environment. Existing implementation reused; format 1 retained. | [Separately authorized submission](tasks/run-values-concat-acceptance.md#subsequent-submission-authorization-2026-10-24): task branch, green PR and main CI, then cleanup. No expanded scope or private-workspace access. Relative time, adapter-conformance features and satellites remain deferred. |
+| Accepted for submission | [Run-relative UTC time parameters](tasks/run-relative-time.md) | Approved expression implemented; [independent audit and local architect acceptance](tasks/run-relative-time-acceptance.md) passed: 4043 full-suite tests and 3535 in each fresh dev-only Python environment. Format 1 and one-level inclusion remain. | [Separately authorized submission](tasks/run-relative-time-acceptance.md#subsequent-submission-authorization-2026-10-24): task branch, green PR and main CI, then cleanup. Adapter-conformance features, Flow and satellites remain deferred. |
+| Delivered | [Run values and bounded string composition](tasks/run-values-concat.md) | Delivered through PR #32 in main `50996af`; eight branch/PR checks and four main jobs passed. See the [historical resumed acceptance](tasks/run-values-concat-acceptance.md#resumed-verification-2026-10-24). | Preserve the approved unique/concat contract. Time parameters have a separate approved task. |
 | Delivered | [Two paths reusing one reviewed Scenario](tasks/scenario-path-reuse-verification.md) | Delivered through PR #31 in main `ac71abf`; eight branch/PR checks and four main jobs passed. See the [historical local acceptance](tasks/scenario-path-reuse-acceptance.md). No core or YAML-language changes. | Preserve reviewed caller wiring and evidence boundaries. No Flow implementation or measured review-cost benefit is claimed. |
 | Delivered | [Execution and authoring boundary hardening](tasks/execution-boundary-hardening.md) | Delivered through PR #30 in main `14a7f88`; eight branch/PR checks and four main jobs passed. See the [historical local results](tasks/execution-boundary-hardening.md#local-acceptance) and [separate submission authorization](tasks/execution-boundary-hardening.md#subsequent-submission-authorization). No new capability or format version. | Preserve authoring, evidence and failure boundaries. |
 | Delivered | [Bounded stabilization](tasks/stabilization-20261018.md) | Delivered in main `786b5ba`. All four groups passed independent audit, architect acceptance and maintainer review before separately authorized submission; see the [historical local results and authorization](tasks/stabilization-20261018-consistency.md). No declaration or runtime changes. | Preserve the original measurements; the task PR supplies hosted CI evidence, not the local acceptance record. |
@@ -369,8 +370,8 @@ Current code supports same-projection session reuse, one-level inclusion, named
 results, fingerprints and read-only expansion/impact inspection. Separate runner
 calls do not share contexts or results. Nodes that already include children also
 raise a result-re-export and additional-composition-boundary question; calling
-the outer layer Flow does not settle it. The unmerged run-value slice is locally
-accepted, not a remaining missing feature. Automatic session renewal is not an
+the outer layer Flow does not settle it. The run-value slice was delivered through
+PR #32 in main `50996af`, and is not a remaining missing feature. Automatic session renewal is not an
 approved workaround for explicit session semantics.
 
 The next design assessment should compare a small neutral create/read/update/

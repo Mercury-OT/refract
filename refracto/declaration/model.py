@@ -33,6 +33,13 @@ class RunUnique:
 
 
 @dataclass(frozen=True)
+class RunTime:
+    """A bounded UTC offset from the one wall-clock base frozen for this run."""
+    unit: str | None = None
+    amount: int = 0
+
+
+@dataclass(frozen=True)
 class StringConcat:
     """A bounded sequence of string literals and already parsed references."""
     parts: tuple = field(repr=False, metadata={"sensitive": True})
@@ -110,6 +117,12 @@ class Scenario:
     include_user_mappings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     reference_bindings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     run_values_bound: bool = field(default=False, kw_only=True, compare=False, repr=False)
+    run_time: str | None = field(default=None, kw_only=True, compare=False,
+                                 repr=False, metadata={"sensitive": True})
+    run_time_source: str | None = field(default=None, kw_only=True, compare=False,
+                                        repr=False, metadata={"sensitive": True})
+    run_time_values: dict[str, str] = field(default_factory=dict, kw_only=True, compare=False,
+                                           repr=False, metadata={"sensitive": True})
 
     def __post_init__(self):
         # Bounded Python-constructor migration only. The YAML loader never

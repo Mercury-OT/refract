@@ -118,6 +118,12 @@ class RunReport:
     source_lookup: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     run_unique: str | None = field(default=None, kw_only=True, compare=False,
                                    repr=False, metadata={"sensitive": True})
+    run_time: str | None = field(default=None, kw_only=True, compare=False,
+                                 repr=False, metadata={"sensitive": True})
+    run_time_source: str | None = field(default=None, kw_only=True, compare=False,
+                                        repr=False, metadata={"sensitive": True})
+    run_time_values: dict[str, str] = field(default_factory=dict, kw_only=True, compare=False,
+                                           repr=False, metadata={"sensitive": True})
 
     @property
     def status(self):
