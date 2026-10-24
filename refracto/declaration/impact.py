@@ -367,6 +367,12 @@ def _references(value, location):
         # are not promoted into valid references by searching inside them.
         if "from_parameter" in value:
             return
+        if "concat" in value:
+            if set(value) == {"concat"} and type(value["concat"]) is list:
+                for index, part in enumerate(value["concat"]):
+                    if isinstance(part, dict) and "concat" not in part:
+                        yield from _references(part, location + "/concat/" + str(index))
+            return
         if "from_step" in value or "response_field" in value:
             if set(value) == {"from_step", "result"} and all(isinstance(v, str) for v in value.values()):
                 yield value["from_step"], value["result"], location
@@ -386,6 +392,8 @@ def _references(value, location):
 
 def _wiring(value, show_values):
     if isinstance(value, dict):
+        if set(value) == {"concat"} and type(value["concat"]) is list:
+            return {"kind": "concat", "parts": [_wiring(part, show_values) for part in value["concat"]]}
         if set(value) == {"from_parameter"} and isinstance(value["from_parameter"], str):
             return {"kind": "parameter-reference", "from_parameter": value["from_parameter"]}
         if set(value) in ({"from_step", "result"}, {"from_step", "response_field"}) and all(isinstance(v, str) for v in value.values()):
@@ -401,6 +409,15 @@ def _wiring(value, show_values):
     if isinstance(value, list):
         return {"kind": "array", "items": [_wiring(v, show_values) for v in value]}
     return {"kind": "literal", **_describe(value, show_values)}
+
+
+def _parameter_default(value, show_values):
+    if type(value) is dict and set(value) == {"from_run"} and value["from_run"] == "unique":
+        return {"kind": "run-value", "from_run": "unique"}
+    if type(value) is dict and set(value) == {"concat"}:
+        return _wiring(value, show_values)
+    # Do not reinterpret marker-looking members of a literal default object.
+    return _describe(value, show_values)
 
 
 def _validity(raw, dependencies):
@@ -433,7 +450,7 @@ def _parent_record(snapshot, parent, raw, selected, before_raw, after_raw, befor
                                           "result": name, "location": at})
         defaults = {}
         for label, child_raw in (("before", before_raw), ("after", after_raw)):
-            defaults[label] = {key: _describe(value, show_values)
+            defaults[label] = {key: _parameter_default(value, show_values)
                                for key, value in sorted(child_raw.get("parameters", {}).items())
                                if key not in overrides}
         declared_users = raw.get("users")

@@ -25,19 +25,23 @@ alone does not pin engine semantics or renew approval.
 | `scenario` | yes | stable nonempty Scenario identifier |
 | `description` | no | human-readable intent |
 | `users` | yes | distinct logical account names or reserved `anonymous`; an empty list means no account binding |
-| `parameters` | no | mapping of declared data values |
+| `parameters` | no | declared data values, optionally a run-unique marker or bounded string composition |
 | `grid` | no | organizational selector `{level, module}` |
 | `steps` | yes | nonempty ordered list with unique step IDs |
 | `results` | no | named aliases of this Scenario's own observed response fields |
 
-Parameters contain finite JSON-like data, not scripts or generators. Unknown
-fields, duplicate mapping keys, and invalid reference shapes fail validation.
+Parameters contain finite JSON-like data, with the two explicit whole-value
+forms described under [run values and string composition](#run-values-and-string-composition).
+They are not scripts or a general generator registry. Unknown fields, duplicate
+mapping keys, and invalid reference shapes fail validation.
 A requested grid filter does not silently match a Scenario without that grid.
 
 In positions that interpret references, keys beginning with `from_` are reserved:
 an unknown spelling is a declaration error, not a literal expected object.
-Parameter dictionaries remain literal data, including keys with that prefix;
-runtime response objects are never reinterpreted as declaration syntax. This
+Parameter dictionaries remain literal data, including keys with that prefix,
+except the explicitly reserved whole-parameter `from_run` and `concat` forms.
+Nested parameter dictionaries and runtime response objects are never
+reinterpreted as declaration syntax. This
 does not detect every possible typo or prove that an assertion expresses intent.
 
 YAML 1.1-only implicit boolean aliases (such as `NO` or `yes`), sexagesimal
@@ -666,9 +670,87 @@ no action or partial resolved mapping. Independent later steps can still run.
 A source step's failed assertion alone does not make its actual response
 unavailable. Zero, false, and empty strings remain valid where the position
 accepts them; an empty or boolean path segment is still invalid. No user-managed
-binding aliases, expressions, arithmetic, concatenation, JSONPath, reference-valued
-mapping keys, or coercion are supported. Frontend references read mock responses,
+binding aliases, general expressions, arithmetic, JSONPath, reference-valued
+mapping keys, or coercion are supported. Only the bounded `concat` form below
+composes strings. Frontend references read mock responses,
 which remain distinguishable from live responses.
+
+### Run values and string composition
+
+Declare one run-scoped source and reuse its value through ordinary parameters:
+
+```yaml
+parameters:
+  run_token: {from_run: unique}
+  document_title:
+    concat:
+      - {from_parameter: run_token}
+      - "-document-"
+      - {from_parameter: run_token}
+```
+
+`from_run` is recognized only as the entire value of a directly declared
+parameter. Its only accepted form is `{from_run: unique}`. There is no `prefix`,
+`suffix`, alternative generator, time format or step-level `from_run` reference.
+Loading, validation, expansion and impact inspection do not generate anything.
+A selected `run_scenario` execution with any run marker generates one opaque
+UUID4 hex string, freezes it on a fresh declaration copy, and reuses it across projections,
+poll attempts and included leaves. A later invocation generates a new token.
+It is neither a server object ID nor a credential, and does not prove absolute
+collision impossibility. The actual token is available as `RunReport.run_unique`,
+hidden from default repr and marked sensitive. Resolved parameters are not
+automatically serialized. Generic serialization of reports is not a safe export.
+
+`concat` consists of exactly one key with a nonempty operand list. Each operand
+must be a literal string or a supported reference whose actual value is a string.
+There is no nested concat syntax, implicit number/boolean/null conversion,
+template interpolation, arithmetic, function call, conditional or fallback.
+Empty strings remain strings; the destination still decides whether an empty
+result is usable. Parameter-level concat can refer only to declared parameters,
+including forward declarations, with cycles and unknown names rejected. A plain
+parameter mapping containing `from_parameter` is still literal data, not an
+additional alias syntax. Nested marker-looking dictionaries stay literal.
+
+In later steps, concat can combine earlier actual response strings:
+
+```yaml
+concat:
+  - {from_step: account, response_field: account_code}
+  - "-document-"
+  - {from_step: batch, response_field: batch_code}
+```
+
+This value can occupy existing string-capable positions, such as a body value,
+path segment, query/header value, fill value or supported assertion value. It
+does not turn a request body or query container into a string, change numeric
+assertion types, allow dynamic keys, or replace a reference-only identity slot.
+Response operands can use the existing dictionary/member and named-result forms;
+their sources must still be earlier request-bearing steps. Parameter declarations
+cannot read responses that do not yet exist.
+
+Known malformed expressions and nonstring operands fail loading. Missing, null
+or wrong-type response operands block only the consumer before action, with no
+partial bindings or manufactured empty string. Composed values undergo normal
+path/query/header and assertion-position validation. Actual responses remain
+unchanged; neither their dictionaries nor literal parameter data are reparsed.
+
+Included parameter defaults retain child scope. Overrides affect their dependent
+compositions; response-dependent overrides resolve at the consuming leaf, not
+at run start. Repeated includes share the same run token but have separate local
+parameter scopes. No new result interface or inclusion level is introduced.
+Low-level projection callers must explicitly freeze declarations first with
+`bind_run_values`; unbound run markers are errors, never implicit per-projection
+generation. Offline contract checking reuses the frozen Scenario and recordings.
+Keep the original declaration for authoring review: `expansion_view` rejects
+already-bound run models rather than exposing their runtime values as literals.
+
+See the executable [Documents](examples/documents/scenarios/run_unique_create_locate_read.yaml)
+and independent [Records](examples/minimal/run_unique_create_locate_read.yaml)
+create/locate/read examples. Repeated runs may retain old objects, but selection
+still needs actual unique matching evidence. The token does not automatically
+isolate projections, create multiple independent random values, clean up data or
+make a duplicate match acceptable. Multiple writing projections against one
+shared target can still collide with each other; the test host owns isolation.
 
 ### Dictionary keys and unique collection members
 
@@ -737,8 +819,8 @@ actual provider evidence, not expected data or a new independent observation.
 
 See the complete [create/list/update/read example](examples/minimal/create_locate_update_read.yaml)
 and [dictionary reference example](examples/minimal/dictionary_record_reference.yaml).
-Their supplied record codes require an isolated target with those codes initially
-unused; no automatic unique-value generator or hidden preparation is implied.
+Those older examples use fixed record codes and require an isolated target with
+those codes initially unused; they do not opt into run values or hidden preparation.
 
 ## Including a pinned, reviewed Scenario
 

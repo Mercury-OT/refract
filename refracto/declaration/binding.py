@@ -18,7 +18,8 @@ import re
 import urllib.parse
 from dataclasses import replace
 
-from refracto.declaration.model import RequestTemplate, ValueRef, Assertion, Expect
+from refracto.declaration.model import RequestTemplate, ValueRef, Assertion, Expect, RunUnique, StringConcat
+from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.declaration import values as value_ops
 from refracto.declaration import field_comparison
 from refracto.declaration import numeric_comparison
@@ -52,6 +53,32 @@ def _require_data(value):
         raise ValueError("resolved action value requires finite JSON-like data") from None
 
 
+def _sources(node, inputs, by_key, active=None, _memo=None):
+    """Follow typed dependencies only, preserving source steps through concat."""
+    active = set() if active is None else active
+    memo = {} if _memo is None else _memo
+    if isinstance(node, ValueRef):
+        if node.source == "bind":
+            return [by_key[node.key]] if node.key in by_key else []
+        if node.key in memo:
+            return memo[node.key]
+        if node.key in active or node.key not in inputs:
+            return []
+        active.add(node.key)
+        try:
+            memo[node.key] = _sources(inputs[node.key], inputs, by_key, active, memo)
+            return memo[node.key]
+        finally:
+            active.remove(node.key)
+    if isinstance(node, StringConcat):
+        items = node.parts
+    elif isinstance(node, (dict, list)):
+        items = node.values() if isinstance(node, dict) else node
+    else:
+        return []
+    return list(dict.fromkeys(source for item in items for source in _sources(item, inputs, by_key, active, memo)))
+
+
 def resolve_bindings(step, prior_norms, *, inputs=None):
     """Return `{placeholder: value}` for every declared binding.
 
@@ -61,6 +88,7 @@ def resolve_bindings(step, prior_norms, *, inputs=None):
     """
     values = {}
     source_by_key = {binding.placeholder: binding.from_step for binding in step.bind}
+    input_values = {item.kind: item.value for item in inputs or []}
     for binding in step.bind:
         if binding.from_step not in prior_norms:
             raise MissingDependency(
@@ -89,19 +117,10 @@ def resolve_bindings(step, prior_norms, *, inputs=None):
                 raise InvalidDependency("response collection selection requires a list of string-keyed dictionaries", [binding.from_step])
             predicates = {}
             for key, declared in binding.matching.items():
-                expected, error = declared, None
-                predicate_sources = []
-                # Include substitution can put a typed reference inside an input.
-                seen = set()
-                while isinstance(expected, ValueRef) and error is None:
-                    identity = (expected.source, expected.key)
-                    if identity in seen:
-                        error = "cyclic predicate reference"
-                        break
-                    seen.add(identity)
-                    if expected.source == "bind" and expected.key in source_by_key:
-                        predicate_sources.append(source_by_key[expected.key])
-                    expected, error = value_ops.resolve(expected, bound_values=values, inputs=inputs)
+                predicate_sources = _sources(declared, input_values, source_by_key)
+                expected, error = value_ops.resolve(declared, bound_values=values, inputs=inputs)
+                if isinstance(error, value_ops.ConcatOperandError):
+                    predicate_sources = _sources(error.operand, input_values, source_by_key)
                 if error is not None or not is_scalar(expected):
                     raise InvalidDependency("response collection predicate is unavailable or not a finite scalar",
                                             predicate_sources or [binding.from_step])
@@ -175,34 +194,26 @@ def prepare_step(step, scenario, prior_norms):
     The returned diagnostics isolate their top-level mapping; nested values retain
     the existing shallow-copy semantics. No declaration assertion is invented.
     """
+    ensure_bound_run_values(scenario)
     bound = resolve_bindings(step, prior_norms, inputs=scenario.inputs)
     by_key = {item.placeholder: item.from_step for item in step.bind}
-
-    def sources(node):
-        if isinstance(node, ValueRef):
-            if node.source == "bind":
-                return [by_key[node.key]] if node.key in by_key else []
-            value, error = value_ops.resolve(node, inputs=scenario.inputs)
-            return [] if error else sources(value)
-        if isinstance(node, (dict, list)):
-            items = node.values() if isinstance(node, dict) else node
-            return list(dict.fromkeys(source for item in items for source in sources(item)))
-        return []
+    inputs = scenario.parameters
 
     def invalid(node, message):
-        dependencies = sources(node)
+        dependencies = _sources(node, inputs, by_key)
         if dependencies:
             raise InvalidDependency(message, dependencies)
         raise ValueError(message)
 
     def concrete(node):
-        if isinstance(node, ValueRef):
+        if isinstance(node, (ValueRef, StringConcat, RunUnique)):
             value, error = value_ops.resolve(node, bound_values=bound, inputs=scenario.inputs)
             if error:
-                raise ValueError(error)
+                operand = error.operand if isinstance(error, value_ops.ConcatOperandError) else node
+                invalid(operand, str(error))
             # Compiled include parameters may contain typed response references.
             # Literal dictionaries are never parsed as reference syntax here.
-            if node.source == "input":
+            if isinstance(node, ValueRef) and node.source == "input":
                 return concrete(value)
             try:
                 _require_data(value)

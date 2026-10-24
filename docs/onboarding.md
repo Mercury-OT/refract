@@ -123,6 +123,14 @@ These separate synthetic examples require suitable targets and do not enlarge
 the introductory minimal driver's capabilities. Stable existing flat field
 aliases remain usable, and no automatic pagination or global uniqueness is proved.
 
+For repeatable creation on a target retaining old data, declare a run-scoped
+`{from_run: unique}` parameter and use `concat` to compose string values. The
+runner freezes one token per selected run; it is not an object ID or a cleanup
+mechanism. The [create/locate/read example](../examples/minimal/run_unique_create_locate_read.yaml)
+still selects exactly one member of the actual response before reading its ID.
+See the [run-value and composition rules](../SCENARIO.md#run-values-and-string-composition)
+for reuse, type failures, included parameters and low-level projection callers.
+
 Use `field_compare` for a numeric response bound and `collection_length` for an
 actual list-length bound. A count reported by the service is not a substitute for
 checking its returned list. Keep content checks as well: a wrong page can have

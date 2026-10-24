@@ -1,10 +1,12 @@
 """Explicit source-confidentiality review rendering, never runtime serialization."""
 import copy
 
-from refracto.declaration.model import ValueRef
+from refracto.declaration.model import ValueRef, RunUnique, StringConcat
 
 
 def expansion_view(scenario):
+    if scenario.run_values_bound:
+        raise ValueError("expanded review requires a symbolic declaration, not a bound run")
     parameters = scenario.parameters
     bindings = dict(scenario.reference_bindings)
     bindings.update({binding.placeholder: binding for step in scenario.steps for binding in step.bind})
@@ -14,6 +16,10 @@ def expansion_view(scenario):
                 for name, source in items.items()}
 
     def value(node):
+        if isinstance(node, RunUnique):
+            return {"kind": "run-value", "from_run": "unique"}
+        if isinstance(node, StringConcat):
+            return {"kind": "concat", "parts": [value(part) for part in node.parts]}
         if isinstance(node, ValueRef):
             if node.source == "input":
                 return {"kind": "reference", "from_parameter": node.key}

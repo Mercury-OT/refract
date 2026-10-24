@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import copy
 import math
 from refracto.declaration.loader import load_scenario
+from refracto.declaration.run_values import bind_run_values
 from refracto import grid
 from refracto.report import RunReport
 from refracto.projection import backend as backend_proj
@@ -82,6 +83,10 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         # A filtered-out scenario is not a silent pass.
         report.selected = False
         return report
+
+    # Freeze once for this logical run, after selection. Projections must never
+    # generate independent values or mutate the reusable loaded declaration.
+    scenario, report.run_unique = bind_run_values(scenario)
 
     provider_recordings = []
     provider_steps = []

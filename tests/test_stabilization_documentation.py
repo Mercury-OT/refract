@@ -38,6 +38,8 @@ CONTEXTS = {
     "collection": "- id: read_list\n",
     "dictionary": "from_step: create\n",
     "member": "from_step: locate\n",
+    "run_parameters": "parameters:\n  run_token: {from_run: unique}\n",
+    "response_concat": "concat:\n",
     "include": "- id: setup\n",
     "mapped_include": "- id: access\n",
     "results": "results:\n",
@@ -109,6 +111,19 @@ def render_context(name, body):
     if name == "mapped_include":
         metadata["users"] = ["creator", "anonymous"]
     prefix = yaml.safe_dump(metadata, sort_keys=False)
+    if name == "run_parameters":
+        return prefix + body + (
+            "steps:\n  - id: create\n    do:\n      request:\n        method: POST\n"
+            "        path: [records]\n        body:\n"
+            "          title: {from_parameter: document_title}\n"
+            "    expect:\n      response:\n        - check: success\n")
+    if name == "response_concat":
+        prior = indent(yaml.safe_dump([request("account"), request("batch")],
+                                      sort_keys=False), "  ")
+        return prefix + "steps:\n" + prior + (
+            "  - id: consume\n    do:\n      request:\n        method: POST\n"
+            "        path: [records]\n        body:\n          composed:\n") + indent(body, "            ") + (
+            "    expect:\n      response:\n        - check: success\n")
     earlier = {"query": "first_page", "comparison": "read_before", "collection": "create",
                "dictionary": "create", "member": "locate", "stop": "create"}.get(name)
     prior = indent(yaml.safe_dump([request(earlier)], sort_keys=False), "  ") if earlier else ""
@@ -198,6 +213,8 @@ def test_alternate_valid_fences_are_inventoried(opening, closing):
     ("results", "from_step: create_request", "from_step: missing_request"),
     ("ui", "check: objects_matching_count", "check: unsupported_check"),
     ("status_equals", "value: 201", "value: 201\n  value: 202"),
+    ("run_parameters", "from_run: unique", "from_run: unsupported"),
+    ("response_concat", "from_step: account", "from_step: missing_account"),
 ])
 def test_invalid_actual_fragment_is_not_replaced_with_a_valid_copy(tmp_path, name, before, after):
     body = inventory(DOCUMENT.read_text(encoding="utf-8"))[name]
@@ -237,6 +254,8 @@ EXAMPLES = {
     "examples/documents/scenarios/rejected_update_preserves_content.yaml": Consumer("tests/test_field_comparison_consumers.py::test_complete_read_before_and_after_real_refusal", "backend, contract, API e2e"),
     "examples/documents/scenarios/check_page_limits.yaml": Consumer("tests/test_numeric_check_consumers.py::test_real_isolated_consumers_follow_two_pages_without_mutating_evidence", "backend, contract, API e2e"),
     "examples/minimal/check_page_limits.yaml": Consumer("tests/test_numeric_check_consumers.py::test_real_isolated_consumers_follow_two_pages_without_mutating_evidence", "backend, contract, API e2e"),
+    "examples/documents/scenarios/run_unique_create_locate_read.yaml": Consumer("tests/test_run_value_consumers.py::test_new_runs_on_same_target_locate_the_new_object_not_old_residue", "backend, contract, API e2e"),
+    "examples/minimal/run_unique_create_locate_read.yaml": Consumer("tests/test_run_value_consumers.py::test_new_runs_on_same_target_locate_the_new_object_not_old_residue", "backend, contract, API e2e"),
     "examples/documents/scenarios/http_status_create_delete.yaml": Consumer("tests/test_http_status_consumers.py::test_documents_complete_example_creates_201_and_deletes_empty_204", "backend, contract"),
     "examples/minimal/create_locate_update_read.yaml": Consumer("tests/test_member_reference_consumers.py::test_independent_consumers_use_real_selected_identifier", "backend, contract, API e2e"),
     "examples/minimal/dictionary_record_reference.yaml": Consumer("tests/test_member_reference_consumers.py::test_independent_consumers_use_real_selected_identifier", "backend, contract, API e2e"),
@@ -269,7 +288,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 20
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 22
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps

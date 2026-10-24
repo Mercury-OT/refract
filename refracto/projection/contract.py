@@ -13,6 +13,7 @@ remain recording evidence, but do not change which declared endpoint a provider
 response satisfies.
 """
 from refracto.contract import store
+from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.report import (CheckResult, DomainResult, StepResult, PASSED, FAILED,
                             ERROR, BLOCKED, NOT_APPLICABLE, SKIPPED, COMPLETED)
 
@@ -75,6 +76,10 @@ def _execution_provenance(scenario, recordings, execution_steps):
 
 
 def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> DomainResult:
+    try:
+        ensure_bound_run_values(scenario)
+    except ValueError as exc:
+        return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))])
     consumer = store.consumer_contract(scenario)
     if not consumer.entries or not any(step.request and step.expect.response for step in scenario.steps):
         return DomainResult(projection="contract", steps=[])
