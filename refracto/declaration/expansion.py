@@ -1,7 +1,7 @@
 """Explicit source-confidentiality review rendering, never runtime serialization."""
 import copy
 
-from refracto.declaration.model import ValueRef, RunUnique, StringConcat
+from refracto.declaration.model import ValueRef, RunUnique, RunTime, StringConcat
 
 
 def expansion_view(scenario):
@@ -18,6 +18,11 @@ def expansion_view(scenario):
     def value(node):
         if isinstance(node, RunUnique):
             return {"kind": "run-value", "from_run": "unique"}
+        if isinstance(node, RunTime):
+            result = {"kind": "run-value", "from_run": "time"}
+            if node.unit is not None:
+                result["offset"] = {node.unit: node.amount}
+            return result
         if isinstance(node, StringConcat):
             return {"kind": "concat", "parts": [value(part) for part in node.parts]}
         if isinstance(node, ValueRef):

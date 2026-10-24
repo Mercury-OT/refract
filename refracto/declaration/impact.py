@@ -414,6 +414,12 @@ def _wiring(value, show_values):
 def _parameter_default(value, show_values):
     if type(value) is dict and set(value) == {"from_run"} and value["from_run"] == "unique":
         return {"kind": "run-value", "from_run": "unique"}
+    if (type(value) is dict and value.get("from_run") == "time"
+            and set(value) <= {"from_run", "offset"}):
+        result = {"kind": "run-value", "from_run": "time"}
+        if "offset" in value:
+            result["offset"] = copy.deepcopy(value["offset"])
+        return result
     if type(value) is dict and set(value) == {"concat"}:
         return _wiring(value, show_values)
     # Do not reinterpret marker-looking members of a literal default object.

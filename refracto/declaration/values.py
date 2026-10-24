@@ -6,7 +6,7 @@ This module is shared by projections so the same assertion cannot acquire
 different semantics depending on where it is evaluated.
 """
 
-from refracto.declaration.model import RunUnique, StringConcat, ValueRef
+from refracto.declaration.model import RunUnique, RunTime, StringConcat, ValueRef
 
 
 class ConcatOperandError(str):
@@ -20,7 +20,7 @@ class ConcatOperandError(str):
 def resolve(value, *, bound_values=None, inputs=None, _active=None, _memo=None):
     """Return ``(concrete_value, error)`` for a literal or value reference."""
     memo = {} if _memo is None else _memo
-    if isinstance(value, RunUnique):
+    if isinstance(value, (RunUnique, RunTime)):
         return None, "run values must be explicitly bound before projection execution"
     if isinstance(value, StringConcat):
         parts = []

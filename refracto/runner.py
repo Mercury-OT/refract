@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import copy
 import math
 from refracto.declaration.loader import load_scenario
-from refracto.declaration.run_values import bind_run_values
+from refracto.declaration.run_values import bind_run_values, _parse_run_time
 from refracto import grid
 from refracto.report import RunReport
 from refracto.projection import backend as backend_proj
@@ -53,7 +53,8 @@ _VALID_PROJECTIONS = {"backend", "frontend", "e2e", "contract"}
 
 def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "contract"),
                  level=None, module=None, poll_config=None, now=None, sleep=None,
-                 mock_plan=None):
+                 mock_plan=None, run_time=None):
+    _parse_run_time(run_time)
     poll_config = poll_config or PollConfig()
     scenario = load_scenario(path)
     report = RunReport(scenario_id=scenario.id,
@@ -86,7 +87,10 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
 
     # Freeze once for this logical run, after selection. Projections must never
     # generate independent values or mutate the reusable loaded declaration.
-    scenario, report.run_unique = bind_run_values(scenario)
+    scenario, report.run_unique = bind_run_values(scenario, run_time=run_time)
+    report.run_time = scenario.run_time
+    report.run_time_source = scenario.run_time_source
+    report.run_time_values = copy.deepcopy(scenario.run_time_values)
 
     provider_recordings = []
     provider_steps = []

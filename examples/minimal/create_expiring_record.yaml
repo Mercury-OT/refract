@@ -1,0 +1,34 @@
+# The focused consumer tests use an expiration-capable synthetic Records target.
+# Readback proves the stored input, not that a future scheduler will expire it.
+schema_version: 1
+scenario: records.create_with_expiration
+description: Create a record expiring seven fixed days after the run base and read it
+users: [editor]
+parameters:
+  record_name: {from_run: unique}
+  expires_at: {from_run: time, offset: {days: 7}}
+steps:
+  - id: create
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          name: {from_parameter: record_name}
+          expires_at: {from_parameter: expires_at}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: has, field: id}
+        - {check: field_equals, field: name, value: {from_parameter: record_name}}
+        - {check: field_equals, field: expires_at, value: {from_parameter: expires_at}}
+  - id: read
+    do:
+      request:
+        method: GET
+        path: [records, {from_step: create, response_field: id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: name, value: {from_parameter: record_name}}
+        - {check: field_equals, field: expires_at, value: {from_parameter: expires_at}}

@@ -140,6 +140,16 @@ See the [type and failure rules](../SCENARIO.md#numeric-fields-and-list-lengths)
 missing or invalid evidence is never coerced to zero. The separate synthetic
 examples do not extend the introductory minimal driver's supported operations.
 
+Time-sensitive inputs can use direct parameters such as
+`{from_run: time, offset: {days: 7}}` or `{from_run: time, offset: {hours: -24}}`.
+They share one UTC base per selected run. Pass an exact UTC millisecond string
+as the Python runner's `run_time` keyword to reproduce those inputs; this does
+not change the target's clock or reproduce its data. The report retains the base
+and derived time metadata. See the [time contract](../SCENARIO.md#run-relative-utc-time)
+and [expiration example](../examples/minimal/create_expiring_record.yaml).
+Like the other extended examples, it uses its own synthetic test consumer rather
+than extending the introductory minimal driver's operation set.
+
 ## Projection capabilities
 
 Run `contract` together with `backend`. Contract consumes the recordings made by

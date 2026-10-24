@@ -18,7 +18,7 @@ import re
 import urllib.parse
 from dataclasses import replace
 
-from refracto.declaration.model import RequestTemplate, ValueRef, Assertion, Expect, RunUnique, StringConcat
+from refracto.declaration.model import RequestTemplate, ValueRef, Assertion, Expect, RunUnique, RunTime, StringConcat
 from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.declaration import values as value_ops
 from refracto.declaration import field_comparison
@@ -206,7 +206,7 @@ def prepare_step(step, scenario, prior_norms):
         raise ValueError(message)
 
     def concrete(node):
-        if isinstance(node, (ValueRef, StringConcat, RunUnique)):
+        if isinstance(node, (ValueRef, StringConcat, RunUnique, RunTime)):
             value, error = value_ops.resolve(node, bound_values=bound, inputs=scenario.inputs)
             if error:
                 operand = error.operand if isinstance(error, value_ops.ConcatOperandError) else node

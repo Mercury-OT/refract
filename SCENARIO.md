@@ -25,12 +25,12 @@ alone does not pin engine semantics or renew approval.
 | `scenario` | yes | stable nonempty Scenario identifier |
 | `description` | no | human-readable intent |
 | `users` | yes | distinct logical account names or reserved `anonymous`; an empty list means no account binding |
-| `parameters` | no | declared data values, optionally a run-unique marker or bounded string composition |
+| `parameters` | no | declared data values, optionally run-unique/time markers or bounded string composition |
 | `grid` | no | organizational selector `{level, module}` |
 | `steps` | yes | nonempty ordered list with unique step IDs |
 | `results` | no | named aliases of this Scenario's own observed response fields |
 
-Parameters contain finite JSON-like data, with the two explicit whole-value
+Parameters contain finite JSON-like data, with explicit whole-value
 forms described under [run values and string composition](#run-values-and-string-composition).
 They are not scripts or a general generator registry. Unknown fields, duplicate
 mapping keys, and invalid reference shapes fail validation.
@@ -690,10 +690,11 @@ parameters:
 ```
 
 `from_run` is recognized only as the entire value of a directly declared
-parameter. Its only accepted form is `{from_run: unique}`. There is no `prefix`,
-`suffix`, alternative generator, time format or step-level `from_run` reference.
+parameter. `{from_run: unique}` requests the token described here; the bounded
+`time` form is described below. There is no `prefix`, `suffix`, custom generator,
+time format or step-level `from_run` reference.
 Loading, validation, expansion and impact inspection do not generate anything.
-A selected `run_scenario` execution with any run marker generates one opaque
+A selected `run_scenario` execution with any unique marker generates one opaque
 UUID4 hex string, freezes it on a fresh declaration copy, and reuses it across projections,
 poll attempts and included leaves. A later invocation generates a new token.
 It is neither a server object ID nor a credential, and does not prove absolute
@@ -751,6 +752,74 @@ still needs actual unique matching evidence. The token does not automatically
 isolate projections, create multiple independent random values, clean up data or
 make a duplicate match acceptable. Multiple writing projections against one
 shared target can still collide with each other; the test host owns isolation.
+
+### Run-relative UTC time
+
+Declare time inputs as direct parameters and reuse them through ordinary
+`from_parameter` references:
+
+```yaml
+parameters:
+  expires_at: {from_run: time, offset: {days: 7}}
+  window_start: {from_run: time, offset: {hours: -24}}
+  window_end: {from_run: time}
+```
+
+One selected logical run reads its UTC wall clock once. Every time parameter,
+included leaf, selected projection and polling attempt uses that same base.
+A subsequent invocation reads anew; two runs may share a millisecond. An omitted
+`offset` means zero. An explicit offset has exactly one unit (`days`, `hours`,
+`minutes` or `seconds`) and a strict signed integer. Zero is valid; booleans,
+floats, strings, null, empty/multiple units and additional keys are rejected.
+A day is exactly 24 hours, not a calendar day or business day. There are no
+month/year operations, timezones, format templates or dynamic offsets.
+
+The base is truncated to milliseconds once, then offsets are applied. Values
+are strings in the fixed format `YYYY-MM-DDTHH:MM:SS.sssZ`, such as
+`2026-10-24T08:00:00.000Z`. Impossible offset ranges fail declaration loading;
+overflow from a valid offset and the chosen base fails before any port call.
+Ordinary strings and nested marker-looking dictionaries remain data. Existing
+concat can consume a resolved time through a parameter reference; it does not
+parse or calculate time. `field_compare` still accepts numbers only.
+
+For fixed-input replay, pass the optional `run_time` keyword to `run_scenario`:
+
+```python
+report = run_scenario(
+    scenario_path, adapters, projections=("backend", "contract"),
+    run_time="2026-10-24T08:00:00.000Z",
+)
+```
+
+The value must be a real date in that exact UTC millisecond string format.
+Invalid values fail configuration without fallback or target side effects.
+Omission uses actual UTC time only when the selected declaration has a time
+marker, including an unused declared marker. Loading, validation, expansion,
+impact inspection, filtered runs and declarations without time markers never
+read the wall clock. This does not change `now`, the monotonic polling clock.
+There is no new CLI option.
+
+The report records `run_time`, `run_time_source` (`actual` or `fixed`) and
+`run_time_values` (compiled direct-time parameter names and resolved values).
+These are explicit sensitive metadata, hidden from default repr, not an export
+of all parameters. Generic report serialization remains unsafe. Included
+parameters retain their scopes and override behavior. A fresh bound declaration
+keeps execution values separate from symbolic authoring views; offline contract
+uses that same bound declaration without reading another clock. Independent
+projection callers use `bind_run_values(..., run_time=...)` first; its existing
+`(bound_scenario, unique_token)` return shape is unchanged.
+
+The [Records expiration example](examples/minimal/create_expiring_record.yaml)
+checks creation and readback of the declared expiration. It does not prove that
+the record expires later. The
+[Documents recent-window example](examples/documents/scenarios/query_recent_documents.yaml)
+declares the query interval and basic response checks. A success code and list
+length do not prove filtering: its separate synthetic consumer tests check
+known inside/outside and boundary records and reject faulty filters.
+
+Fixed time freezes inputs, not the host clock, server clock, stored data,
+sessions or unique tokens. A real server may reject a fixed historical expiration
+as expired. Replaying the time input alone does not reproduce a whole system.
 
 ### Dictionary keys and unique collection members
 
