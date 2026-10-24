@@ -3,7 +3,7 @@ import copy
 import math
 
 from refracto.declaration import values
-from refracto.declaration.model import ValueRef
+from refracto.declaration.model import ValueRef, RunUnique, StringConcat
 
 CHECKS = frozenset({"field_equals", "field_not_equals"})
 
@@ -32,11 +32,11 @@ def require_data(value, active=None):
 def resolve_expected(node, *, bound_values=None, inputs=None):
     """Resolve compiled references, never interpret response dictionaries as code."""
     def visit(item):
-        if isinstance(item, ValueRef):
+        if isinstance(item, (ValueRef, StringConcat, RunUnique)):
             resolved, error = values.resolve(item, bound_values=bound_values, inputs=inputs)
             if error is not None:
                 raise LookupError(error)
-            if item.source == "input":
+            if isinstance(item, ValueRef) and item.source == "input":
                 return visit(resolved)
             require_data(resolved)
             return copy.deepcopy(resolved)

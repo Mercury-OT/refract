@@ -16,6 +16,7 @@ from refracto import headers as header_ops
 from refracto.projection.recording import _evidence_equal
 from refracto.query import wire_query, require_wire_query, request_path
 from refracto.declaration import binding, values
+from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.projection import backend as backend_proj
 from refracto.projection.continuation import FlowState
 from refracto.projection.sessions import SessionManager
@@ -394,6 +395,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     needs_ui = any(s.action in {"open", "click", "fill"} or s.expect.frontend
                    for s in scenario.steps)
     try:
+        ensure_bound_run_values(scenario)
         sessions = SessionManager(scenario, auth)
         sessions.preflight()
         if needs_ui and (not isinstance(ui, ports.StepwiseUiDriver)

@@ -116,6 +116,8 @@ class RunReport:
     domains: list = field(default_factory=list)
     selected: bool = True
     source_lookup: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
+    run_unique: str | None = field(default=None, kw_only=True, compare=False,
+                                   repr=False, metadata={"sensitive": True})
 
     @property
     def status(self):

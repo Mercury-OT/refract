@@ -1,0 +1,63 @@
+# A run supplies one token; all steps reuse its composed value.
+schema_version: 1
+scenario: records.run_unique_create_locate_read
+description: Create with a run-scoped value, locate one observed member, and read it
+users: [creator]
+parameters:
+  run_token: {from_run: unique}
+  record_code:
+    concat: [{from_parameter: run_token}, "-records-", {from_parameter: run_token}]
+  record_name: Run-scoped record
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          code: {from_parameter: record_code}
+          name: {from_parameter: record_name}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+  - id: locate
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [records]
+        query:
+          code: {from_parameter: record_code}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: collection_matching_count
+          field: records
+          matching: {code: {from_parameter: record_code}}
+          count: 1
+  - id: read
+    do:
+      request:
+        method: GET
+        path:
+          - records
+          - from_step: locate
+            response_field: records
+            matching: {code: {from_parameter: record_code}}
+            member_field: id
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: id
+          value:
+            from_step: locate
+            response_field: records
+            matching: {code: {from_parameter: record_code}}
+            member_field: id
+        - {check: field_equals, field: code, value: {from_parameter: record_code}}
+        - {check: field_equals, field: name, value: {from_parameter: record_name}}

@@ -14,9 +14,10 @@ from refracto.declaration import values as value_ops
 from refracto.declaration.collections import is_scalar
 from refracto.query import wire_query
 from refracto import headers as header_ops
+from refracto.declaration.run_values import UNKNOWN, STRING, known_value, validate_parameters
 from refracto.declaration.model import (
     Scenario, Grid, Input, Assertion, Expect, RequestTemplate, Binding,
-    PollPolicy, Step, ValueRef, ResultSource,
+    PollPolicy, Step, ValueRef, ResultSource, RunUnique, StringConcat,
 )
 
 
@@ -111,6 +112,8 @@ def _binding(bindings, source, field, *, key=None, matching=None, member_field=N
     def typed(node):
         if isinstance(node, ValueRef):
             return ["reference", node.source, node.key]
+        if isinstance(node, StringConcat):
+            return ["concat", [typed(part) for part in node.parts]]
         if type(node) is dict:
             return ["object", [[name, typed(item)] for name, item in sorted(node.items())]]
         return [type(node).__name__, node]
@@ -166,12 +169,12 @@ def _reference(value, parameters, prior, bindings, where, *, selectors=True):
             matching = {}
             for name, declared in value["matching"].items():
                 _string(name, "response reference matching key")
-                predicate = _reference(declared, parameters, prior, bindings, where, selectors=False)
+                predicate = _value(declared, parameters, prior, bindings, where, selectors=False)
                 if predicate is None:
                     if not is_scalar(declared):
                         raise DeclarationError("response reference matching value must be a finite scalar or plain reference")
                     predicate = declared
-                elif predicate.source == "input" and not is_scalar(parameters[predicate.key]):
+                elif not _scalar_known(predicate, parameters):
                     raise DeclarationError("response reference matching parameter must be a finite scalar")
                 matching[name] = predicate
         binding = _binding(bindings, source, field, key=key, matching=matching, member_field=member_field)
@@ -181,8 +184,49 @@ def _reference(value, parameters, prior, bindings, where, *, selectors=True):
     return None
 
 
+def _known(value, parameters):
+    try:
+        return known_value(value, parameters)
+    except (ValueError, RecursionError):
+        raise DeclarationError("invalid parameter dependency or concat operand") from None
+
+
+def _scalar_known(value, parameters):
+    known = _known(value, parameters)
+    return known is UNKNOWN or known is STRING or is_scalar(known)
+
+
+def _concat(raw, parameters, prior, bindings, where, *, selectors=True, validate=True):
+    _mapping(raw, {"concat"}, where)
+    parts = raw["concat"]
+    if type(parts) is not list or not parts:
+        raise DeclarationError("concat requires a nonempty list")
+    parsed = []
+    for part in parts:
+        if type(part) is str:
+            parsed.append(part)
+            continue
+        ref = _reference(part, parameters, prior, bindings, where, selectors=selectors)
+        if ref is None:
+            raise DeclarationError("concat operands must be strings or references; nested concat is unsupported")
+        parsed.append(ref)
+    result = StringConcat(tuple(parsed))
+    if validate:
+        _known(result, parameters)
+    return result
+
+
+def _value(value, parameters, prior, bindings, where, *, selectors=True):
+    ref = _reference(value, parameters, prior, bindings, where, selectors=selectors)
+    if ref is not None:
+        return ref
+    if isinstance(value, dict) and "concat" in value:
+        return _concat(value, parameters, prior, bindings, where, selectors=selectors)
+    return None
+
+
 def _data(value, parameters, prior, bindings, where):
-    ref = _reference(value, parameters, prior, bindings, where)
+    ref = _value(value, parameters, prior, bindings, where)
     if ref is not None:
         return ref
     if isinstance(value, dict):
@@ -196,11 +240,11 @@ def _data(value, parameters, prior, bindings, where):
 
 
 def _header_value(declared, parameters, prior, bindings, where):
-    value = _reference(declared, parameters, prior, bindings, where)
+    value = _value(declared, parameters, prior, bindings, where)
     if value is None:
         value = declared
-    known = parameters[value.key] if isinstance(value, ValueRef) and value.source == "input" else value
-    if not isinstance(known, ValueRef):
+    known = _known(value, parameters)
+    if known is not UNKNOWN and known is not STRING:
         try:
             header_ops.validate_value(known)
         except ValueError as exc:
@@ -218,18 +262,24 @@ def _request(raw, parameters, prior, bindings, where):
         raise DeclarationError(f"{where}.path must be a non-empty list of segments")
     segments = [_data(v, parameters, prior, bindings, f"{where}.path") for v in path]
     for v in segments:
-        if not isinstance(v, ValueRef) and (type(v) not in (str, int) or v == ""):
+        if not isinstance(v, (ValueRef, StringConcat)) and (type(v) not in (str, int) or v == ""):
             raise DeclarationError(f"{where}.path segments must be non-empty strings, integers, or references")
-        known = parameters[v.key] if isinstance(v, ValueRef) and v.source == "input" else v
+        known = _known(v, parameters)
+        if known is not UNKNOWN and known is not STRING and (type(known) not in (str, int) or known == ""):
+            raise DeclarationError("request path segment must be a non-empty string or integer")
         if type(known) is str and known in (".", ".."):
             raise DeclarationError("request path must not contain a dot segment")
     template_path = "/".join(
         "{" + v.source + ":" + v.key + "}" if isinstance(v, ValueRef)
-        else urllib.parse.quote(str(v), safe="") for v in segments)
+        else "{concat:" + str(index) + "}" if isinstance(v, StringConcat)
+        else urllib.parse.quote(str(v), safe="") for index, v in enumerate(segments))
     body = raw.get("body")
     if body is not None and not isinstance(body, dict):
         raise DeclarationError(f"{where}.body must be a mapping")
     body = _data(body, parameters, prior, bindings, f"{where}.body")
+    body_known = _known(body, parameters)
+    if body_known is not UNKNOWN and body_known is not None and not isinstance(body_known, dict):
+        raise DeclarationError("request body must resolve to a mapping")
     query = None
     if "query" in raw:
         if type(raw["query"]) is not dict:
@@ -238,11 +288,11 @@ def _request(raw, parameters, prior, bindings, where):
         for key, declared in raw["query"].items():
             if type(key) is not str or not key:
                 raise DeclarationError("query keys must be nonempty literal strings")
-            value = _reference(declared, parameters, prior, bindings, f"{where}.query value")
+            value = _value(declared, parameters, prior, bindings, f"{where}.query value")
             if value is None:
                 value = declared
-            known = parameters[value.key] if isinstance(value, ValueRef) and value.source == "input" else value
-            if not isinstance(known, ValueRef):
+            known = _known(value, parameters)
+            if known is not UNKNOWN and known is not STRING:
                 try:
                     wire_query({key: known})
                 except ValueError as exc:
@@ -301,14 +351,14 @@ def _assertions(point, raw, parameters, prior, bindings):
         for key in set(params) & {"anchor", "field", "span", "attr"}:
             _string(params[key], f"{point}.{check}.{key}")
         if check in numeric_comparison.CHECKS:
-            value = _reference(params["value"], parameters, prior, bindings,
+            value = _value(params["value"], parameters, prior, bindings,
                                f"{point}.{check}.value")
             if value is None:
                 value = params["value"]
-            known = parameters[value.key] if isinstance(value, ValueRef) and value.source == "input" else value
+            known = _known(value, parameters)
             try:
                 numeric_comparison.require_operator(params["op"])
-                if not isinstance(known, ValueRef):
+                if known is not UNKNOWN:
                     numeric_comparison.require_expected(check, known)
             except ValueError as exc:
                 raise DeclarationError(str(exc)) from None
@@ -326,12 +376,12 @@ def _assertions(point, raw, parameters, prior, bindings):
             resolved = {}
             for key, declared in matching.items():
                 _string(key, "collection matching key")
-                value = _reference(declared, parameters, prior, bindings, "collection matching value")
+                value = _value(declared, parameters, prior, bindings, "collection matching value")
                 if value is None:
                     if not is_scalar(declared):
                         raise DeclarationError("collection matching value must be a finite scalar or reference")
                     value = declared
-                elif value.source == "input" and not is_scalar(parameters[value.key]):
+                elif not _scalar_known(value, parameters):
                     raise DeclarationError("collection matching parameter must be a finite scalar")
                 resolved[key] = value
             params["matching"] = resolved
@@ -419,6 +469,17 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         _string(key, "parameter key")
         _json(value, "parameter")
     parameters = dict(parameters)
+    for key, value in parameters.items():
+        if type(value) is dict and "from_run" in value:
+            if set(value) != {"from_run"} or value["from_run"] != "unique":
+                raise DeclarationError("run parameter must be exactly {from_run: unique}")
+            parameters[key] = RunUnique()
+        elif type(value) is dict and "concat" in value:
+            parameters[key] = _concat(value, parameters, {}, [], "parameter concat", validate=False)
+    try:
+        validate_parameters(parameters)
+    except (ValueError, RecursionError):
+        raise DeclarationError("invalid parameter dependency or concat operand") from None
     declared_parameters = dict(parameters)
     grid = None
     if "grid" in raw:

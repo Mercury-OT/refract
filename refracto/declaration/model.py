@@ -26,6 +26,17 @@ class ValueRef:
     source: str
     key: str
 
+
+@dataclass(frozen=True)
+class RunUnique:
+    """Symbolic request for the one token frozen by the top-level run."""
+
+
+@dataclass(frozen=True)
+class StringConcat:
+    """A bounded sequence of string literals and already parsed references."""
+    parts: tuple = field(repr=False, metadata={"sensitive": True})
+
 @dataclass
 class Assertion:
     check: str
@@ -98,6 +109,7 @@ class Scenario:
     users: list[str] | None = field(default=None, kw_only=True)
     include_user_mappings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     reference_bindings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
+    run_values_bound: bool = field(default=False, kw_only=True, compare=False, repr=False)
 
     def __post_init__(self):
         # Bounded Python-constructor migration only. The YAML loader never

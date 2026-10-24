@@ -14,6 +14,7 @@ from refracto import headers as header_ops
 from refracto.query import wire_query, require_wire_query, request_path
 from refracto.normalization import normalize_response
 from refracto.declaration import binding
+from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.declaration import values
 from refracto.declaration import collections
 from refracto.declaration import http_status
@@ -471,6 +472,7 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
         unsupported = "requestless backend_state has no correlation source"
     if unsupported is None:
         try:
+            ensure_bound_run_values(scenario)
             sessions.preflight()
         except Exception as exc:
             unsupported = str(exc)

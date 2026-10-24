@@ -1,7 +1,8 @@
 """One-level, pinned local composition into the existing execution model.
 
-Only parsed ValueRef objects are substituted. Literal parameter dictionaries are
-never parsed a second time, and runtime values are not read during compilation.
+Only parsed references and bounded composition nodes are substituted. Literal
+parameter dictionaries are never parsed a second time, and runtime values are
+not read during compilation.
 """
 import copy
 import hashlib
@@ -10,7 +11,8 @@ import re
 from dataclasses import replace
 from pathlib import PurePosixPath
 
-from refracto.declaration.model import Assertion, Binding, Expect, ValueRef
+from refracto.declaration.model import Assertion, Binding, Expect, ValueRef, StringConcat
+from refracto.declaration.run_values import UNKNOWN, STRING, known_value, validate_parameters
 from refracto.declaration.collections import is_scalar
 from refracto.declaration import field_comparison
 from refracto.declaration import numeric_comparison
@@ -126,6 +128,8 @@ def load_dependencies(parent, raw, decode, parse):
 def _map(node, convert):
     if isinstance(node, ValueRef):
         return convert(node)
+    if isinstance(node, StringConcat):
+        return replace(node, parts=tuple(_map(part, convert) for part in node.parts))
     if isinstance(node, dict):
         return {key: _map(value, convert) for key, value in node.items()}
     if isinstance(node, list):
@@ -169,10 +173,12 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
     if not isinstance(overrides, dict) or set(overrides) - set(child.parameters):
         _error("include with must contain only declared child parameters")
     namespace, external = {}, []
-    for index, (key, default) in enumerate(child.parameters.items()):
+    for index, key in enumerate(child.parameters):
         generated = f"@include:{sid}:{index}"
-        while generated in parameters:
+        while generated in parameters or generated in namespace.values():
             generated = "@" + generated
+        namespace[key] = generated
+    for key, default in child.parameters.items():
         if key in overrides:
             value = _data(overrides[key], caller_parameters, prior, external, "include with value")
             # Caller input values are already literal JSON data; do not revisit
@@ -180,9 +186,9 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
             value = _map(value, lambda ref: copy.deepcopy(caller_parameters[ref.key])
                          if ref.source == "input" else ref)
         else:
-            value = copy.deepcopy(default)
-        parameters[generated] = value
-        namespace[key] = generated
+            value = _map(default, lambda ref: ValueRef("input", namespace[ref.key])
+                         if ref.source == "input" else ref)
+        parameters[namespace[key]] = value
     external_bindings = {binding.placeholder: binding for binding in external}
     if reference_bindings is not None:
         reference_bindings.update(external_bindings)
@@ -196,6 +202,8 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
         rewritten = {}
         used = {}
 
+        visited_inputs = set()
+
         def visit_external(node):
             if isinstance(node, ValueRef):
                 if node.source == "bind":
@@ -203,7 +211,12 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
                     visit_external(binding.matching)
                     used[binding.placeholder] = binding
                 elif node.source == "input":
-                    visit_external(parameters[node.key])
+                    if node.key not in visited_inputs:
+                        visited_inputs.add(node.key)
+                        visit_external(parameters[node.key])
+            elif isinstance(node, StringConcat):
+                for part in node.parts:
+                    visit_external(part)
             elif isinstance(node, dict):
                 for value in node.values():
                     visit_external(value)
@@ -236,7 +249,8 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
             segments = _map(request.path_segments, convert)
             from urllib.parse import quote
             path = "/".join("{" + v.source + ":" + v.key + "}" if isinstance(v, ValueRef)
-                            else quote(str(v), safe="") for v in segments)
+                            else "{concat:" + str(index) + "}" if isinstance(v, StringConcat)
+                            else quote(str(v), safe="") for index, v in enumerate(segments))
             request = replace(request, path=path, declared_path=path,
                               path_segments=segments, body=_map(request.body, convert),
                               query=_map(request.query, convert), headers=_map(request.headers, convert))
@@ -258,12 +272,16 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
 
 def validate_instantiated(scenario):
     """Reject known invalid input values without evaluating response references."""
-    unknown = object()
+    unknown = UNKNOWN
     parameters = scenario.parameters
+    try:
+        validate_parameters(parameters)
+    except (ValueError, RecursionError):
+        _error("invalid instantiated parameter dependency or concat operand")
 
     def known(node):
-        if isinstance(node, ValueRef):
-            return known(parameters[node.key]) if node.source == "input" else unknown
+        if isinstance(node, (ValueRef, StringConcat)):
+            return known_value(node, parameters)
         if isinstance(node, dict):
             return {key: known(value) for key, value in node.items()}
         if isinstance(node, list):
@@ -274,12 +292,12 @@ def validate_instantiated(scenario):
         for binding in step.bind:
             for declared in (binding.matching or {}).values():
                 value = known(declared)
-                if value is not unknown and not is_scalar(value):
+                if value is not unknown and value is not STRING and not is_scalar(value):
                     _error("instantiated response reference matching value must be a finite scalar")
         if step.request is not None:
             for segment in step.request.path_segments:
                 value = known(segment)
-                if value is not unknown and (type(value) not in (str, int) or value == ""):
+                if value is not unknown and value is not STRING and (type(value) not in (str, int) or value == ""):
                     _error("instantiated path segment must be a non-empty string or integer")
                 if value is not unknown and value in (".", ".."):
                     _error("instantiated path must not contain a dot segment")
@@ -288,14 +306,14 @@ def validate_instantiated(scenario):
                 _error("instantiated request body must be a mapping")
             for key, declared in (step.request.query or {}).items():
                 value = known(declared)
-                if value is not unknown:
+                if value is not unknown and value is not STRING:
                     try:
                         wire_query({key: value})
                     except ValueError:
                         _error("instantiated query value must be a finite non-null scalar")
             for declared in (step.request.headers or {}).values():
                 value = known(declared)
-                if value is not unknown:
+                if value is not unknown and value is not STRING:
                     try:
                         header_ops.validate_value(value)
                     except ValueError:
@@ -304,7 +322,7 @@ def validate_instantiated(scenario):
             for assertion in getattr(step.expect, point):
                 if assertion.check == "header_equals":
                     value = known(assertion.params["value"])
-                    if value is not unknown:
+                    if value is not unknown and value is not STRING:
                         try:
                             header_ops.validate_value(value)
                         except ValueError:
@@ -322,5 +340,5 @@ def validate_instantiated(scenario):
                 if assertion.check == "collection_matching_count":
                     for declared in assertion.params["matching"].values():
                         value = known(declared)
-                        if value is not unknown and not is_scalar(value):
+                        if value is not unknown and value is not STRING and not is_scalar(value):
                             _error("instantiated collection matching value must be a finite scalar")

@@ -1,0 +1,63 @@
+# A run supplies one token; all steps reuse its composed value.
+schema_version: 1
+scenario: documents.run_unique_create_locate_read
+description: Create with a run-scoped value, locate one observed member, and read it
+users: [editor]
+parameters:
+  run_token: {from_run: unique}
+  document_title:
+    concat: [{from_parameter: run_token}, "-documents-", {from_parameter: run_token}]
+  category: guide
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [documents]
+        body:
+          title: {from_parameter: document_title}
+          category: {from_parameter: category}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+  - id: locate
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path: [documents, search]
+        query:
+          title: {from_parameter: document_title}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: collection_matching_count
+          field: documents
+          matching: {title: {from_parameter: document_title}}
+          count: 1
+  - id: read
+    do:
+      request:
+        method: GET
+        path:
+          - documents
+          - from_step: locate
+            response_field: documents
+            matching: {title: {from_parameter: document_title}}
+            member_field: document_id
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - check: field_equals
+          field: document_id
+          value:
+            from_step: locate
+            response_field: documents
+            matching: {title: {from_parameter: document_title}}
+            member_field: document_id
+        - {check: field_equals, field: title, value: {from_parameter: document_title}}
+        - {check: field_equals, field: category, value: {from_parameter: category}}
