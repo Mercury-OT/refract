@@ -32,7 +32,7 @@ def test_invalid_expansion_has_no_partial_stdout(tmp_path, capsys):
 
 def test_expansion_distinguishes_literal_reference_like_dictionary(tmp_path, capsys):
     path, _ = write_bundle(tmp_path, parent([include(**{"with": {"name": {"from_parameter": "payload"}}})],
-        parameters={"payload": {"from_step": "not-a-reference", "response_field": "id"}}))
+        parameters={"payload": {"literal": {"from_step": "not-a-reference", "response_field": "id"}}}))
     assert main(["validate", str(path), "--expand"]) == 0
     first = capsys.readouterr().out
     document = json.loads(first)

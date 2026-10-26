@@ -4,6 +4,7 @@ import numbers
 import urllib.parse
 import hashlib
 import json
+import copy
 from pathlib import Path
 import yaml
 from refracto.declaration import vocabulary as vocab
@@ -14,7 +15,9 @@ from refracto.declaration import values as value_ops
 from refracto.declaration.collections import is_scalar
 from refracto.query import wire_query
 from refracto import headers as header_ops
-from refracto.declaration.run_values import UNKNOWN, STRING, known_value, validate_parameters
+from refracto.declaration.run_values import (
+    UNKNOWN, STRING, known_value, time_offset_seconds, validate_parameters,
+)
 from refracto.declaration.model import (
     Scenario, Grid, Input, Assertion, Expect, RequestTemplate, Binding,
     PollPolicy, Step, ValueRef, ResultSource, RunUnique, RunTime, StringConcat,
@@ -450,19 +453,21 @@ def load_scenario(path: str) -> Scenario:
                           source_hash=hashlib.sha256(data).hexdigest())
 
 
-def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
-    _mapping(raw, {"schema_version", "scenario", "description", "users", "parameters", "grid", "steps", "results"}, "top-level")
-    if type(raw.get("schema_version")) is not int or raw["schema_version"] != 1:
-        raise DeclarationError("schema_version must be integer 1; old declarations are unsupported")
-    scenario_id = _string(raw.get("scenario"), "scenario")
-    users = raw.get("users")
-    if (type(users) is not list or any(type(user) is not str or not user.strip() for user in users)
-            or len(set(users)) != len(users)):
-        raise DeclarationError("users must be a list of distinct non-empty literal names")
-    description = raw.get("description", "")
-    if not isinstance(description, str):
-        raise DeclarationError("description must be a string")
-    parameters = raw.get("parameters", {})
+def _parameter_data(value):
+    """Reject ambiguous authored data; a whole-parameter literal bypasses this."""
+    if isinstance(value, dict):
+        if any(key.startswith("from_") or key == "concat" for key in value):
+            raise DeclarationError(
+                "reference-like parameter data requires a whole-parameter literal wrapper")
+        for item in value.values():
+            _parameter_data(item)
+    elif isinstance(value, list):
+        for item in value:
+            _parameter_data(item)
+
+
+def _parse_parameters(parameters):
+    """Parse reserved whole-parameter forms without interpreting literal data."""
     if not isinstance(parameters, dict):
         raise DeclarationError("parameters must be a unique-key mapping")
     for key, value in parameters.items():
@@ -470,7 +475,11 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         _json(value, "parameter")
     parameters = dict(parameters)
     for key, value in parameters.items():
-        if type(value) is dict and "from_run" in value:
+        if type(value) is dict and "literal" in value:
+            if set(value) != {"literal"}:
+                raise DeclarationError("literal parameter wrapper must contain only literal")
+            parameters[key] = copy.deepcopy(value["literal"])
+        elif type(value) is dict and "from_run" in value:
             if set(value) == {"from_run"} and value["from_run"] == "unique":
                 parameters[key] = RunUnique()
             elif value["from_run"] == "time" and set(value) <= {"from_run", "offset"}:
@@ -483,14 +492,37 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                             or type(next(iter(offset.values()))) is not int):
                         raise DeclarationError("time offset requires one supported unit and a strict integer")
                     parameters[key] = RunTime(*next(iter(offset.items())))
+                try:
+                    time_offset_seconds(parameters[key])
+                except ValueError as exc:
+                    # This validator emits fixed, value-free offset diagnostics.
+                    raise DeclarationError(str(exc)) from None
             else:
                 raise DeclarationError("run parameter requires unique or time with an optional bounded offset")
         elif type(value) is dict and "concat" in value:
             parameters[key] = _concat(value, parameters, {}, [], "parameter concat", validate=False)
+        else:
+            _parameter_data(value)
     try:
         validate_parameters(parameters)
     except (ValueError, RecursionError):
         raise DeclarationError("invalid parameter dependency or concat operand") from None
+    return parameters
+
+
+def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
+    _mapping(raw, {"schema_version", "scenario", "description", "users", "parameters", "grid", "steps", "results"}, "top-level")
+    if type(raw.get("schema_version")) is not int or raw["schema_version"] != 1:
+        raise DeclarationError("schema_version must be integer 1; old declarations are unsupported")
+    scenario_id = _string(raw.get("scenario"), "scenario")
+    users = raw.get("users")
+    if (type(users) is not list or any(type(user) is not str or not user.strip() for user in users)
+            or len(set(users)) != len(users)):
+        raise DeclarationError("users must be a list of distinct non-empty literal names")
+    description = raw.get("description", "")
+    if not isinstance(description, str):
+        raise DeclarationError("description must be a string")
+    parameters = _parse_parameters(raw.get("parameters", {}))
     declared_parameters = dict(parameters)
     grid = None
     if "grid" in raw:

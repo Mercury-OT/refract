@@ -46,7 +46,7 @@ def test_include_override_rejects_unknown_reference_key(tmp_path):
 def test_literal_parameters_and_response_evidence_remain_data(value):
     source = request("source", [check({"from_parameter": "expected"})])
     consumer = request("consumer", [check({"from_step": "source", "response_field": "content"})])
-    scenario = _load_document(document(source, consumer, parameters={"expected": value}))
+    scenario = _load_document(document(source, consumer, parameters={"expected": {"literal": value}}))
     result, _ = execute(scenario, {"source": {"content": value}, "consumer": {"content": value}})
     assert [step.status for step in result.steps] == ["PASSED", "PASSED"]
 
@@ -54,7 +54,7 @@ def test_literal_parameters_and_response_evidence_remain_data(value):
 def test_include_literal_parameter_is_not_reparsed(tmp_path):
     value = {"from_paramter": "literal"}
     path, _ = write_bundle(tmp_path, parent([include(**{
-        "with": {"name": {"from_parameter": "payload"}}})], parameters={"payload": value}))
+        "with": {"name": {"from_parameter": "payload"}}})], parameters={"payload": {"literal": value}}))
     scenario = load_scenario(path)
     assert prepare_step(scenario.steps[0], scenario, {})[0].request.body == {"name": value}
 

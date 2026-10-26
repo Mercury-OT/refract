@@ -1,4 +1,4 @@
-# A run supplies one token; all steps reuse its composed value.
+# Each execution binds this parameter once; all its steps reuse the composed value.
 schema_version: 1
 scenario: records.run_unique_create_locate_read
 description: Create with a run-scoped value, locate one observed member, and read it

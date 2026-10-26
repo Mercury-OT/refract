@@ -25,8 +25,8 @@ def test_fixed_time_is_a_symbolic_parameter_until_explicit_binding():
     view = expansion_view(original)
     assert view["parameters"]["name"] == {
         "kind": "run-value", "from_run": "time", "offset": {"days": 7}}
-    bound, token = bind_run_values(original, run_time=BASE)
-    assert token is None
+    bound, values = bind_run_values(original, run_time=BASE)
+    assert values == {}
     assert bound.parameters["name"] == "2026-10-31T08:00:00.123Z"
     assert bound.run_time == BASE and bound.run_time_source == "fixed"
     assert bound.run_time_values == {"name": "2026-10-31T08:00:00.123Z"}
@@ -133,7 +133,7 @@ def test_nested_marker_looking_data_is_not_a_clock_request(monkeypatch):
     monkeypatch.setattr(run_values, "_utc_now", lambda: pytest.fail("literal data read clock"))
     payload = {"nested": {"from_run": "time", "offset": {"days": "data"}},
                "items": [{"from_run": "time"}]}
-    bound, _ = bind_run_values(_load_document(case(payload)))
+    bound, _ = bind_run_values(_load_document(case({"literal": payload})))
     assert bound.parameters["name"] == payload and bound.run_time is None
     assert prepare_step(bound.steps[0], bound, {})[0].request.body == {"name": payload}
 

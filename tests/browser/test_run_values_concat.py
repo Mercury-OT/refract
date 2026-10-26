@@ -1,6 +1,7 @@
 """Real browser fill and outgoing evidence consume frozen and observed strings."""
 from copy import deepcopy
 import json
+from urllib.request import Request, build_opener, ProxyHandler
 
 import pytest
 import yaml
@@ -61,7 +62,7 @@ def test_frozen_run_value_and_response_concat_reach_actual_browser(http_peer, tm
                           mock_plan=plan if mode == "mock" else None)
     assert report.status == "PASSED", report.localize()
     assert calls == [True]
-    assert report.run_unique == sentinel
+    assert report.run_unique_values == {("frontend" if mode == "mock" else "e2e"): {"token": sentinel}}
     assert sentinel not in repr(report)
     assert report.degradations() == []
     assert ui.actions == ["open", "fill", "click", "fill", "click", "click"]
@@ -71,6 +72,62 @@ def test_frozen_run_value_and_response_concat_reach_actual_browser(http_peer, tm
     assert [item.request.body["value"] for item in traffic] == values
     assert [item.response.json["data"]["reply"] for item in traffic] == values
     assert len(http_peer.api_requests) == (0 if mode == "mock" else 2)
+
+
+def test_all_projections_use_distinct_sources_and_contract_keeps_backend_values(http_peer, tmp_path, monkeypatch):
+    """Actual HTTP and Chromium observe separate execution values on one peer."""
+    from refracto.declaration import run_values
+    from types import SimpleNamespace
+
+    tokens = ["1" * 32, "2" * 32, "3" * 32]
+    generated = []
+
+    def generate():
+        token = tokens[len(generated)]
+        generated.append(token)
+        return SimpleNamespace(hex=token)
+
+    monkeypatch.setattr(run_values, "uuid4", generate)
+
+    class PeerApi(ports.ApiDriver):
+        def send(self, spec, session):
+            headers = {"Content-Type": "application/json", **spec.headers}
+            if spec.traceparent:
+                headers["traceparent"] = spec.traceparent
+            outgoing = Request(http_peer.base_url + "/" + spec.path,
+                               data=json.dumps(spec.body).encode(),
+                               headers=headers, method=spec.method)
+            with build_opener(ProxyHandler({})).open(outgoing, timeout=5) as observed:
+                text = observed.read().decode()
+                return ports.RecordedResponse(observed.status, dict(observed.headers),
+                    json.loads(text), text, spec.traceparent.split("-")[1], spec,
+                    header_items=list(observed.headers.items()))
+
+    ui = SyntheticUi(http_peer.base_url)
+    adapters = Adapters(FakeAuth(), PeerApi(), None, ui, InMemoryRecorder,
+        lambda scenario, step, template: ports.RequestSpec(
+            template.method, template.path, template.body), FakeNormalizer())
+    mock_values = [f"start-{tokens[1]}-end", f"start-{tokens[1]}-end-again"]
+    plan = [ports.MockResponse(fixture_id=f"separate-{index}", source="independent fixed echo fixture",
+            method="POST", path="api/echo", response={"success": True, "data": {"reply": value}})
+            for index, value in enumerate(mock_values)]
+    report = run_scenario(declaration(tmp_path), adapters, mock_plan=plan)
+    assert report.status == "PASSED", report.localize()
+    assert report.degradations() == []
+    assert generated == tokens
+    assert report.run_unique_values == {
+        "backend": {"token": tokens[0]}, "frontend": {"token": tokens[1]},
+        "e2e": {"token": tokens[2]}, "contract": {"token": tokens[0]}}
+    assert [item["body"]["value"] for item in http_peer.api_requests] == [
+        f"start-{tokens[0]}-end", f"start-{tokens[0]}-end-again",
+        f"start-{tokens[2]}-end", f"start-{tokens[2]}-end-again"]
+    for index, token in enumerate(tokens[1:]):
+        outcomes = ui.results[index * 6:(index + 1) * 6]
+        assert fields(outcomes[1].evidence.rendered)["value"] == f"start-{token}-end"
+        assert fields(outcomes[3].evidence.rendered)["value"] == f"start-{token}-end-again"
+        assert outcomes[2].evidence.traffic[0].request.body["value"] == f"start-{token}-end"
+    assert ui.close_calls == 2
+    assert all(token not in repr(report) for token in tokens)
 
 
 @pytest.mark.parametrize("mode", ["live", "mock"])

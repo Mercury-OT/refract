@@ -39,15 +39,15 @@ def test_loading_and_review_are_symbolic_and_binding_is_once_per_fresh_copy(monk
     view = expansion_view(scenario)
     assert json.loads(json.dumps(view)) == view
     assert generated == []
-    first, first_token = run_values.bind_run_values(scenario)
-    second, second_token = run_values.bind_run_values(scenario)
+    first, first_values = run_values.bind_run_values(scenario)
+    second, second_values = run_values.bind_run_values(scenario)
     assert generated == [0, 1]
-    assert (first_token, second_token) == ("token-1", "token-2")
+    assert (first_values, second_values) == ({"token": "token-1"}, {"token": "token-2"})
     assert first.parameters["name"] == "token-1-record-token-1"
     assert second.parameters["name"] == "token-2-record-token-2"
     assert scenario == before and scenario is not first
     assert first.source_lookup == scenario.source_lookup
-    assert first_token not in repr(first)
+    assert first_values["token"] not in repr(first)
 
 
 def test_plain_parameter_concat_needs_no_randomness(monkeypatch):
@@ -55,8 +55,8 @@ def test_plain_parameter_concat_needs_no_randomness(monkeypatch):
     monkeypatch.setattr(run_values, "uuid4", lambda: pytest.fail("unexpected generation"))
     scenario = _load_document(declaration({"name": {"concat": ["", {"from_parameter": "part"}]},
                                            "part": ""}))
-    bound, token = run_values.bind_run_values(scenario)
-    assert token is None and bound.parameters["name"] == ""
+    bound, values = run_values.bind_run_values(scenario)
+    assert values == {} and bound.parameters["name"] == ""
     assert prepare_step(bound.steps[0], bound, {})[0].request.body == {"name": ""}
 
 
@@ -81,9 +81,9 @@ def test_invalid_parameter_declarations_fail_loading(parameters):
 def test_parameter_marker_looking_nested_data_and_plain_alias_stay_literal():
     from refracto.declaration.run_values import bind_run_values
     literal = {"nested": {"concat": [{"from_run": "unique"}]}, "from_parameter": "missing"}
-    scenario = _load_document(declaration({"name": literal}))
-    bound, token = bind_run_values(scenario)
-    assert token is None
+    scenario = _load_document(declaration({"name": {"literal": literal}}))
+    bound, values = bind_run_values(scenario)
+    assert values == {}
     assert prepare_step(bound.steps[0], bound, {})[0].request.body["name"] == literal
 
 
@@ -99,8 +99,9 @@ def test_concurrent_bindings_do_not_mutate_or_share_run_tokens():
     scenario = _load_document(declaration(composed_parameters()))
     with ThreadPoolExecutor(max_workers=4) as pool:
         runs = list(pool.map(lambda _: bind_run_values(scenario), range(12)))
-    assert len({token for _, token in runs}) == 12
-    for bound, token in runs:
+    assert len({values["token"] for _, values in runs}) == 12
+    for bound, values in runs:
+        token = values["token"]
         assert bound.parameters["name"] == f"{token}-record-{token}"
 
 
@@ -113,7 +114,8 @@ def test_include_overrides_affect_dependent_defaults_without_scope_capture(tmp_p
                               "token": {"from_run": "unique"}})
     path, _ = write_bundle(tmp_path, root, child)
     scenario = load_scenario(path)
-    bound, token = bind_run_values(scenario)
+    bound, values = bind_run_values(scenario)
+    token = values["token"]
     assert [prepare_step(step, bound, {})[0].request.body["name"] for step in bound.steps] == [
         f"parent-{token}-child", "second-child"]
     assert bound.include_dependencies == scenario.include_dependencies
@@ -126,10 +128,10 @@ def test_include_literal_override_is_never_reparsed(tmp_path):
     literal = {"nested": {"concat": ["a", "b"]}, "from_run": "not-a-generator"}
     child = leaf(parameters={"name": {}})
     root = parent([include(**{"with": {"name": {"from_parameter": "payload"}}})],
-                  parameters={"payload": {"wrapped": literal}})
+                  parameters={"payload": {"literal": {"wrapped": literal}}})
     path, _ = write_bundle(tmp_path, root, child)
-    bound, token = bind_run_values(load_scenario(path))
-    assert token is None
+    bound, values = bind_run_values(load_scenario(path))
+    assert values == {}
     assert prepare_step(bound.steps[0], bound, {})[0].request.body == {"name": {"wrapped": literal}}
 
 
@@ -140,17 +142,17 @@ def test_include_known_nonstring_override_cannot_hide_in_derived_default(tmp_pat
         load_scenario(path)
 
 
-def test_include_distinct_unique_parameters_share_one_frozen_token(tmp_path, monkeypatch):
+def test_include_distinct_unique_parameters_have_independent_frozen_values(tmp_path, monkeypatch):
     from refracto.declaration import run_values
     calls = []
-    monkeypatch.setattr(run_values, "uuid4", lambda: calls.append(1) or type("Token", (), {"hex": "one-token"})())
+    monkeypatch.setattr(run_values, "uuid4", lambda: calls.append(1) or type("Token", (), {"hex": f"token-{len(calls)}"})())
     child = leaf(parameters={"name": {"concat": ["child-", {"from_parameter": "token"}]},
                             "token": {"from_run": "unique"}})
     path, _ = write_bundle(tmp_path, parent([include("first"), include("second")]), child)
-    bound, token = run_values.bind_run_values(load_scenario(path))
-    assert calls == [1] and token == "one-token"
+    bound, values = run_values.bind_run_values(load_scenario(path))
+    assert calls == [1, 1] and set(values.values()) == {"token-1", "token-2"}
     assert [prepare_step(step, bound, {})[0].request.body for step in bound.steps] == [
-        {"name": "child-one-token"}, {"name": "child-one-token"}]
+        {"name": "child-token-1"}, {"name": "child-token-2"}]
 
 
 def test_impact_and_expansion_distinguish_symbolic_concat_and_nested_literal_data(tmp_path, monkeypatch):
@@ -158,14 +160,14 @@ def test_impact_and_expansion_distinguish_symbolic_concat_and_nested_literal_dat
     from tests.test_scenario_impact import bundle, child, inspect
     monkeypatch.setattr(run_values, "uuid4", lambda: pytest.fail("review generated a token"))
     params = {"name": {"concat": ["prefix-", {"from_parameter": "token"}]},
-              "token": {"from_run": "unique"}, "literal": {"nested": {"concat": ["a", "b"]}}}
+              "token": {"from_run": "unique"}, "literal": {"literal": {"nested": {"concat": ["a", "b"]}}}}
     paths = bundle(tmp_path, old=child(parameters=params))
     report = inspect(paths, show_values=True)
     assert report["status"] == "COMPLETE"
     defaults = report["parents"][0]["includes"][0]["defaults"]["before"]
     assert defaults["name"]["kind"] == "concat"
     assert defaults["token"]["kind"] == "run-value"
-    assert defaults["literal"]["value"] == params["literal"]
+    assert defaults["literal"]["value"] == params["literal"]["literal"]
     view = expansion_view(load_scenario(paths[3]))
     assert json.loads(json.dumps(view)) == view
     assert any(value["kind"] == "run-value" for value in view["parameters"].values())
@@ -220,10 +222,11 @@ def test_include_structured_arguments_bind_typed_nodes_and_preserve_literal_data
                "list": [{"concat": ["a", "b"]}, {"from_parameter": "missing"}]}
     override = {"value": nested, "literal": {"from_parameter": "payload"}}
     root = parent([include(**{"with": {"name": override}})],
-                  parameters={"token": {"from_run": "unique"}, "payload": literal})
+                  parameters={"token": {"from_run": "unique"}, "payload": {"literal": literal}})
     path, _ = write_bundle(tmp_path, root, leaf(parameters={"name": {}}))
     original = load_scenario(path)
-    bound, token = bind_run_values(original)
+    bound, values = bind_run_values(original)
+    token = values["token"]
     expected = "prefix-" + token if compose else token
     expected_nested = {"label": expected} if container == "dict" else [expected]
     prepared, _ = prepare_step(bound.steps[0], bound, {})
@@ -241,7 +244,7 @@ def test_nested_typed_run_marker_requires_explicit_binding_even_without_root_mar
     scenario.inputs = [Input("name", payload)]
     with pytest.raises(ValueError, match="bound"):
         ensure_bound_run_values(scenario)
-    bound, token = bind_run_values(scenario)
-    assert token is not None
+    bound, values = bind_run_values(scenario)
+    token = values["name"]
     expected = {"label": "prefix-" + token} if container == "dict" else ["prefix-" + token]
     assert prepare_step(bound.steps[0], bound, {})[0].request.body == {"name": expected}

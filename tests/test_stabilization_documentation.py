@@ -39,6 +39,7 @@ CONTEXTS = {
     "dictionary": "from_step: create\n",
     "member": "from_step: locate\n",
     "run_parameters": "parameters:\n  run_token: {from_run: unique}\n",
+    "literal_parameters": "parameters:\n  payload:\n    literal:\n",
     "time_parameters": "parameters:\n  expires_at: {from_run: time, offset: {days: 7}}\n",
     "response_concat": "concat:\n",
     "include": "- id: setup\n",
@@ -124,6 +125,12 @@ def render_context(name, body):
             "steps:\n  - id: create\n    do:\n      request:\n        method: POST\n"
             "        path: [records]\n        body:\n"
             "          title: {from_parameter: document_title}\n"
+            "    expect:\n      response:\n        - check: success\n")
+    if name == "literal_parameters":
+        return prefix + body + (
+            "steps:\n  - id: send\n    do:\n      request:\n        method: POST\n"
+            "        path: [records]\n        body:\n"
+            "          payload: {from_parameter: payload}\n"
             "    expect:\n      response:\n        - check: success\n")
     if name == "response_concat":
         prior = indent(yaml.safe_dump([request("account"), request("batch")],

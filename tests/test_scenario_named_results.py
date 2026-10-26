@@ -227,7 +227,7 @@ def test_internal_child_access_is_rejected_in_every_recursive_position(tmp_path,
 @pytest.mark.parametrize("payload", [{"result": "ok"}, {"from_step": "absent", "result": "id"},
     {"response_field": "literal"}, [False, 0, ""]])
 def test_reference_shaped_parameter_values_remain_literal_data(tmp_path, payload):
-    path, _ = bundle(tmp_path, parameters={"payload": payload}, steps=[
+    path, _ = bundle(tmp_path, parameters={"payload": {"literal": payload}}, steps=[
         include(**{"with": {"name": {"from_parameter": "payload"}}}),
         request("read", body={"value": {"from_parameter": "payload"}})])
     scenario = load_scenario(path)

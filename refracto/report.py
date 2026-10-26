@@ -116,8 +116,9 @@ class RunReport:
     domains: list = field(default_factory=list)
     selected: bool = True
     source_lookup: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
-    run_unique: str | None = field(default=None, kw_only=True, compare=False,
-                                   repr=False, metadata={"sensitive": True})
+    run_unique_values: dict[str, dict[str, str]] = field(
+        default_factory=dict, kw_only=True, compare=False, repr=False,
+        metadata={"sensitive": True})
     run_time: str | None = field(default=None, kw_only=True, compare=False,
                                  repr=False, metadata={"sensitive": True})
     run_time_source: str | None = field(default=None, kw_only=True, compare=False,

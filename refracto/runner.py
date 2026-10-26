@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import copy
 import math
 from refracto.declaration.loader import load_scenario
-from refracto.declaration.run_values import bind_run_values, _parse_run_time
+from refracto.declaration.run_values import bind_projection_values, _parse_run_time
 from refracto import grid
 from refracto.report import RunReport
 from refracto.projection import backend as backend_proj
@@ -85,18 +85,22 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         report.selected = False
         return report
 
-    # Freeze once for this logical run, after selection. Projections must never
-    # generate independent values or mutate the reusable loaded declaration.
-    scenario, report.run_unique = bind_run_values(scenario, run_time=run_time)
-    report.run_time = scenario.run_time
-    report.run_time_source = scenario.run_time_source
-    report.run_time_values = copy.deepcopy(scenario.run_time_values)
+    # Complete all preparation before any port call. Execution projections own
+    # unique values, while one clock base and backend/contract evidence are shared.
+    executions = bind_projection_values(scenario, projections, run_time=run_time)
+    report.run_unique_values = {name: copy.deepcopy(bound.run_unique_values)
+                                for name, bound in executions.items()}
+    if executions:
+        first = next(iter(executions.values()))
+        report.run_time = first.run_time
+        report.run_time_source = first.run_time_source
+        report.run_time_values = copy.deepcopy(first.run_time_values)
 
     provider_recordings = []
     provider_steps = []
     if "backend" in projections:
         rec = adapters.recorder_factory()
-        d = backend_proj.run(scenario, auth=adapters.auth, api=adapters.api,
+        d = backend_proj.run(executions["backend"], auth=adapters.auth, api=adapters.api,
                              state=adapters.state, recorder=rec,
                              resolve_request=adapters.resolve_request,
                              normalizer=adapters.normalizer, poll_config=poll_config,
@@ -105,17 +109,17 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         provider_steps = d.steps
         report.domains.append(d)
     if "frontend" in projections:
-        report.domains.append(frontend_proj.run(scenario, ui=adapters.ui, auth=adapters.auth,
+        report.domains.append(frontend_proj.run(executions["frontend"], ui=adapters.ui, auth=adapters.auth,
                                                  normalizer=adapters.normalizer,
                                                  mock_plan=mock_plan, now=now, sleep=sleep))
     if "e2e" in projections:
         rec = adapters.recorder_factory()
-        report.domains.append(e2e_proj.run(scenario, auth=adapters.auth, ui=adapters.ui,
+        report.domains.append(e2e_proj.run(executions["e2e"], auth=adapters.auth, ui=adapters.ui,
                                             api=adapters.api, resolve_request=adapters.resolve_request,
                                             state=adapters.state, recorder=rec,
                                             normalizer=adapters.normalizer, poll_config=poll_config,
                                             now=now, sleep=sleep))
     if "contract" in projections:
-        report.domains.append(contract_proj.run(scenario, provider_recordings, adapters.normalizer,
+        report.domains.append(contract_proj.run(executions["contract"], provider_recordings, adapters.normalizer,
                                                execution_steps=provider_steps))
     return report

@@ -1,11 +1,20 @@
 # Run-relative UTC time parameters
 
-Status: expression, implementation, independent audit and architect acceptance
-authorized by the maintainer on 2026-10-24. Submission is not authorized.
+Current status: delivered through PR #33 in main `f155ad5`, following separate
+submission authorization on 2026-10-24. Expression, implementation, independent
+audit and architect acceptance were authorized earlier that day. Restrictions
+in the implementation plan below describe its pre-submission stage.
 Starting main: `50996af`. Keep schema version 1 and one-level pinned inclusion.
 
+Subsequent transition, 2026-10-26: the separately approved
+[scoped-value task](scoped-unique-values-literal-parameters.md) replaces the single
+unique-token metadata/API with actual source-value maps and requires explicit
+literal wrapping for marker-looking parameter data. The shared UTC base and
+actual/fixed provenance in this time specification remain unchanged.
+
 Delivery: [local acceptance](run-relative-time-acceptance.md) passed on
-2026-10-24. Submission remains subject to separate maintainer authorization.
+2026-10-24. Acceptance alone did not authorize submission; the subsequent
+authorization and completed delivery are recorded separately.
 
 The maintainer subsequently accepted the completed task and separately
 [authorized public submission](run-relative-time-acceptance.md#subsequent-submission-authorization-2026-10-24).

@@ -181,10 +181,9 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
     for key, default in child.parameters.items():
         if key in overrides:
             value = _data(overrides[key], caller_parameters, prior, external, "include with value")
-            # Caller input values are already literal JSON data; do not revisit
-            # their keys as declaration syntax during substitution.
-            value = _map(value, lambda ref: copy.deepcopy(caller_parameters[ref.key])
-                         if ref.source == "input" else ref)
+            # Retain the caller source, including its generation scope. Copying
+            # a RunUnique declaration here would create an unintended new source.
+            # Literal values reached through references are never reparsed.
         else:
             value = _map(default, lambda ref: ValueRef("input", namespace[ref.key])
                          if ref.source == "input" else ref)

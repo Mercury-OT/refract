@@ -412,6 +412,8 @@ def _wiring(value, show_values):
 
 
 def _parameter_default(value, show_values):
+    if type(value) is dict and set(value) == {"literal"}:
+        return _describe(value["literal"], show_values)
     if type(value) is dict and set(value) == {"from_run"} and value["from_run"] == "unique":
         return {"kind": "run-value", "from_run": "unique"}
     if (type(value) is dict and value.get("from_run") == "time"

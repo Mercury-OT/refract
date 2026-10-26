@@ -47,7 +47,7 @@ def test_clock_read_once_and_truncated_base_shared_across_all_four_projections(t
     assert report.status == "PASSED" and report.degradations() == []
     assert [d.projection for d in report.domains] == ["backend", "frontend", "e2e", "contract"]
     assert report.run_time == BASE and report.run_time_source == "actual"
-    assert report.run_time_values == {"name": BASE} and report.run_unique is None
+    assert report.run_time_values == {"name": BASE} and all(not values for values in report.run_unique_values.values())
     assert api.sent[0].body["name"] == BASE
     assert len(ui.permits) == 2
     assert BASE not in repr(report)
@@ -64,7 +64,7 @@ def test_fixed_time_is_repeatable_without_reading_clock_or_reusing_unique_token(
     assert first.run_time == second.run_time == BASE
     assert first.run_time_source == second.run_time_source == "fixed"
     assert first.run_time_values == second.run_time_values == {"name": BASE}
-    assert first.run_unique != second.run_unique
+    assert first.run_unique_values != second.run_unique_values
     first.run_time_values["name"] = "changed"
     assert second.run_time_values == {"name": BASE}
 
