@@ -5,6 +5,10 @@
 <input id="value" value="initial">
 <button id="fetch">Fetch</button>
 <button id="xhr">XHR</button>
+<button id="form-fetch">Form fetch</button>
+<button id="form-xhr">Form XHR</button>
+<button id="form-multi">Repeated form requests</button>
+<button id="form-timer">Unassigned form request</button>
 <button id="xhr-trace">XHR with application trace</button>
 <button id="fetch-trace">Fetch with application trace</button>
 <button id="beacon">Unsupported beacon</button>
@@ -88,6 +92,30 @@ on('fetch-trace', () => {
     body: JSON.stringify({value: value()})}).then(response => response.json()).then(show);
 });
 on('beacon', () => navigator.sendBeacon('/api/beacon', JSON.stringify({value: value()})));
+// The page chooses its transport and values independently of Scenario assertions.
+lab.formRequests = [{path: '/api/form'}];
+const sendForm = (request, useXhr = false) => {
+  const body = Object.hasOwn(request, 'raw') ? request.raw
+    : Object.hasOwn(request, 'bytes') ? new Uint8Array(request.bytes)
+    : new URLSearchParams(request.pairs ?? [['value', value()]]);
+  const headerValues = request.headerValues ?? [];
+  if (useXhr) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', request.path, true);
+    for (const supplied of headerValues) xhr.setRequestHeader('Content-Type', supplied);
+    xhr.addEventListener('load', () => show(JSON.parse(xhr.responseText)));
+    xhr.send(body);
+    return;
+  }
+  const headers = new Headers();
+  for (const supplied of headerValues) headers.append('Content-Type', supplied);
+  return fetch(request.path, {method: 'POST', headers, body})
+    .then(response => response.json()).then(show).catch(() => {});
+};
+on('form-fetch', () => sendForm(lab.formRequests[0]));
+on('form-xhr', () => sendForm(lab.formRequests[0], true));
+on('form-multi', () => { for (const request of lab.formRequests) sendForm(request); });
+on('form-timer', () => setTimeout(() => sendForm(lab.formRequests[0]), 25));
 on('delayed', () => send('/api/delayed'));
 on('multi', () => {
   send('/api/first', 'first');

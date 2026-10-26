@@ -15,6 +15,7 @@ from refracto.headers import business_headers, header_map, match_headers, requir
 from refracto.query import parse_query
 
 from ._instrument import SCRIPT
+from ._request_body import is_form_content_type, parse_form_body
 
 
 _runtime = threading.local()
@@ -401,7 +402,9 @@ class BrowserSupport:
                 if type(logical_path) is not str or not logical_path:
                     raise ValueError("browser logical path mapping failed")
                 body = None
-                if request.post_data is not None:
+                if is_form_content_type(request_items):
+                    body = parse_form_body(request.post_data_buffer)
+                elif request.post_data is not None:
                     body = json.loads(request.post_data)
                     if body is not None and type(body) is not dict:
                         raise ValueError("browser request body must be a JSON object")

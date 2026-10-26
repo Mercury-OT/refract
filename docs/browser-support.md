@@ -273,16 +273,59 @@ a queue; unrelated runs must use separate queues.
 
 ## Transport and data boundaries
 
-This helper supports finite HTTP responses and JSON-object request bodies. It
+This helper supports finite HTTP responses, JSON-object request bodies and
+ordinary UTF-8 URL-encoded form bodies on its existing fetch/XHR paths. It
 rejects cross-origin requests, redirects, synchronous XHR, frame traffic,
 workers, and streaming transports when encountered. Service workers are blocked.
 Outside fetch/XHR, only GET and HEAD requests for documents, stylesheets, scripts,
 images, fonts, media, text tracks, and manifests may reach the server. Other
-transports, including `sendBeacon`/ping and form writes, fail before forwarding in
+transports, including `sendBeacon`/ping and native HTML form-navigation writes, fail before forwarding in
 both modes; an empty mock plan never permits an unsupported write to fall through.
 Redirects are not followed, so credentials cannot be forwarded to an unvalidated
 destination. It is intended for one top-level page; browser-native application
 flows beyond these bounds need a separately scoped adapter design.
+
+### Observing ordinary form fields
+
+The actual observed Content-Type selects form decoding:
+`application/x-www-form-urlencoded`, optionally with one `charset=utf-8`
+parameter. Media type and charset comparison are case-insensitive; quoted
+UTF-8 and surrounding whitespace are accepted. Other parameters/charsets,
+repeated charset, duplicate Content-Type rows and comma-combined ambiguous form
+claims fail before forwarding or consuming a mock fixture. This is a bounded
+helper policy, not a declaration that every rejected request is invalid HTTP.
+
+Form request bytes are decoded strictly as UTF-8. Fields are separated before
+percent decoding, plus represents a space, and decoding happens once. Empty
+values and bare names produce empty strings; empty separators add no field.
+Duplicate decoded names, empty names, malformed percent escapes and invalid
+UTF-8 are rejected without replacing bytes or silently retaining one value.
+Each observed field remains a string: `"0"`, `"false"` and `"null"` are not
+converted to numbers, booleans or null. Dots and brackets in names stay literal;
+no nested object or array convention is inferred. Existing strict request-body
+checks continue to compare those actual values with Scenario expectations.
+
+An available empty byte string represents an empty mapping. When the browser
+exposes no body, evidence retains None rather than guessing an empty form.
+Outside the form branch, the previous JSON-object/null decoder remains in use,
+including its handling of missing and non-form Content-Type. Form-looking data
+is not guessed from its contents, and a malformed form claim never falls back
+to JSON. This slice does not add a general media-type conformance checker.
+
+The live request body and Content-Type are forwarded unchanged. Complete
+observed header pairs remain sensitive evidence; the existing request body is a
+decoded mapping, not a retained packet capture. Mock data still comes only from
+the independently supplied fixture plan. Normal action attribution, user/session
+binding, background diagnostics and request/response pairing apply in both modes.
+Unassigned form traffic cannot become evidence merely by matching a declaration.
+
+There is no new YAML encoding field. An API adapter may already choose JSON or
+form serialization by endpoint. Scenario describes business input; protocol
+requirements such as accepting a particular media type need their own explicit
+test rather than being inferred from this decoder. Multipart/file upload,
+arbitrary body formats and native form navigation remain unsupported. The
+[mixed JSON/form example](../examples/browser-form-requests/README.md) is loaded
+and executed by real-browser tests on a public synthetic page.
 
 Internal request-association headers are removed before traffic reaches the
 server. At request start the helper generates a fresh local trace, which replaces

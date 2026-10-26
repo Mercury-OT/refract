@@ -1,0 +1,40 @@
+# The page sends JSON and ordinary form data through its own endpoint mappings.
+# Scenario approves business fields, not an encoding selector.
+schema_version: 1
+scenario: synthetic.mixed_request_bodies
+description: Check the same business input in JSON and ordinary form requests
+users: [editor]
+parameters:
+  sample: "shared sample"
+steps:
+  - id: open
+    do: open
+    target: laboratory
+  - id: fill
+    do: fill
+    target: value
+    value: {from_parameter: sample}
+  - id: json_submit
+    do: click
+    target: fetch
+    expect:
+      request:
+        method: POST
+        path: [api, echo]
+        body:
+          value: {from_parameter: sample}
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: reply, value: {from_parameter: sample}}
+  - id: form_submit
+    do: click
+    target: form-fetch
+    expect:
+      request:
+        method: POST
+        path: [api, form]
+        body:
+          value: {from_parameter: sample}
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: reply, value: {from_parameter: sample}}
