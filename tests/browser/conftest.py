@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import socket
 import threading
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 
@@ -58,8 +58,11 @@ def start_peer():
                 body = json.loads(raw) if raw else None
             except (ValueError, UnicodeDecodeError):
                 body = raw.decode("utf-8", errors="replace")
+            if (path == "/api/form" and self.headers.get_content_type()
+                    == "application/x-www-form-urlencoded"):
+                body = dict(parse_qsl(raw.decode("utf-8"), keep_blank_values=True))
             peer.requests.append(dict(path=path, url=self.path, method=self.command,
-                                      headers=dict(self.headers), body=body,
+                                      headers=dict(self.headers), body=body, raw_body=raw,
                                       header_items=list(self.headers.raw_items()),
                                       traceparents=self.headers.get_all("traceparent", [])))
             if path == "/favicon.ico":
