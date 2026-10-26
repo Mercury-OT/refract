@@ -70,8 +70,8 @@ def test_include_response_override_is_a_dependency_of_derived_parameter(tmp_path
     child = leaf(parameters={"name": {"concat": ["child-", {"from_parameter": "part"}]}, "part": "default"})
     root = parent([source, include(**{"with": {"part": reference()}})])
     path, _ = write_bundle(tmp_path, root, child)
-    scenario, token = bind_run_values(load_scenario(path))
-    assert token is None
+    scenario, values = bind_run_values(load_scenario(path))
+    assert values == {}
     consume = scenario.steps[1]
     assert [binding.from_step for binding in consume.bind] == ["source"]
     step, bound = prepare_step(consume, scenario, {"source": observed(code="actual")})

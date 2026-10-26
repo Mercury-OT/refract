@@ -142,11 +142,12 @@ def test_public_expiration_example_creates_and_reads_real_record(projections):
     assert report.run_time_source == "fixed"
     assert report.run_time_values == {"expires_at": "2026-10-31T08:00:00.000Z"}
     assert len(app.requests) == 2
-    assert app.requests[0][2] == {"name": report.run_unique, "expires_at": "2026-10-31T08:00:00.000Z"}
+    token = report.run_unique_values[projections[0]]["record_name"]
+    assert app.requests[0][2] == {"name": token, "expires_at": "2026-10-31T08:00:00.000Z"}
     assert app.requests[1][1] == "/items/item-1"
     assert app._items["item-1"] == {"id": "item-1", **app.requests[0][2]}
     assert expansion_view(load_scenario(RECORDS)) == declaration_before
-    assert BASE not in repr(report) and report.run_unique not in repr(report)
+    assert BASE not in repr(report) and token not in repr(report)
 
 
 @pytest.mark.parametrize("projections", PROJECTIONS)
@@ -206,5 +207,5 @@ def test_fixed_time_replays_query_inputs_without_resetting_target_or_unique_valu
             for _ in range(2)]
     assert all(report.status == "PASSED" for report in runs)
     assert runs[0].run_time_values == runs[1].run_time_values
-    assert runs[0].run_unique != runs[1].run_unique
+    assert runs[0].run_unique_values != runs[1].run_unique_values
     assert len(records._items) == 2

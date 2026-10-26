@@ -38,10 +38,11 @@ A requested grid filter does not silently match a Scenario without that grid.
 
 In positions that interpret references, keys beginning with `from_` are reserved:
 an unknown spelling is a declaration error, not a literal expected object.
-Parameter dictionaries remain literal data, including keys with that prefix,
-except the explicitly reserved whole-parameter `from_run` and `concat` forms.
-Nested parameter dictionaries and runtime response objects are never
-reinterpreted as declaration syntax. This
+In authored parameter values those keys and `concat` are also reserved at every
+dictionary depth, except inside an explicit whole-parameter `literal` wrapper.
+The approved whole-parameter `from_run` and `concat` forms are parsed normally.
+Wrapped data and runtime response objects are never reinterpreted as declaration
+syntax. This
 does not detect every possible typo or prove that an assertion expresses intent.
 
 YAML 1.1-only implicit boolean aliases (such as `NO` or `yes`), sexagesimal
@@ -677,7 +678,7 @@ which remain distinguishable from live responses.
 
 ### Run values and string composition
 
-Declare one run-scoped source and reuse its value through ordinary parameters:
+Declare a unique-value source and reuse its value through ordinary parameters:
 
 ```yaml
 parameters:
@@ -694,13 +695,22 @@ parameter. `{from_run: unique}` requests the token described here; the bounded
 `time` form is described below. There is no `prefix`, `suffix`, custom generator,
 time format or step-level `from_run` reference.
 Loading, validation, expansion and impact inspection do not generate anything.
-A selected `run_scenario` execution with any unique marker generates one opaque
-UUID4 hex string, freezes it on a fresh declaration copy, and reuses it across projections,
-poll attempts and included leaves. A later invocation generates a new token.
-It is neither a server object ID nor a credential, and does not prove absolute
-collision impossibility. The actual token is available as `RunReport.run_unique`,
-hidden from default repr and marked sensitive. Resolved parameters are not
-automatically serialized. Generic serialization of reports is not a safe export.
+Each independently declared unique parameter generates its own opaque 32-character
+UUID4 hex string. Within an execution, every reference to that parameter, including
+poll attempts, uses the frozen value. Backend, frontend and e2e each bind their
+own values; contract reuses backend's values and recordings. Another invocation
+generates new values. Preparation of all selected executions finishes before
+adapter calls. These strings are neither server object IDs nor credentials, and
+do not prove absolute collision impossibility or target-state isolation.
+
+`RunReport.run_unique_values` records projection names mapped to compiled unique
+source parameter names and actual values. Contract records a separate copy of
+backend's mapping. The bound Scenario has a flat `run_unique_values` mapping.
+These fields are hidden from default repr and marked sensitive; arbitrary
+parameters and composed business strings are not automatically recorded. This
+replaces the former single `run_unique` field. Generic report serialization is
+not a safe export. Independently authored frontend fixtures are not rewritten
+from expected values or automatically populated with generated data.
 
 `concat` consists of exactly one key with a nonempty operand list. Each operand
 must be a literal string or a supported reference whose actual value is a string.
@@ -709,8 +719,31 @@ template interpolation, arithmetic, function call, conditional or fallback.
 Empty strings remain strings; the destination still decides whether an empty
 result is usable. Parameter-level concat can refer only to declared parameters,
 including forward declarations, with cycles and unknown names rejected. A plain
-parameter mapping containing `from_parameter` is still literal data, not an
-additional alias syntax. Nested marker-looking dictionaries stay literal.
+parameter mapping containing `from_parameter` is rejected, not treated as an
+alias or silently sent as data. A string alias can use a one-operand concat.
+
+Ordinary parameter values are finite JSON-like data, but dictionaries containing
+a `from_`-prefixed key or `concat`, at any depth including inside lists, require
+an explicit whole-parameter `literal` wrapper. It has exactly one key; mixing it
+with other keys is invalid. Only the outer wrapper is recognized. Everything
+inside is copied as data, including further `literal`, `from_run` or `concat`
+objects, without interpreting it. Parameter names and ordinary string contents
+are not reserved. For example:
+
+```yaml
+parameters:
+  payload:
+    literal:
+      meta: {from_run: unique}
+      items: [{from_parameter: ordinary-data}]
+```
+
+Here `payload` is the actual dictionary containing `meta` and `items`; it does
+not generate or reference anything. Scalars, null, false, zero, empty strings,
+arrays and objects retain their types when wrapped. Normal destination type
+rules still apply. A nested `literal` key in an unwrapped parameter is not an
+escape. The wrapper is not a new step-level value form. Actual responses and
+values obtained from references are never parsed again as declaration syntax.
 
 In later steps, concat can combine earlier actual response strings:
 
@@ -737,21 +770,27 @@ unchanged; neither their dictionaries nor literal parameter data are reparsed.
 
 Included parameter defaults retain child scope. Overrides affect their dependent
 compositions; response-dependent overrides resolve at the consuming leaf, not
-at run start. Repeated includes share the same run token but have separate local
-parameter scopes. No new result interface or inclusion level is introduced.
+at run start. Repeated includes generate separate default unique values; explicit
+parent references in `with` retain their parent source and share its value.
+Passing the same value twice deliberately can still cause a duplicate creation.
+Independent parent parameters generate independently, even with identical
+`from_run` spelling. No new result interface or inclusion level is introduced.
 Low-level projection callers must explicitly freeze declarations first with
-`bind_run_values`; unbound run markers are errors, never implicit per-projection
-generation. Offline contract checking reuses the frozen Scenario and recordings.
+`bind_run_values`; its return is `(bound_scenario, unique_values)`, with a flat
+mapping rather than the former single token. Unbound run markers are errors,
+never implicit generation inside a projection. Binding an already-bound Scenario
+is rejected; retain the symbolic declaration for a fresh execution. Offline
+contract checking reuses the frozen backend Scenario and recordings.
 Keep the original declaration for authoring review: `expansion_view` rejects
 already-bound run models rather than exposing their runtime values as literals.
 
 See the executable [Documents](examples/documents/scenarios/run_unique_create_locate_read.yaml)
 and independent [Records](examples/minimal/run_unique_create_locate_read.yaml)
 create/locate/read examples. Repeated runs may retain old objects, but selection
-still needs actual unique matching evidence. The token does not automatically
-isolate projections, create multiple independent random values, clean up data or
-make a duplicate match acceptable. Multiple writing projections against one
-shared target can still collide with each other; the test host owns isolation.
+still needs actual unique matching evidence. Independent generated values do not
+clean up data, make duplicate matches acceptable or isolate all target state.
+Fixed or explicitly shared business values can still collide across writers;
+the test host owns environment isolation.
 
 ### Run-relative UTC time
 
@@ -778,7 +817,7 @@ The base is truncated to milliseconds once, then offsets are applied. Values
 are strings in the fixed format `YYYY-MM-DDTHH:MM:SS.sssZ`, such as
 `2026-10-24T08:00:00.000Z`. Impossible offset ranges fail declaration loading;
 overflow from a valid offset and the chosen base fails before any port call.
-Ordinary strings and nested marker-looking dictionaries remain data. Existing
+Ordinary strings and explicitly wrapped marker-looking dictionaries remain data. Existing
 concat can consume a resolved time through a parameter reference; it does not
 parse or calculate time. `field_compare` still accepts numbers only.
 
@@ -793,6 +832,10 @@ report = run_scenario(
 
 The value must be a real date in that exact UTC millisecond string format.
 Invalid values fail configuration without fallback or target side effects.
+An invalid supplied timestamp, an unavailable UTC clock, or an offset that
+overflows the selected base raises `ValueError` before projection execution;
+these preparation failures do not return a `RunReport`. A caller must treat the
+exception as an unsuccessful invocation, not as a passed or empty test run.
 Omission uses actual UTC time only when the selected declaration has a time
 marker, including an unused declared marker. Loading, validation, expansion,
 impact inspection, filtered runs and declarations without time markers never
@@ -807,7 +850,9 @@ parameters retain their scopes and override behavior. A fresh bound declaration
 keeps execution values separate from symbolic authoring views; offline contract
 uses that same bound declaration without reading another clock. Independent
 projection callers use `bind_run_values(..., run_time=...)` first; its existing
-`(bound_scenario, unique_token)` return shape is unchanged.
+two-item return contains `(bound_scenario, unique_values)` under the scoped
+unique-value rules above. Time metadata records direct time sources, not aliases
+which merely reference a parent parameter.
 
 The [Records expiration example](examples/minimal/create_expiring_record.yaml)
 checks creation and readback of the declared expiration. It does not prove that
@@ -917,8 +962,9 @@ use child defaults; null is an ordinary value, not a required-parameter marker.
 Values use the existing literal, `from_parameter`, and earlier `from_step` forms.
 Caller references are checked at the include position, while child-internal
 references remain local. Runtime responses are not read during loading. Each
-invocation has isolated parameters and steps; literal objects resembling reference
-syntax remain data. No additional parameterized positions are introduced.
+invocation has isolated parameters and steps; explicitly literal parameter
+objects resembling reference syntax remain data when passed by reference.
+No additional parameterized positions are introduced.
 
 If a child declares `users: [operator]`, two parent include steps may select
 `user: creator` and `user: peer`. Both reuse the same child bytes: `operator` is

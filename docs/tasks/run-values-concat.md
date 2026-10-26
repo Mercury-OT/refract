@@ -1,11 +1,20 @@
 # Run-unique values and bounded string composition
 
-Status: specification and implementation authorized by the maintainer on
-2026-10-22 after review of the expression below. Submission is not authorized.
+Current status: delivered through PR #32 in main `50996af`, following separate
+submission authorization on 2026-10-24. The specification and implementation were
+authorized on 2026-10-22 after review of the expression below. Authorization
+restrictions in the dated sections below describe those historical stages.
 Starting main: `14a7f88`. Format 1 and one-level pinned inclusion remain unchanged.
 
+Subsequent transition, 2026-10-26: the maintainer approved
+[scoped unique values and explicit literal parameters](scoped-unique-values-literal-parameters.md).
+Its per-source/per-execution generation and explicit literal rules supersede the
+shared-token and implicit literal-data rules below. This document preserves the
+original delivered specification; SCENARIO.md states the current contract.
+
 Delivery: [local acceptance](run-values-concat-acceptance.md) passed on 2026-10-22.
-This specification and its acceptance do not authorize submission.
+That acceptance did not itself authorize submission; subsequent authorization
+and delivery are recorded below and in the public roadmap.
 
 ## Resumed verification authorization
 

@@ -115,34 +115,37 @@ def ensure_bound_run_values(scenario):
         raise ValueError("run values must be explicitly bound before projection execution")
 
 
-def bind_run_values(scenario, *, run_time=None):
-    """Return an independent declaration copy and its single token, if needed.
-
-    Input-only expressions are frozen. Include arguments depending on a response
-    remain typed expressions for atomic preparation of each consuming step.
-    """
+def _run_clock(scenario, run_time):
+    """Validate symbolic inputs and establish the logical run's one UTC base."""
     fixed = _parse_run_time(run_time)
-    bound = copy.deepcopy(scenario)
-    parameters = bound.parameters
+    if scenario.run_values_bound:
+        raise ValueError("run values are already bound; use the original symbolic declaration")
+    parameters = scenario.parameters
     try:
         validate_parameters(parameters)
     except RecursionError:
         raise ValueError("parameter dependency graph exceeds available recursion capacity") from None
-    has_time = any(_has_run_value(value, RunTime) for value in parameters.values())
-    base = None
-    if has_time:
-        try:
-            base = fixed if fixed is not None else _utc_now()
-            if type(base) is not datetime or base.tzinfo is None or base.utcoffset() is None:
-                raise ValueError("invalid UTC wall clock")
-            base = base.astimezone(timezone.utc)
-            base = base.replace(microsecond=(base.microsecond // 1000) * 1000)
-        except Exception:
-            raise ValueError("unable to establish the run UTC time") from None
-        bound.run_time = _format_time(base)
-        bound.run_time_source = "fixed" if fixed is not None else "actual"
-        bound.run_time_values = {}
-    token = uuid4().hex if any(_has_run_value(value, RunUnique) for value in parameters.values()) else None
+    if not any(_has_run_value(value, RunTime) for value in parameters.values()):
+        return None, None
+    try:
+        base = fixed if fixed is not None else _utc_now()
+        if type(base) is not datetime or base.tzinfo is None or base.utcoffset() is None:
+            raise ValueError("invalid UTC wall clock")
+        base = base.astimezone(timezone.utc)
+        base = base.replace(microsecond=(base.microsecond // 1000) * 1000)
+    except Exception:
+        raise ValueError("unable to establish the run UTC time") from None
+    return base, "fixed" if fixed is not None else "actual"
+
+
+def _bind_values(scenario, base, time_source):
+    """Freeze one execution scope without re-reading a clock or shared state."""
+    bound = copy.deepcopy(scenario)
+    parameters = bound.parameters
+    bound.run_unique_values = {}
+    bound.run_time = _format_time(base) if base is not None else None
+    bound.run_time_source = time_source
+    bound.run_time_values = {}
     resolved, active = {}, set()
 
     def parameter(name):
@@ -152,16 +155,18 @@ def bind_run_values(scenario, *, run_time=None):
             raise ValueError("cyclic parameter dependency")
         active.add(name)
         try:
-            resolved[name] = freeze(parameters[name])
+            resolved[name] = freeze(parameters[name], name)
             if isinstance(parameters[name], RunTime):
                 bound.run_time_values[name] = resolved[name]
             return resolved[name]
         finally:
             active.remove(name)
 
-    def freeze(node):
+    def freeze(node, owner):
         if isinstance(node, RunUnique):
-            return token
+            if owner not in bound.run_unique_values:
+                bound.run_unique_values[owner] = uuid4().hex
+            return bound.run_unique_values[owner]
         if isinstance(node, RunTime):
             try:
                 return _format_time(base + timedelta(seconds=time_offset_seconds(node)))
@@ -172,14 +177,14 @@ def bind_run_values(scenario, *, run_time=None):
             # Keep a pointer when the dependency remains response-derived.
             return node if isinstance(value, (ValueRef, StringConcat)) else copy.deepcopy(value)
         if isinstance(node, StringConcat):
-            parts = tuple(freeze(part) for part in node.parts)
+            parts = tuple(freeze(part, owner) for part in node.parts)
             if all(type(part) is str for part in parts):
                 return "".join(parts)
             return replace(node, parts=parts)
         if isinstance(node, dict):
-            return {key: freeze(value) for key, value in node.items()}
+            return {key: freeze(value, owner) for key, value in node.items()}
         if isinstance(node, list):
-            return [freeze(value) for value in node]
+            return [freeze(value, owner) for value in node]
         return copy.deepcopy(node)
 
     try:
@@ -187,4 +192,30 @@ def bind_run_values(scenario, *, run_time=None):
     except RecursionError:
         raise ValueError("parameter dependency graph exceeds available recursion capacity") from None
     bound.run_values_bound = True
-    return bound, token
+    return bound
+
+
+def bind_run_values(scenario, *, run_time=None):
+    """Return an independent execution copy and its generated source-value map.
+
+    Each compiled parameter is a separate source; references reuse their source.
+    Response-dependent include arguments remain typed until their consuming step.
+    This standalone call owns a fresh clock base and generation scope.
+    """
+    base, source = _run_clock(scenario, run_time)
+    bound = _bind_values(scenario, base, source)
+    return bound, copy.deepcopy(bound.run_unique_values)
+
+
+def bind_projection_values(scenario, projections, *, run_time=None):
+    """Prepare all execution copies before ports, sharing one logical UTC base.
+
+    Only executable projections generate values. Contract gets an independent
+    copy of backend's frozen declaration and never invokes the generator.
+    """
+    base, source = _run_clock(scenario, run_time)
+    bound = {name: _bind_values(scenario, base, source)
+             for name in ("backend", "frontend", "e2e") if name in projections}
+    if "contract" in projections:
+        bound["contract"] = copy.deepcopy(bound["backend"])
+    return bound

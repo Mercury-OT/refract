@@ -119,10 +119,13 @@ def test_validate_and_expansion_preserve_child_checks_users_and_results_without_
         "source_user": "user", "effective_user": "user",
     }
     literal = lambda value: {"kind": "literal", "value": value}
+    parent_parameter = "initial_name" if name == PARENTS[0] else "record_name"
+    assert view["parameters"]["@include:create:0"] == {
+        "kind": "reference", "from_parameter": parent_parameter}
     assert first["expect"] == {
         "response": [{"check": "success"}, {"check": "has", "field": literal("itemId")},
                      {"check": "field_equals", "field": literal("name"),
-                      "value": {"kind": "reference", "from_parameter": "@include:create:0"}}],
+                      "value": {"kind": "reference", "from_parameter": parent_parameter}}],
         "backend_state": [{"check": "span_exists", "span": literal("item.create")}],
     }
     parent = load_scenario(path)

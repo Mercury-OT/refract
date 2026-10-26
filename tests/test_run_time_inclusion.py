@@ -42,7 +42,7 @@ def test_repeated_child_defaults_and_overrides_share_base_not_parameter_scope(tm
     assert names == ["child-2026-10-31T08:00:00.000Z", "child-2026-10-23T08:00:00.000Z"]
     assert bound.run_time == BASE
     assert sorted(bound.run_time_values.values()) == [
-        "2026-10-23T08:00:00.000Z", "2026-10-23T08:00:00.000Z", "2026-10-31T08:00:00.000Z"]
+        "2026-10-23T08:00:00.000Z", "2026-10-31T08:00:00.000Z"]
     assert expansion_view(original) == before
     assert expansion_view(load_scenario(path)) == before
 
@@ -91,7 +91,7 @@ def test_literal_time_looking_override_is_not_reinterpreted(tmp_path, monkeypatc
     monkeypatch.setattr(run_values, "_utc_now", lambda: pytest.fail("literal override read clock"))
     literal = {"from_run": "time", "offset": {"days": 7}}
     root = parent([include(**{"with": {"name": {"from_parameter": "payload"}}})],
-                  parameters={"payload": {"nested": literal}})
+                  parameters={"payload": {"literal": {"nested": literal}}})
     path, _ = write_bundle(tmp_path, root, leaf())
     bound, _ = bind_run_values(load_scenario(path))
     assert prepare_step(bound.steps[0], bound, {})[0].request.body["name"] == {"nested": literal}
@@ -104,7 +104,7 @@ def test_impact_and_cli_expansion_do_not_sample_time(tmp_path, monkeypatch):
     monkeypatch.setattr(run_values, "_utc_now", lambda: pytest.fail("authoring read clock"))
     parameters = {"name": {"concat": ["at-", {"from_parameter": "time"}]},
                   "time": {"from_run": "time", "offset": {"days": 7}},
-                  "payload": {"nested": {"from_run": "time"}}}
+                  "payload": {"literal": {"nested": {"from_run": "time"}}}}
     paths = bundle(tmp_path, old=child(parameters=parameters))
     report = inspect(paths, show_values=True)
     assert report["status"] == "COMPLETE"

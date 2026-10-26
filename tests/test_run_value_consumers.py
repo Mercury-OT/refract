@@ -26,7 +26,7 @@ def test_new_runs_on_same_target_locate_the_new_object_not_old_residue(kind, pro
     declaration = load_scenario(EXAMPLES[kind])
     before = deepcopy(expansion_view(declaration))
     reports = [run_scenario(EXAMPLES[kind], adapters, projections=projections) for _ in range(3)]
-    tokens = [report.run_unique for report in reports]
+    tokens = [report.run_unique_values[projections[0]]["run_token"] for report in reports]
     assert len(set(tokens)) == 3
     assert all(type(token) is str and len(token) == 32 for token in tokens)
     assert len(app.requests) == 9
@@ -62,4 +62,23 @@ def test_generated_and_composed_values_are_not_treated_as_server_identifiers():
     assert report.status == "PASSED"
     assert app.requests[-1][1] == "records/22"
     assert report.domains[0].provider_recordings[0].json == {"accepted": True}
-    assert app.records[22]["code"] == report.run_unique + "-records-" + report.run_unique
+    token = report.run_unique_values["backend"]["run_token"]
+    assert app.records[22]["code"] == token + "-records-" + token
+
+
+@pytest.mark.parametrize("kind", EXAMPLES)
+def test_backend_and_live_api_share_a_target_without_reusing_created_values(kind):
+    app, adapters = consumer(kind)
+    report = run_scenario(EXAMPLES[kind], adapters,
+                          projections=("backend", "e2e", "contract"))
+    assert report.status == "PASSED", report.localize()
+    assert report.degradations() == []
+    assert len(app.requests) == 6
+    generated = report.run_unique_values
+    assert generated["backend"] == generated["contract"]
+    assert generated["backend"]["run_token"] != generated["e2e"]["run_token"]
+    field = "code" if kind == "records" else "title"
+    for offset, projection in ((0, "backend"), (3, "e2e")):
+        token = generated[projection]["run_token"]
+        assert app.requests[offset][2][field] == token + "-" + kind + "-" + token
+    assert app.requests[2][1] != app.requests[5][1]

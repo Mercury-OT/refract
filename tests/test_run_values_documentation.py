@@ -39,10 +39,32 @@ def test_parameter_and_response_fragments_parse_and_resolve(tmp_path, document):
         "name": expression, "title": {"from_parameter": "document_title"}}
     case = _load_document({"schema_version": 1, "scenario": "demo.documented_composition",
                            "users": [], "parameters": parameters, "steps": [account, batch, consume]})
-    frozen, token = bind_run_values(case)
+    frozen, values = bind_run_values(case)
+    token = values["run_token"]
     step, bound = prepare_step(frozen.steps[2], frozen, {
         "account": NormalizedResponse(True, {"account_code": "AC12"}, 200, None),
         "batch": NormalizedResponse(True, {"batch_code": "B07"}, 200, None),
     })
     assert step.request.body == {"name": "AC12-document-B07", "title": token + "-document-" + token}
     assert set(bound.values()) == {"AC12", "B07"}
+
+
+def test_scoped_source_and_literal_specification_fragment_executes_unchanged(tmp_path):
+    from refracto.declaration.run_values import bind_run_values
+    source = (ROOT / "docs/tasks/scoped-unique-values-literal-parameters.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"```yaml\n(.*?)```", source, re.S)
+    assert len(blocks) == 1
+    path = tmp_path / "scoped.yaml"
+    path.write_text("schema_version: 1\nscenario: records.documented_scopes\nusers: []\n" + blocks[0] +
+        "steps:\n  - id: send\n    do:\n      request:\n        method: POST\n"
+        "        path: [records]\n        body:\n"
+        "          code: {from_parameter: code_alias}\n"
+        "          payload: {from_parameter: payload}\n"
+        "    expect:\n      response:\n        - {check: status_equals, value: 201}\n", encoding="utf-8")
+    declaration = load_scenario(path)
+    bound, generated = bind_run_values(declaration)
+    assert set(generated) == {"first_code", "second_code"}
+    assert generated["first_code"] != generated["second_code"]
+    prepared, _ = prepare_step(bound.steps[0], bound, {})
+    assert prepared.request.body == {
+        "code": generated["first_code"], "payload": {"meta": {"from_run": "unique"}}}

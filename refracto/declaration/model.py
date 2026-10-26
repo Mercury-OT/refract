@@ -29,7 +29,7 @@ class ValueRef:
 
 @dataclass(frozen=True)
 class RunUnique:
-    """Symbolic request for the one token frozen by the top-level run."""
+    """Symbolic unique source, frozen per parameter and execution scope."""
 
 
 @dataclass(frozen=True)
@@ -117,6 +117,8 @@ class Scenario:
     include_user_mappings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     reference_bindings: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
     run_values_bound: bool = field(default=False, kw_only=True, compare=False, repr=False)
+    run_unique_values: dict[str, str] = field(default_factory=dict, kw_only=True, compare=False,
+                                             repr=False, metadata={"sensitive": True})
     run_time: str | None = field(default=None, kw_only=True, compare=False,
                                  repr=False, metadata={"sensitive": True})
     run_time_source: str | None = field(default=None, kw_only=True, compare=False,

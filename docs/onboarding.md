@@ -125,11 +125,16 @@ aliases remain usable, and no automatic pagination or global uniqueness is prove
 
 For repeatable creation on a target retaining old data, declare a run-scoped
 `{from_run: unique}` parameter and use `concat` to compose string values. The
-runner freezes one token per selected run; it is not an object ID or a cleanup
-mechanism. The [create/locate/read example](../examples/minimal/run_unique_create_locate_read.yaml)
+runner freezes one value per source parameter, include instance and execution
+projection; repeated references reuse it and contract follows backend. Explicit
+parent inputs remain shared when passed to children. It is not an object ID or
+a cleanup mechanism. The [create/locate/read example](../examples/minimal/run_unique_create_locate_read.yaml)
 still selects exactly one member of the actual response before reading its ID.
 See the [run-value and composition rules](../SCENARIO.md#run-values-and-string-composition)
 for reuse, type failures, included parameters and low-level projection callers.
+Parameter dictionaries containing reference-like keys must use the explicit
+whole-value `literal` wrapper; do not rely on a reference-shaped object being
+silently treated as data.
 
 Use `field_compare` for a numeric response bound and `collection_length` for an
 actual list-length bound. A count reported by the service is not a substitute for

@@ -168,7 +168,7 @@ def test_child_internal_response_and_caller_with_are_distinct_scopes(tmp_path):
 @pytest.mark.parametrize("value", [None, 0, False, True, "", {"from_step": "not-a-reference", "response_field": "id"}])
 def test_literal_parameter_values_remain_literal(tmp_path, value):
     root = parent([include(**{"with": {"name": {"from_parameter": "payload"}}})],
-                  parameters={"payload": value})
+                  parameters={"payload": {"literal": value}})
     path, _ = write_bundle(tmp_path, root)
     scenario = load_scenario(path)
     prepared, _ = prepare_step(scenario.steps[0], scenario, {})

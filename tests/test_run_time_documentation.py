@@ -22,7 +22,7 @@ def test_actual_time_fragment_is_symbolic_and_fixed_replay_resolves_its_window(t
     original = load_scenario(path)
     symbolic = expansion_view(original)
     bound, unique = bind_run_values(original, run_time="2026-10-24T08:00:00.000Z")
-    assert unique is None
+    assert unique == {}
     assert bound.parameters == {
         "expires_at": "2026-10-31T08:00:00.000Z",
         "window_start": "2026-10-23T08:00:00.000Z",

@@ -63,33 +63,46 @@ def source_file(tmp_path, raw):
     return path
 
 
-def test_token_generated_once_and_reused_by_all_four_projections(tmp_path, monkeypatch):
+def test_each_execution_projection_gets_a_unique_value_and_contract_reuses_backend(tmp_path, monkeypatch):
     from refracto.declaration import run_values
     calls = []
+    tokens = [TOKEN, "1123456789ab4def8123456789abcdef", "2123456789ab4def8123456789abcdef"]
     def generate():
+        value = tokens[len(calls)]
         calls.append("generate")
-        return UUID(hex=TOKEN)
+        return UUID(hex=value)
     monkeypatch.setattr(run_values, "uuid4", generate)
-    name = TOKEN + "-record-" + TOKEN
-    spec = ports.RequestSpec("POST", "records", {"name": name})
-    raw = ports.RecordedResponse(201, {}, response({"name": name}), "", None, spec)
+    names = [token + "-record-" + token for token in tokens]
     class CaptureUi(FakeUi):
-        sent = []
+        def __init__(self):
+            super().__init__()
+            self.sent = []
         def perform_step(self, scenario, step, context, permit):
+            # Fixed test data by execution order, never values from assertions.
+            name = names[len(self.sent) + 1]
+            spec = ports.RequestSpec("POST", "records", {"name": name})
+            self._rendered = rendered(name)
+            self._outgoing = [spec]
+            self._recorded = [ports.RecordedResponse(201, {}, response({"name": name}), "", None, spec)]
             self.sent.append(copy.deepcopy(step.request))
             return super().perform_step(scenario, step, context, permit)
-    ui = CaptureUi(rendered=rendered(name), outgoing=[spec], recorded=[raw])
+    ui = CaptureUi()
     api = EchoApi()
     report = runner.run_scenario(source_file(tmp_path, unique_document(ui=True)), adapters(api, ui),
         mock_plan=[ports.MockResponse(fixture_id="create", source="fixed test fixture",
-            method="POST", path="records", status=201, response=response({"name": name}))])
-    assert calls == ["generate"]
-    assert report.run_unique == TOKEN and report.status == "PASSED"
+            method="POST", path="records", status=201, response=response({"name": names[1]}))])
+    assert calls == ["generate"] * 3
+    assert report.run_unique_values == {
+        "backend": {"token": tokens[0]}, "frontend": {"token": tokens[1]},
+        "e2e": {"token": tokens[2]}, "contract": {"token": tokens[0]}}
+    assert report.status == "PASSED", report.localize()
     assert [domain.projection for domain in report.domains] == ["backend", "frontend", "e2e", "contract"]
-    assert api.sent[0].body == {"name": name}
+    assert api.sent[0].body == {"name": names[0]}
     assert len(ui.permits) == 2
-    assert [item.body for item in ui.sent] == [{"name": name}, {"name": name}]
-    assert TOKEN not in repr(report)
+    assert [item.body for item in ui.sent] == [{"name": name} for name in names[1:]]
+    assert all(token not in repr(report) for token in tokens)
+    report.run_unique_values["backend"]["token"] = "modified"
+    assert report.run_unique_values["contract"]["token"] == tokens[0]
 
 
 def test_repeated_and_concurrent_runs_never_mutate_or_reuse_loaded_inputs(monkeypatch):
@@ -100,8 +113,9 @@ def test_repeated_and_concurrent_runs_never_mutate_or_reuse_loaded_inputs(monkey
         api = EchoApi()
         report = runner.run_scenario("unused", adapters(api), projections=("backend", "contract"))
         assert report.status == "PASSED"
-        assert api.sent[0].body["name"] == report.run_unique + "-record-" + report.run_unique
-        return report.run_unique
+        token = report.run_unique_values["backend"]["token"]
+        assert api.sent[0].body["name"] == token + "-record-" + token
+        return token
     sequential = [run_one(None), run_one(None)]
     with ThreadPoolExecutor(max_workers=4) as pool:
         tokens = sequential + list(pool.map(run_one, range(8)))
@@ -123,17 +137,17 @@ def test_validation_filtering_and_plain_runs_do_not_generate(tmp_path, monkeypat
     assert main(["validate", str(path), "--expand"]) == 0
     assert "from_run" in json.dumps(expansion_view(_load_document(unique_document())))
     skipped = runner.run_scenario(path, adapters(), projections=("backend", "contract"), module="other")
-    assert skipped.status == "NOT_SELECTED" and skipped.run_unique is None
+    assert skipped.status == "NOT_SELECTED" and skipped.run_unique_values == {}
     plain = document(request())
     plain_report = runner.run_scenario(source_file(tmp_path, plain), adapters(), projections=("backend",))
-    assert plain_report.status == "PASSED" and plain_report.run_unique is None
+    assert plain_report.status == "PASSED" and plain_report.run_unique_values == {"backend": {}}
 
 
 def test_run_token_metadata_is_keyword_only_and_hidden_without_exporting_parameters():
-    field = next(item for item in fields(RunReport) if item.name == "run_unique")
+    field = next(item for item in fields(RunReport) if item.name == "run_unique_values")
     assert field.kw_only and not field.repr and not field.compare and field.metadata["sensitive"]
-    assert "run_unique" not in RunReport.__match_args__
-    report = RunReport("example", run_unique=TOKEN)
+    assert "run_unique_values" not in RunReport.__match_args__
+    report = RunReport("example", run_unique_values={"backend": {"token": TOKEN}})
     assert TOKEN not in repr(report)
     assert not hasattr(report, "parameters")
 
@@ -172,7 +186,8 @@ def test_explicit_binding_makes_low_level_execution_reusable_without_regeneratio
     from refracto.declaration.run_values import bind_run_values
     from refracto.declaration import run_values
     original = _load_document(unique_document())
-    bound, token = bind_run_values(original)
+    bound, values = bind_run_values(original)
+    token = values["token"]
     def forbidden():
         raise AssertionError("already bound projections must not regenerate")
     monkeypatch.setattr(run_values, "uuid4", forbidden)
@@ -203,14 +218,15 @@ def test_poll_attempts_reuse_the_one_frozen_token(tmp_path, monkeypatch):
         now=lambda: clock[0], sleep=lambda delta: clock.__setitem__(0, clock[0] + delta))
     assert report.status == "PASSED" and calls == ["generate"]
     assert [item.query for item in api.sent] == [{"token": TOKEN}, {"token": TOKEN}]
-    assert report.run_unique == TOKEN
+    assert report.run_unique_values["backend"] == {"token": TOKEN}
 
 
-def test_repeated_children_and_named_results_share_the_parent_run_value(tmp_path, monkeypatch):
+def test_repeated_children_default_and_parent_override_keep_separate_sources(tmp_path, monkeypatch):
     from refracto.declaration import run_values
     from tests.test_scenario_named_results import bundle, child, include, named
     calls = []
-    monkeypatch.setattr(run_values, "uuid4", lambda: calls.append("generate") or UUID(hex=TOKEN))
+    tokens = iter([TOKEN, "1123456789ab4def8123456789abcdef"])
+    monkeypatch.setattr(run_values, "uuid4", lambda: calls.append("generate") or UUID(hex=next(tokens)))
     child_raw = child()
     child_raw["parameters"] = {"token": {"from_run": "unique"},
         "name": composition(parameter("token"), "-child")}
@@ -223,10 +239,12 @@ def test_repeated_children_and_named_results_share_the_parent_run_value(tmp_path
         steps=[include("one"), include("two", **{"with": {"token": parameter("token")}}), read])
     api = EchoApi()
     report = runner.run_scenario(path, adapters(api), projections=("backend", "contract"))
-    assert report.status == "PASSED" and report.run_unique == TOKEN
-    assert calls == ["generate"]
-    expected = TOKEN + "-child"
-    assert [sent.body["name"] for sent in api.sent] == [expected, expected, expected + "/" + expected]
+    assert report.status == "PASSED", report.localize()
+    assert calls == ["generate", "generate"]
+    values = report.run_unique_values["backend"]
+    assert values == {"token": TOKEN, "@include:one:0": "1123456789ab4def8123456789abcdef"}
+    first, second = values["@include:one:0"] + "-child", TOKEN + "-child"
+    assert [sent.body["name"] for sent in api.sent] == [first, second, first + "/" + second]
     assert [step.step_id for step in report.domains[0].steps] == ["one/create", "two/create", "read"]
 
 
@@ -316,7 +334,7 @@ def test_run_value_and_composed_response_sensitive_values_hidden_in_default_repo
     sentinel = "private-composition-sentinel"
     result, _ = execute(scenario, {"account": {"code": sentinel},
         "batch": {"code": "batch"}, "consume": {"name": sentinel + "-document-batch"}})
-    report = RunReport(scenario.id, [result], run_unique=sentinel)
+    report = RunReport(scenario.id, [result], run_unique_values={"backend": {"token": sentinel}})
     assert result.status == "PASSED"
     assert sentinel not in repr(report)
     sources = result.steps[2].binding_sources

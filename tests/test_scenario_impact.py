@@ -215,7 +215,7 @@ def test_consumers_all_grammar_positions_and_literal_defaults(tmp_path):
                  "ui": [{"check": "object_field_equals", "anchor": "items", "id": ref, "field": "id", "value": ref}]}},
              include("second", **{"with": {"name": ref}}),
              {"id": "literal", "do": {"request": {"method": "POST", "path": ["items"], "body": {"payload": {"from_parameter": "payload"}}}}}]
-    caller = parent(steps, parameters={"payload": ref}, description="from_step setup result record_id")
+    caller = parent(steps, parameters={"payload": {"literal": ref}}, description="from_step setup result record_id")
     report = inspect(bundle(tmp_path, caller=caller))
     assert report["status"] == "COMPLETE"
     sites = report["parents"][0]["includes"]
