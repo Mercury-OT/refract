@@ -1,8 +1,27 @@
 # Declaration boundaries
 
-These are rejected declarations, not instructions for writing passing tests.
-Each fragment has a valid surrounding Scenario in the [executable sentinel](../tests/test_stabilization_boundaries.py).
-The linked tests establish the existing boundary; no new language rule is added.
+The tables below list rejected declarations, not instructions for writing passing
+tests. Each table fragment has a valid surrounding Scenario in the
+[executable sentinel](../tests/test_stabilization_boundaries.py). The linked tests
+establish the existing loader boundary; no new rejection rule is added here.
+
+### Composition commitment (governance status)
+
+Under the [R1 revision of 2026-10-27](roadmap.md#maintainer-decision-r1-revision-2026-10-27),
+the committed `concat` scope is parameter-level composition of string literals
+and references to string-valued parameters. Operand content is unchanged; nested
+concat, implicit conversion, and templates remain disallowed.
+
+Other currently accepted composition forms are outside that commitment. In
+particular, step-level prior-response operands (`from_step` with `response_field`)
+and concat in assertion-value positions are **frozen: retention is not promised**.
+Requests and assertions may still reference a committed composed parameter using
+ordinary `from_parameter`; freezing direct assertion-value concat does not freeze
+such parameter references.
+These are governance limits, **not loader rejections**. The existing implementation
+and runtime behavior remain unchanged; further support requires concrete use
+cases and separate review. The rejection catalog below does not claim to reject
+these frozen forms.
 
 ## Top level
 

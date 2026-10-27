@@ -71,14 +71,13 @@ def _signature_payload(data):
     ).encode()
 
 
-def _issue_permit(secret, execution_id, step, bound_values, mode, lease, context_id):
+def _issue_permit(secret, execution_id, step, mode, lease, context_id):
     data = dict(execution_id=execution_id, action_id=secrets.token_hex(16),
                 step_id=step.id, mode=mode, action=step.action,
                 target=step.target, value=copy.deepcopy(step.value), user=lease.user,
                 session_generation=lease.generation, context_id=context_id)
     return ports.UiActionPermit(
         **data, token=hmac.new(secret, _signature_payload(data), hashlib.sha256).hexdigest(),
-        resolved_bindings=dict(bound_values),
     )
 
 
@@ -440,11 +439,10 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         existing = contexts.get(lease.user)
         if existing is None:
             identity = secrets.token_hex(16)
-            context = header_ops.call_port("UI open", ui.open_stepwise,
-                scenario, lease.credentials, mode=mode,
+            context = backend_proj._call_action_port("UI open", ui.open_stepwise,
+                lease.credentials, mode=mode,
                 mock_plan=copy.deepcopy(retained_plan), mock_queue=mock_queue,
-                user=lease.user, session_generation=lease.generation, context_id=identity,
-                sensitive=sensitive_headers)
+                user=lease.user, session_generation=lease.generation, context_id=identity)
             existing = contexts[lease.user] = (context, lease.generation, identity)
         if existing[1] != lease.generation:
             raise ValueError("UI context belongs to an obsolete session")
@@ -493,9 +491,11 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         _validate_rendered(rendered)
                     else:
                         context, context_id = context_for(lease)
-                        permit = _issue_permit(secret, execution_id, step, bound, mode, lease, context_id)
-                        outcome = header_ops.call_port("UI action", ui.perform_step,
-                            scenario, copy.deepcopy(step), context, permit, sensitive=sensitive_headers)
+                        permit = _issue_permit(secret, execution_id, step, mode, lease, context_id)
+                        business_header_names = tuple(sorted(header_ops.business_headers(
+                            step.request.headers or {}))) if step.request is not None else ()
+                        outcome = backend_proj._call_action_port("UI action", ui.perform_step,
+                            context, permit, business_header_names=business_header_names)
                         sensitive_headers = sensitive_headers or _has_returned_headers(outcome)
                         evidence = _validate_evidence(outcome, permit, secret, accepted_tokens,
                                                       seen_requests, seen_traces, retained_plan, consumed)

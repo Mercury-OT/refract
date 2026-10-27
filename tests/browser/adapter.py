@@ -37,14 +37,13 @@ class SyntheticUi(ports.UiDriver, ports.StepwiseUiDriver):
     def supports_stepwise_mode(self, mode):
         return mode in {"live", "mock"}
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
+    def open_stepwise(self, session, *, mode, mock_plan=None, **identity):
         self.context = self.support.open(mode, mock_plan=mock_plan,
                                          context_options=self.context_options, **identity)
         return self.context
 
-    def perform_step(self, scenario, step, context, permit):
-        if step.request is not None:
-            self.support.validate_request_headers(context, step.request.headers)
+    def perform_step(self, context, permit, *, business_header_names=()):
+        self.support.validate_request_header_names(context, business_header_names)
         self.actions.append(permit.action)
         if permit.action == "open":
             outcome = self.support.perform(context, permit, url=self.base_url + "/")

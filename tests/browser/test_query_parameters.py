@@ -31,9 +31,9 @@ class QueryUi(SyntheticUi):
         super().__init__(base_url)
         self.paths, self.mutate = paths, mutate
 
-    def perform_step(self, scenario, step, context, permit):
-        result = super().perform_step(scenario, step, context, permit)
-        if step.action == "open":
+    def perform_step(self, context, permit, *, business_header_names=()):
+        result = super().perform_step(context, permit, business_header_names=business_header_names)
+        if permit.action == "open":
             set_paths(context, self.paths)
         if self.mutate and result.evidence.traffic:
             result = self.mutate(result)

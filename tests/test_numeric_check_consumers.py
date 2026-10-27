@@ -170,7 +170,7 @@ def consumer(kind, fault=None):
     target = RecordsService(fault)
     return target, Adapters(auth=target, api=target, state=None, ui=None,
         recorder_factory=InMemoryRecorder, normalizer=RecordsNormalizer(),
-        resolve_request=lambda scenario, step, template: ports.RequestSpec(
+        resolve_request=lambda template: ports.RequestSpec(
             template.method, template.path, deepcopy(template.body),
             query=wire_query(template.query or {})))
 

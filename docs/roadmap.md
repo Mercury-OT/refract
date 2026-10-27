@@ -19,15 +19,83 @@ be updated together. Keep status in this index rather than independently
 maintaining it in multiple summaries. Historical records remain historical;
 they are not silently rewritten to describe later decisions.
 
+## Maintainer decision: R1 revision, 2026-10-27
+
+**R1: no transformations in declarations.** Value construction contains no
+expressions, branches, loops, templates, function calls, conditions, or default
+fallbacks. It contains no operation that changes an operand's content, including
+formatting, timezone conversion, truncation, case conversion, or arithmetic.
+The only permitted value-composition operation is bounded string `concat`;
+each operand's content remains unchanged. **Allow composition; prohibit
+transformation.**
+
+This revises R1's former prohibition of concatenation; it does not create an
+exception to that prohibition. `concat` is legitimate under the revised R1.
+The supporting use case is a unique identifier whose shape is constrained by
+the target, such as a generated identifier combined with a fixed email domain
+or username fragment. The source and composition must be reviewable without
+executing the Scenario; this does not mean generated or observed values are
+known at load time. Unique values reduce identifier reuse; they do not guarantee
+environment isolation or cleanup.
+
+The original [bounded-composition task](tasks/run-values-concat.md) records
+functional approval on 2026-10-22 and delivery in `50996af`. That task did not
+explicitly surface its conflict with R1's former wording in the specification
+gate. This was a process gap, corrected by this maintainer ruling on 2026-10-27;
+the historical authorization and delivery records remain unchanged.
+
+The committed composition scope is **parameter-level `concat`, with string
+literals and references to string-valued parameters**. Other currently accepted
+composition forms are outside that commitment. In particular, step-level
+composition using prior-response operands (`from_step` with `response_field`)
+and composition in assertion-value positions are **frozen: retention is not
+promised**. They remain implemented and accepted today; this ruling neither
+removes them nor changes their execution. Further support requires a concrete
+use case and separate review, not expansion in anticipation of general needs.
+Ordinary `from_parameter` references to a committed composed parameter remain
+supported in requests and assertions; the frozen assertion form declares
+`concat` directly in the assertion value.
+See the [current contract](../SCENARIO.md#run-values-and-string-composition) and
+[governance boundary](boundaries.md#composition-commitment-governance-status).
+
+The rule governs value computation, not declared parameter data, parameter
+overrides, or the existing run-value sources. It prohibits filling missing or
+unusable evidence with fallback values; it does not remove explicitly declared
+parameter values. Existing fixed-UTC time sources and their bounded offsets,
+sequential actions, and explicit polling retain their implemented contracts.
+This ruling authorizes no new time formatting, timezone operation, or other
+transformation and makes no runtime or YAML-format change.
+
+Any future proposal touching **no transformations, no branches, no loops, or
+no JSONPath** must identify the affected constraint in its specification and
+explicitly request a revision or exception with reasons. Ordinary feature
+approval must not silently bypass that decision. Applicability must be checked
+against concrete scenarios; missing capabilities are justified by those cases,
+not by general-purpose completeness.
+
 ## Current priority
+
+The [action-port expectation and ownership boundary](tasks/action-port-boundary.md)
+has passed independent audit and local architect acceptance, with its bounded
+[threat model](threat-model.md). See the [verification record](tasks/action-port-boundary-acceptance.md).
+It narrows action interfaces to execution inputs, with mechanical tests protecting
+declaration and evidence ownership, and makes no YAML change. The maintainer's
+submission authorization applies after these gates; PR/main CI and cleanup
+remain required before public delivery is complete.
+A small mapping-fidelity and counterexample exercise follows that boundary work.
+Database-evidence work remains paused. Flow execution semantics remain a design
+question; a read-only review view may be evaluated separately. The subsequent sequence
+does not authorize implementation or introduce a mapping language, general
+security framework, or new report status.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
+| Locally accepted | [Action-port expectation and ownership boundary](tasks/action-port-boundary.md) | Independent audit and architect acceptance passed. Full sequential suite: 4306 passed; fresh Python 3.11 and 3.12 core suites: 3729 passed each. Existing YAML, format 1, one-level include and vocabulary remain unchanged. | Submission authorized on 2026-10-27; require green PR/main CI and branch cleanup. Mapping-fidelity evaluation remains a subsequent task, not part of this delivery. |
 | Locally accepted | [Scoped unique values and explicit literal parameters](tasks/scoped-unique-values-literal-parameters.md) | Approved source/projection/include isolation and explicit literal rules implemented; independent audit passed. Full sequential suite: 4257 passed; fresh Python 3.11 and 3.12 core suites: 3686 passed each. Format 1, one-level inclusion and authentication behavior remain. | Separate public submission authorized on 2026-10-26; PR checks, merge, main checks and cleanup remain required delivery gates. |
 | Locally accepted | [Run-value boundary review](tasks/run-value-boundary-review.md) | Specific offset diagnostics and delivery-status wording corrected; shared-target collision controls added. Historical independent audit passed; 4194 full-suite and 3624 fresh core tests passed. | Preserve these corrections; included in the separately authorized scoped-value submission. The scoped-value task addresses the recorded design limits. |
 | Delivered | [Browser observation of ordinary form requests](tasks/browser-form-request-observation.md) | Delivered through PR #34 in main `85bb13d`; see the [historical independent audit and local acceptance](tasks/browser-form-request-observation-acceptance.md). Scenario syntax, core and ports are unchanged. | Preserve actual request evidence and form-decoding boundaries. |
 | Delivered | [Run-relative UTC time parameters](tasks/run-relative-time.md) | Delivered through PR #33 in main `f155ad5`; see the [historical independent audit and local acceptance](tasks/run-relative-time-acceptance.md). Format 1 and one-level inclusion remain. | Preserve the approved time contract. Adapter-conformance features, Flow and satellites remain deferred. |
-| Delivered | [Run values and bounded string composition](tasks/run-values-concat.md) | Delivered through PR #32 in main `50996af`; eight branch/PR checks and four main jobs passed. See the [historical resumed acceptance](tasks/run-values-concat-acceptance.md#resumed-verification-2026-10-24). | Preserve the approved unique/concat contract. Time parameters have a separate approved task. |
+| Delivered | [Run values and bounded string composition](tasks/run-values-concat.md) | Delivered through PR #32 in main `50996af`; eight branch/PR checks and four main jobs passed. See the [historical resumed acceptance](tasks/run-values-concat-acceptance.md#resumed-verification-2026-10-24). | Runtime acceptance remains unchanged; the [2026-10-27 R1 decision](#maintainer-decision-r1-revision-2026-10-27) limits the composition commitment to parameter-level literals and parameter references. Time parameters have a separate approved task. |
 | Delivered | [Two paths reusing one reviewed Scenario](tasks/scenario-path-reuse-verification.md) | Delivered through PR #31 in main `ac71abf`; eight branch/PR checks and four main jobs passed. See the [historical local acceptance](tasks/scenario-path-reuse-acceptance.md). No core or YAML-language changes. | Preserve reviewed caller wiring and evidence boundaries. No Flow implementation or measured review-cost benefit is claimed. |
 | Delivered | [Execution and authoring boundary hardening](tasks/execution-boundary-hardening.md) | Delivered through PR #30 in main `14a7f88`; eight branch/PR checks and four main jobs passed. See the [historical local results](tasks/execution-boundary-hardening.md#local-acceptance) and [separate submission authorization](tasks/execution-boundary-hardening.md#subsequent-submission-authorization). No new capability or format version. | Preserve authoring, evidence and failure boundaries. |
 | Delivered | [Bounded stabilization](tasks/stabilization-20261018.md) | Delivered in main `786b5ba`. All four groups passed independent audit, architect acceptance and maintainer review before separately authorized submission; see the [historical local results and authorization](tasks/stabilization-20261018-consistency.md). No declaration or runtime changes. | Preserve the original measurements; the task PR supplies hosted CI evidence, not the local acceptance record. |

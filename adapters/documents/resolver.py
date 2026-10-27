@@ -6,9 +6,9 @@ from refracto import ports
 from refracto.query import wire_query
 
 
-def resolve_request(scenario, step, template) -> ports.RequestSpec:
-    method = template.method.upper()
-    logical_path = template.path.strip("/")
+def resolve_request(action: ports.RequestAction) -> ports.RequestSpec:
+    method = action.method.upper()
+    logical_path = action.path.strip("/")
 
     if method == "POST" and logical_path == "documents":
         target_path = "/v3/documents"
@@ -17,7 +17,7 @@ def resolve_request(scenario, step, template) -> ports.RequestSpec:
     elif method in {"GET", "PATCH", "DELETE"} and logical_path.startswith("documents/"):
         document_id = logical_path.removeprefix("documents/")
         if not document_id or "/" in document_id:
-            raise ValueError(f"invalid logical document path {template.path!r}")
+            raise ValueError(f"invalid logical document path {action.path!r}")
         target_path = f"/v3/documents/{document_id}"
     elif method == "GET" and logical_path == "account/profile":
         target_path = "/v3/account/profile"
@@ -28,9 +28,9 @@ def resolve_request(scenario, step, template) -> ports.RequestSpec:
         target_path = f"/v3/{logical_path}"
     else:
         raise ValueError(
-            f"document adapter cannot resolve {template.method} {template.path}"
+            f"document adapter cannot resolve {action.method} {action.path}"
         )
 
-    return ports.RequestSpec(method=method, path=target_path, body=template.body,
-                             query=wire_query(template.query or {}),
-                             headers=deepcopy(template.headers or {}))
+    return ports.RequestSpec(method=method, path=target_path, body=action.body,
+                             query=wire_query(action.query or {}),
+                             headers=deepcopy(action.headers or {}))

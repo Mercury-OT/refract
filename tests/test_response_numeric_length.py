@@ -218,9 +218,9 @@ def test_invalid_threshold_precedes_new_consumer_authentication_and_request_reso
             self.sessions.append(user)
             return super().session(user)
     auth, resolved = Auth(), []
-    def resolve(scenario, step, template):
-        resolved.append(step.id)
-        return resolver(scenario, step, template)
+    def resolve(template):
+        resolved.append(template.path)
+        return resolver(template)
     api = FakeApi({("GET", "source"): {"json": response({"threshold": "invalid"})}})
     result = backend.run(scenario, auth=auth, api=api, state=None,
         recorder=FakeRecorder(), resolve_request=resolve, normalizer=FakeNormalizer())

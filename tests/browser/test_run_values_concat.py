@@ -105,8 +105,8 @@ def test_all_projections_use_distinct_sources_and_contract_keeps_backend_values(
 
     ui = SyntheticUi(http_peer.base_url)
     adapters = Adapters(FakeAuth(), PeerApi(), None, ui, InMemoryRecorder,
-        lambda scenario, step, template: ports.RequestSpec(
-            template.method, template.path, template.body), FakeNormalizer())
+        lambda action: ports.RequestSpec(
+            action.method, action.path, action.body), FakeNormalizer())
     mock_values = [f"start-{tokens[1]}-end", f"start-{tokens[1]}-end-again"]
     plan = [ports.MockResponse(fixture_id=f"separate-{index}", source="independent fixed echo fixture",
             method="POST", path="api/echo", response={"success": True, "data": {"reply": value}})

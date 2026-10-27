@@ -28,6 +28,14 @@ from refracto.projection.recording import ProtectedRecorder, _evidence_equal
 _NO_SESSION = object()
 
 
+def _call_action_port(operation, callback, *args, **kwargs):
+    """Action inputs are sensitive; do not retain an adapter's exception text."""
+    try:
+        return callback(*args, **kwargs)
+    except Exception:
+        raise ValueError(f"{operation} failed") from None
+
+
 def gen_traceparent() -> str:
     return f"00-{secrets.token_hex(16)}-{secrets.token_hex(8)}-01"
 
@@ -445,12 +453,19 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
     template = step.request
     if template is None:
         raise ValueError("request action has no request")
-    # The mapper receives an independent value and cannot mutate the declaration
-    # to make its own changed output compare equal.
-    spec = header_ops.call_port("Request resolver", resolve_request,
-        scenario, copy.deepcopy(step), copy.deepcopy(template),
-        sensitive=any(header_ops.declared(item) for item in scenario.steps))
+    # Supply only operation data, with no shared containers or expectations.
+    # Keep the prepared request separate for the ownership check below.
+    action = ports.RequestAction(
+        method=template.method, path=template.path,
+        body=copy.deepcopy(template.body), query=copy.deepcopy(template.query),
+        headers=copy.deepcopy(template.headers),
+    )
+    spec = _call_action_port("Request resolver", resolve_request, action)
     _check_option_b(step, template, spec)
+    # The resolver can retain its result or alias the supplied action containers.
+    # Own the validated request before any driver/normalizer callback runs so a
+    # retained alias cannot change later poll attempts or the header baseline.
+    spec = copy.deepcopy(spec)
     return _run_step(step, template, spec, api, session, recorder, normalizer,
                      state, poll_config, now, sleep, bound_values, scenario.inputs)
 

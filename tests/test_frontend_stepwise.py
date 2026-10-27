@@ -49,7 +49,7 @@ def test_ordered_repeated_endpoint_fixtures_and_response_references():
     assert result.steps[1].resolved_bindings == {"previous": "1"}
     assert ui.permits[1].value == "1"
     assert [x["fixture_id"] for x in result.mock_consumption] == ["f0-0", "f1-0"]
-    assert result.steps[1].resolved_bindings is not ui.permits[1].resolved_bindings
+    assert not hasattr(ui.permits[1], "resolved_bindings")
 
 
 @pytest.mark.parametrize("terminal, expected", [("error", "ERROR"), ("skip", "SKIPPED"), ("failed", "FAILED")])
@@ -75,14 +75,15 @@ def test_atomic_resolution_does_not_expose_partial_results():
 
 
 @pytest.mark.parametrize("value", [False, 0, "", {"nested": []}])
-def test_reference_values_preserve_type_and_only_top_mapping_is_copied(value):
+def test_reference_values_preserve_type_without_exposing_binding_map(value):
     ui = ScriptedUi(payloads=[response({"id": value}), response()])
     result = run(scenario(references=True), ui, mode="mock")
     assert result.status == "PASSED"
     assert type(result.steps[1].resolved_bindings["previous"]) is type(value)
     assert result.steps[1].resolved_bindings["previous"] == value
+    assert not hasattr(ui.permits[1], "resolved_bindings")
     if type(value) is dict:
-        assert result.steps[1].resolved_bindings["previous"] is ui.permits[1].resolved_bindings["previous"]
+        assert result.steps[1].resolved_bindings["previous"] is not ui.permits[1].value
 
 
 @pytest.mark.parametrize("where, field, value", [
@@ -183,7 +184,8 @@ def test_sensitive_payloads_hidden_through_report_and_permits():
         assert secret not in repr(obj)
     assert ports.UiActionPermit.__match_args__ == ()
     fields = {field.name: field for field in dataclasses.fields(ports.UiActionPermit)}
-    assert fields["resolved_bindings"].metadata["sensitive"]
+    assert "resolved_bindings" not in fields
+    assert fields["value"].metadata["sensitive"]
 
 
 def test_action_result_requires_evidence_xor_skip():

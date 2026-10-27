@@ -50,7 +50,7 @@ def load(*steps, parameters=None, users=None):
     return _load_document(document(*steps, parameters=parameters, users=users))
 
 
-def resolver(scenario, step, template):
+def resolver(template):
     return ports.RequestSpec(template.method, template.path, template.body)
 
 
@@ -309,25 +309,24 @@ def test_reused_normalizer_buffer_cannot_rewrite_prior_baseline(mode):
 
 
 @pytest.mark.parametrize("mode", ["mock", "live"])
-def test_ui_mutation_cannot_rewrite_prior_or_current_expected_containers(mode):
+def test_ui_operation_cannot_access_prior_or_current_expected_containers(mode):
     reference = {"from_step": "source", "response_field": "content"}
     scenario = load(request("source", [check({"name": "before"})], ui=True),
         request("consumer", [check(reference)], ui=True), request("again", [check(reference)], ui=True))
-    class MutatingUi(ScriptedUi):
-        def perform_step(self, scenario, step, context, permit):
-            if step.id == "consumer":
-                step.expect.response[0].params["value"]["name"] = "after"
-                for value in permit.resolved_bindings.values():
-                    value["name"] = "after"
-            return super().perform_step(scenario, step, context, permit)
-    ui = MutatingUi(count=3, payloads=[response({"content": {"name": name}}) for name in ("before", "after", "before")],
+    class InspectingUi(ScriptedUi):
+        def perform_step(self, context, permit, *, business_header_names=()):
+            # The former mutation path no longer crosses the operation port.
+            assert not hasattr(permit, "expect")
+            assert not hasattr(permit, "resolved_bindings")
+            assert permit.value is None
+            return super().perform_step(context, permit, business_header_names=business_header_names)
+    ui = InspectingUi(count=3, payloads=[response({"content": {"name": name}}) for name in ("before", "after", "before")],
         requests=[[ports.RequestSpec("GET", sid)] for sid in ("source", "consumer", "again")])
     result = run_ui(scenario, ui, mode=mode)
     assert [s.status for s in result.steps] == ["PASSED", "FAILED", "PASSED"]
     assert list(result.steps[2].resolved_bindings.values()) == [{"name": "before"}]
-    # C-5 keeps its documented shallow diagnostic relationship within a step.
-    key = next(iter(result.steps[1].resolved_bindings))
-    assert result.steps[1].resolved_bindings[key] is ui.permits[1].resolved_bindings[key]
+    assert list(result.steps[1].resolved_bindings.values()) == [{"name": "before"}]
+    assert not hasattr(ui.permits[1], "resolved_bindings")
 
 
 def test_normalization_does_not_validate_unrelated_field_domains():

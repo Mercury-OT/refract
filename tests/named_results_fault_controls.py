@@ -264,7 +264,7 @@ transport evidence, assertions, and classification rules stay the same.
     adapters = Adapters(
         auth=ControlAuth(), api=api, state=None, ui=None,
         recorder_factory=frozen.ControlRecorder,
-        resolve_request=lambda scenario, step, template: ports.RequestSpec(
+        resolve_request=lambda template: ports.RequestSpec(
             template.method, template.path, copy.deepcopy(template.body)),
         normalizer=frozen.ControlNormalizer(),
     )

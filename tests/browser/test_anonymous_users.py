@@ -54,7 +54,7 @@ class ObservedUi(SyntheticUi):
         self.permits, self.sessions = [], []
         self.fault = fault
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
+    def open_stepwise(self, session, *, mode, mock_plan=None, **identity):
         options = getattr(session, "context", None)
         if self.fault == "inherit_credentials" and identity["user"] is None:
             options = self.sessions[0].context
@@ -64,9 +64,9 @@ class ObservedUi(SyntheticUi):
         self.sessions.append(session)
         return context
 
-    def perform_step(self, scenario, step, context, permit):
+    def perform_step(self, context, permit, *, business_header_names=()):
         self.permits.append(permit)
-        if step.id == "access/reader_send":
+        if permit.step_id == "access/reader_send":
             if self.fault == "wrong_user":
                 permit = dataclasses.replace(permit, user="owner")
             elif self.fault == "wrong_generation":
@@ -77,11 +77,11 @@ class ObservedUi(SyntheticUi):
                 context = self.opened[0]
             elif self.fault == "replayed_permit":
                 permit = self.permits[2]
-        outcome = super().perform_step(scenario, step, context, permit)
-        self.observed.append({"step": step.id, "context": context, "permit": permit,
+        outcome = super().perform_step(context, permit, business_header_names=business_header_names)
+        self.observed.append({"step": permit.step_id, "context": context, "permit": permit,
             "storage": context.page.evaluate("localStorage.getItem('account_session')"),
             "cookies": context.browser_context.cookies(), "outcome": outcome})
-        if step.id == "access/reader_send":
+        if permit.step_id == "access/reader_send":
             if self.fault == "stale_evidence":
                 return self.observed[2]["outcome"]
             if self.fault == "wrong_evidence_user":

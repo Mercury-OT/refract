@@ -66,11 +66,11 @@ class FormUi(SyntheticUi):
         super().__init__(base_url)
         self.requests, self.mutate = requests, mutate
 
-    def perform_step(self, scenario, step, context, permit):
-        result = super().perform_step(scenario, step, context, permit)
-        if step.action == "open" and self.requests is not None:
+    def perform_step(self, context, permit, *, business_header_names=()):
+        result = super().perform_step(context, permit, business_header_names=business_header_names)
+        if permit.action == "open" and self.requests is not None:
             configure(context, self.requests)
-        if self.mutate and step.id == "form_submit" and result.evidence.traffic:
+        if self.mutate and permit.step_id == "form_submit" and result.evidence.traffic:
             self.mutate(result)
         return result
 

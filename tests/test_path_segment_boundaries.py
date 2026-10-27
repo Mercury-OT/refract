@@ -70,7 +70,7 @@ def test_transport_path_guard_rejects_raw_dot_segments(path):
 
 def test_resolver_cannot_introduce_a_dot_route_before_send():
     scenario = _load_document(document(request("read"), request("later")))
-    result, api = execute(scenario, resolve_request=lambda scenario, step, template:
+    result, api = execute(scenario, resolve_request=lambda template:
                           ports.RequestSpec(template.method, "records/../notes", template.body))
     assert [step.status for step in result.steps] == ["ERROR", "BLOCKED"]
     assert api.sent == []

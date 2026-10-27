@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from refracto import ports
-from refracto.headers import business_headers, header_map, match_headers, require_header_items
+from refracto.headers import header_map, match_headers, require_header_items, validate_name
 from refracto.query import parse_query
 
 from ._instrument import SCRIPT
@@ -176,11 +176,15 @@ class BrowserSupport:
             raise ValueError("browser context is closed")
         return context
 
-    def validate_request_headers(self, context, headers):
-        """Reject credential-name collisions without applying expected values."""
+    def validate_request_header_names(self, context, names):
+        """Reject credential-name collisions without receiving expected values."""
         context = self._context(context)
-        declared = business_headers({} if headers is None else headers)
-        if context.credential_header_names.intersection(declared):
+        if type(names) is not tuple:
+            raise ValueError("business header names must be a normalized tuple")
+        normalized = tuple(validate_name(name, business=True) for name in names)
+        if normalized != names or tuple(sorted(set(normalized))) != normalized:
+            raise ValueError("business header names must be unique, lowercase and sorted")
+        if context.credential_header_names.intersection(normalized):
             raise ValueError("business request headers collide with browser credentials")
 
     def _capture_mock_headers(self, context, response):

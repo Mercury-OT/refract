@@ -38,9 +38,9 @@ class HeaderUi(SyntheticUi):
         super().__init__(base_url, **kwargs)
         self.requests, self.mutate = requests, mutate
 
-    def perform_step(self, scenario, step, context, authorization):
-        result = super().perform_step(scenario, step, context, authorization)
-        if step.action == "open":
+    def perform_step(self, context, authorization, *, business_header_names=()):
+        result = super().perform_step(context, authorization, business_header_names=business_header_names)
+        if authorization.action == "open":
             set_requests(context, self.requests)
         if self.mutate and result.evidence.traffic:
             result = self.mutate(result)

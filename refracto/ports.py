@@ -26,6 +26,21 @@ class RenderedAnchor(TypedDict):
     anonymous: list[AnonymousUiObject]
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RequestAction:
+    """Prepared operation data; nested containers are owned by the recipient.
+
+    Core constructs a fresh copy at the resolver boundary and retains its own
+    request for comparison. This view carries neither a declaration nor checks.
+    """
+
+    method: str
+    path: str = field(repr=False, metadata={"sensitive": True})
+    body: dict | None = field(default=None, repr=False, metadata={"sensitive": True})
+    query: dict | None = field(default=None, repr=False, metadata={"sensitive": True})
+    headers: dict | None = field(default=None, repr=False, metadata={"sensitive": True})
+
+
 @dataclass
 class RequestSpec:
     method: str
@@ -92,11 +107,6 @@ class UiActionPermit:
     value: object = field(repr=False, metadata={"sensitive": True})
     token: str = field(
         repr=False,
-        metadata={"sensitive": True},
-    )
-    resolved_bindings: dict[str, object] = field(
-        repr=False,
-        compare=False,
         metadata={"sensitive": True},
     )
     user: str | None = None
@@ -242,7 +252,6 @@ class StepwiseUiDriver(ABC):
     @abstractmethod
     def open_stepwise(
         self,
-        scenario,
         session: object | None,
         *,
         mode: str,
@@ -256,10 +265,10 @@ class StepwiseUiDriver(ABC):
     @abstractmethod
     def perform_step(
         self,
-        scenario,
-        step,
         context: object,
         permit: UiActionPermit,
+        *,
+        business_header_names: tuple[str, ...] = (),
     ) -> UiActionResult: ...
 
     @abstractmethod

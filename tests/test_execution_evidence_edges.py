@@ -56,7 +56,7 @@ def execute(projection, raw, state, *, response=None):
     options = dict(
         auth=None, api=api, state=state, recorder=FakeRecorder(),
         normalizer=FakeNormalizer(),
-        resolve_request=lambda scenario, step, template: ports.RequestSpec(
+        resolve_request=lambda template: ports.RequestSpec(
             template.method, template.path, template.body),
         now=clock.now, sleep=clock.sleep,
         poll_config=runner.PollConfig(timeout=1, interval=1),

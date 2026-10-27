@@ -23,7 +23,7 @@ def execute(scenario, *, auth=None, api=None, projection="backend", **kwargs):
     api = api or Api()
     auth = auth if auth is not None else Auth()
     options = dict(auth=auth, api=api, state=None, recorder=Recorder(), normalizer=Normalizer(),
-        resolve_request=lambda scenario, step, template: RequestSpec(
+        resolve_request=lambda template: RequestSpec(
             template.method, template.path, template.body, query=wire_query(template.query or {})), **kwargs)
     result = backend.run(scenario, **options) if projection == "backend" else e2e.run(scenario, ui=None, **options)
     return result, auth, api

@@ -11,7 +11,7 @@ from refracto import ports
 from refracto.report import DomainResult, PASSED, FAILED, SKIPPED, ERROR, BLOCKED, DEGRADED
 from tests.fakes import FakeAuth, FakeApi, FakeStateProbe, FakeRecorder, FakeNormalizer
 
-def _resolver(scenario, step, template):
+def _resolver(template):
     return ports.RequestSpec(method=template.method, path=template.path,
                              body=template.body or {})
 
@@ -143,7 +143,7 @@ def test_response_expectations_without_request_assertions():
                     expect=Expect(response=[Assertion("success", {})]))],
     )
 
-    def never_called_resolver(scenario, step, template):
+    def never_called_resolver(template):
         raise AssertionError("resolve_request should not be called")
 
     res = backend.run(s, auth=FakeAuth(), api=FakeApi(responses={}),
@@ -312,7 +312,7 @@ def test_backend_option_b_guard_rejects_overridden_body_field(tmp_path):
     s = load_scenario(str(y))
     api = FakeApi(responses={("POST", "jobs"): {"status": 200, "json": {"success": True}}})
 
-    def overriding_resolver(scenario, step, template):
+    def overriding_resolver(template):
         spec = ports.RequestSpec(method=template.method, path=template.path,
                                  body=dict(template.body or {}))
         spec.body["job"] = "overridden"   # violates Option B: overrides a declared field

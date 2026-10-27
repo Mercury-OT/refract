@@ -343,7 +343,7 @@ def test_contract_selector_use_sites_follow_runtime_rules(kind, position, bad):
         case = _load_document(document(request("source"), request("consume", [
             {"check": "header_equals", "header": "x", "value": ref}])))
 
-    def transport(scenario, step, template):
+    def transport(template):
         return ports.RequestSpec(template.method, template.path, template.body,
                                  query=wire_query(template.query or {}), headers=dict(template.headers or {}))
 

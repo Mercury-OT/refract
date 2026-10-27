@@ -52,9 +52,9 @@ class ObservedUi(DemoUiDriver):
         result["form"] = {"identified": [{"id": "form", "fields": {"value": value}}], "anonymous": []}
         return result
 
-    def perform_step(self, scenario, step, context, permit):
-        outcome = super().perform_step(scenario, step, context, permit)
-        self.observations.append({"step": step.id, "user": permit.user,
+    def perform_step(self, context, permit, *, business_header_names=()):
+        outcome = super().perform_step(context, permit, business_header_names=business_header_names)
+        self.observations.append({"step": permit.step_id, "user": permit.user,
             "generation": permit.session_generation, "context": context,
             "storage": context.page.evaluate("localStorage.getItem('account_session')"),
             "cookies": context.browser_context.cookies(), "evidence": outcome.evidence})

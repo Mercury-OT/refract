@@ -27,7 +27,7 @@ def request(sid="read", method="GET", path=None, checks=None, **extra):
 def execute(scenario, api=None, **extra):
     return backend.run(scenario, auth=FakeAuth(), api=api or FakeApi(), state=None,
         recorder=FakeRecorder(), normalizer=FakeNormalizer(),
-        resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path, body=t.body),
+        resolve_request=lambda t: ports.RequestSpec(t.method, t.path, body=t.body),
         **extra)
 
 
@@ -184,7 +184,7 @@ def test_mapper_cannot_add_hidden_business_defaults(tmp_path):
     api = FakeApi()
     result = backend.run(scenario, auth=FakeAuth(), api=api, state=None,
         recorder=FakeRecorder(), normalizer=FakeNormalizer(),
-        resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path, body={"hidden": True}))
+        resolve_request=lambda t: ports.RequestSpec(t.method, t.path, body={"hidden": True}))
     assert result.steps[0].status == "ERROR"
     assert not api.sent
 
@@ -277,7 +277,7 @@ def test_backend_api_ui_preflight_rejects_entire_flow_before_effects(tmp_path, p
             calls.append("auth")
             return super().session(role)
 
-    def resolve(scenario, step, template):
+    def resolve(template):
         calls.append("map")
         return ports.RequestSpec(template.method, template.path, body=template.body)
 
@@ -299,7 +299,7 @@ def _run_live_projection(projection, scenario, api, recorder, normalizer, **kwar
         kwargs["ui"] = None
     return implementation.run(scenario, auth=FakeAuth(), api=api, state=None,
         recorder=recorder, normalizer=normalizer,
-        resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path, body=t.body),
+        resolve_request=lambda t: ports.RequestSpec(t.method, t.path, body=t.body),
         **kwargs)
 
 

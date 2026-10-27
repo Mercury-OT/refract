@@ -161,8 +161,8 @@ def test_e2e_backend_state_from_ui_trace_id():
 def test_e2e_backend_state_missing_recording_trace_is_protocol_error():
     """Missing correlation is rejected before it can authorize state observation."""
     class MissingTraceUi(FakeUi):
-        def perform_step(self, scenario, step, context, permit):
-            result = super().perform_step(scenario, step, context, permit)
+        def perform_step(self, context, permit, *, business_header_names=()):
+            result = super().perform_step(context, permit, business_header_names=business_header_names)
             traffic = result.evidence.traffic[0]
             bad = dataclasses.replace(traffic, response=dataclasses.replace(traffic.response, trace_id=None))
             return dataclasses.replace(result, evidence=dataclasses.replace(result.evidence, traffic=[bad]))

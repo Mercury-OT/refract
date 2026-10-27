@@ -105,7 +105,7 @@ def test_closed_context_is_collectible_without_reauthorizing_its_execution(monke
     context = support.open("live")
     permit = ports.UiActionPermit(execution_id="closed-run", action_id="closed-action",
         step_id="step", mode="live", action="click", target="button", value=None,
-        token="closed-token", resolved_bindings={})
+        token="closed-token")
     # Exercise admission independently of Playwright so this stays core-only.
     support._authorize(context, permit, None, "button")
     reference = weakref.ref(context)
@@ -118,7 +118,7 @@ def test_closed_context_is_collectible_without_reauthorizing_its_execution(monke
     try:
         next_permit = ports.UiActionPermit(execution_id="closed-run", action_id="new-action",
             step_id="next-step", mode="live", action="click", target="button", value=None,
-            token="new-token", resolved_bindings={})
+            token="new-token")
         with pytest.raises(ValueError, match="already bound"):
             support.perform(fresh, next_permit, selector="button")
     finally:
