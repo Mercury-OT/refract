@@ -8,6 +8,8 @@ it may only be requested together with `backend`.
 from dataclasses import dataclass
 import copy
 import math
+from collections.abc import Callable
+from refracto.ports import RequestAction, RequestSpec
 from refracto.declaration.loader import load_scenario
 from refracto.declaration.run_values import bind_projection_values, _parse_run_time
 from refracto import grid
@@ -44,7 +46,7 @@ class Adapters:
     state: object
     ui: object
     recorder_factory: object            # callable -> Recorder
-    resolve_request: object             # callable(scenario, step, template) -> RequestSpec
+    resolve_request: Callable[[RequestAction], RequestSpec]
     normalizer: object = None           # ResponseNormalizer
 
 

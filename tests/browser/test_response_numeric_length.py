@@ -29,9 +29,9 @@ class NumericUi(SyntheticUi):
         super().__init__(base_url)
         self.payloads = copy.deepcopy(payloads)
 
-    def perform_step(self, scenario, step, context, permit):
-        result = super().perform_step(scenario, step, context, permit)
-        if step.action == "open":
+    def perform_step(self, context, permit, *, business_header_names=()):
+        result = super().perform_step(context, permit, business_header_names=business_header_names)
+        if permit.action == "open":
             context.page.evaluate("""payloads => {
                 for (const [id, value] of Object.entries(payloads)) {
                     const button = document.createElement('button');

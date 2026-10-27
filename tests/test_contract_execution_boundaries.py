@@ -193,7 +193,7 @@ def test_plain_response_reference_cannot_excuse_an_impossible_recorded_request(p
     scenario = _load_document(document(request("source"), consumer,
         request("independent", checks=[{"check": "field_equals", "field": "value", "value": "expected"}])))
 
-    def resolver(scenario, step, template):
+    def resolver(template):
         return ports.RequestSpec(template.method, template.path, template.body,
             query=wire_query(template.query or {}), headers=dict(template.headers or {}))
 

@@ -14,11 +14,11 @@ from adapters.demo.config import DemoConfig
 from adapters.demo.normalizer import DemoResponseNormalizer
 
 
-def resolve_request(scenario, step, template):
+def resolve_request(action: ports.RequestAction):
     return ports.RequestSpec(
-        method=template.method,
-        path=template.path,
-        body=(template.body or {"name": "demo", "rows": [1, 2, 3]}),
+        method=action.method,
+        path=action.path,
+        body=(action.body or {"name": "demo", "rows": [1, 2, 3]}),
     )
 
 

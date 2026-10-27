@@ -11,7 +11,7 @@ from tests.test_browser_support_lifecycle import Resource
 def permit(**changes):
     value = ports.UiActionPermit(execution_id="run", action_id="action", step_id="step",
         mode="live", action="click", target="button", value=None, token="token",
-        user="creator", session_generation=1, context_id="context-one", resolved_bindings={})
+        user="creator", session_generation=1, context_id="context-one")
     return dataclasses.replace(value, **changes)
 
 

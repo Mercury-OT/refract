@@ -24,7 +24,7 @@ def permit(action="click", *, run="synthetic-run", mode="live", value=None):
     identity = uuid4().hex
     return ports.UiActionPermit(execution_id=run, action_id=identity,
         step_id="step-" + identity, mode=mode, action=action, target="synthetic",
-        value=value, token=uuid4().hex, resolved_bindings={})
+        value=value, token=uuid4().hex)
 
 
 @pytest.fixture

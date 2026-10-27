@@ -40,11 +40,11 @@ class TrackingUi(ScriptedUi):
         self.opened.append(context)
         return context
 
-    def perform_step(self, scenario, step, context, permit):
+    def perform_step(self, context, permit, *, business_header_names=()):
         assert all(context[key] == getattr(permit, key)
                    for key in ("user", "session_generation", "context_id"))
         self.used.append(context)
-        return super().perform_step(scenario, step, context, permit)
+        return super().perform_step(context, permit, business_header_names=business_header_names)
 
     def close_stepwise(self, context):
         assert not any(existing is context for existing in self.closed)
@@ -170,7 +170,7 @@ def test_api_new_session_closes_old_ui_and_next_ui_uses_same_new_credentials():
             return super().send(request, session)
     api, auth, ui = InspectApi(), CountingAuth(), TrackingUi()
     result = run(declaration, ui, auth=auth, api=api,
-        resolve_request=lambda scenario, step, template: ports.RequestSpec(template.method, template.path, template.body))
+        resolve_request=lambda template: ports.RequestSpec(template.method, template.path, template.body))
     assert [step.status for step in result.steps] == ["PASSED"] * 3
     assert auth.acquired == ["creator", "creator"]
     assert ui.opened[1]["session"] is api.session_used
@@ -208,9 +208,9 @@ def test_new_authentication_mismatch_stops_without_new_context_or_action(mismatc
 
 def test_adapter_cannot_change_signed_permit_user_binding():
     class MutatedPermit(ScriptedUi):
-        def perform_step(self, scenario, step, context, permit):
+        def perform_step(self, context, permit, *, business_header_names=()):
             object.__setattr__(permit, "user", "peer")
-            return super().perform_step(scenario, step, context, permit)
+            return super().perform_step(context, permit, business_header_names=business_header_names)
     result = run(multiple(("creator", "peer")), MutatedPermit())
     assert [step.status for step in result.steps] == ["ERROR", "BLOCKED"]
     assert "permit was modified" in result.steps[0].detail
@@ -232,7 +232,7 @@ def test_live_api_polling_reuses_current_session_without_any_browser_context():
     api, auth, ui = PollApi(), CountingAuth(), TrackingUi(count=1)
     clock = [0]
     result = run(declaration, ui, auth=auth, api=api,
-        resolve_request=lambda scenario, step, template: ports.RequestSpec(template.method, template.path, template.body),
+        resolve_request=lambda template: ports.RequestSpec(template.method, template.path, template.body),
         poll_config=PollConfig(timeout=3, interval=1), now=lambda: clock[0],
         sleep=lambda duration: clock.__setitem__(0, clock[0] + duration))
     assert result.steps[0].status == "PASSED"

@@ -11,16 +11,16 @@ class ObservedDemoUiDriver(DemoUiDriver):
         self.open_calls = self.close_calls = 0
         self.contexts, self.permits, self.results = [], [], []
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
+    def open_stepwise(self, session, *, mode, mock_plan=None, **identity):
         self.open_calls += 1
-        context = super().open_stepwise(scenario, session, mode=mode, mock_plan=mock_plan, **identity)
+        context = super().open_stepwise(session, mode=mode, mock_plan=mock_plan, **identity)
         self.contexts.append(context)
         return context
 
-    def perform_step(self, scenario, step, context, permit):
+    def perform_step(self, context, permit, *, business_header_names=()):
         self.contexts.append(context)
         self.permits.append(permit)
-        result = super().perform_step(scenario, step, context, permit)
+        result = super().perform_step(context, permit, business_header_names=business_header_names)
         self.results.append(result)
         return result
 

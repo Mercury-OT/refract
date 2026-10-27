@@ -53,7 +53,7 @@ def load(*steps, parameters=None):
     return _load_document(document(list(steps), parameters))
 
 
-def resolver(scenario, step, template):
+def resolver(template):
     return ports.RequestSpec(template.method, template.path, template.body,
                              headers=copy.deepcopy(template.headers or {}))
 
@@ -237,7 +237,7 @@ def test_request_map_ownership_is_protected(seam):
 def test_resolver_case_changes_preserve_business_map_and_empty_values():
     scenario = load(request(business={"X-Key": ""}))
     result = execute(scenario, api=ObservedApi([("X-KEY", "")], []),
-        resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path, headers={"x-key": ""}))
+        resolve_request=lambda t: ports.RequestSpec(t.method, t.path, headers={"x-key": ""}))
     assert result.status == "PASSED"
 
 
@@ -516,7 +516,7 @@ def test_header_bearing_port_exceptions_are_value_free(mode, seam):
             return super().responses()
     def resolve(*args):
         if seam == "resolver":
-            raise RuntimeError(repr(args[2].headers))
+            raise RuntimeError(repr(args[0].headers))
         return resolver(*args)
     result = execute(scenario, mode=mode, api=Api([("X-Key", SENTINEL)], [("Cache-Control", SENTINEL)]),
                      normalizer=Normalizer(), recorder=Recorder(), resolve_request=resolve)
@@ -541,10 +541,10 @@ def test_header_bearing_ui_lifecycle_exceptions_are_value_free(seam, mode):
             if seam == "open":
                 raise RuntimeError(SENTINEL)
             return super().open_stepwise(*args, **kwargs)
-        def perform_step(self, *args):
+        def perform_step(self, *args, **kwargs):
             if seam == "action":
                 raise RuntimeError(SENTINEL)
-            return super().perform_step(*args)
+            return super().perform_step(*args, **kwargs)
         def snapshot(self, context):
             raise RuntimeError(SENTINEL)
         def close_stepwise(self, context):
@@ -630,10 +630,10 @@ def test_observed_headers_promote_sensitivity_for_later_ui_callbacks(mode, seam)
             response.request_header_items = [("Cookie", SENTINEL)]
         return result
     class Ui(ScriptedUi):
-        def perform_step(self, *args):
+        def perform_step(self, *args, **kwargs):
             if seam == "action" and self.evidence:
                 raise RuntimeError(str(self.evidence[0].traffic[0].response.request_header_items))
-            return super().perform_step(*args)
+            return super().perform_step(*args, **kwargs)
         def snapshot(self, context):
             raise RuntimeError(str(self.evidence[0].traffic[0].response.request_header_items))
         def close_stepwise(self, context):

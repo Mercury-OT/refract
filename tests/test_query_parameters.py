@@ -46,7 +46,7 @@ def load(tmp_path, raw):
     return load_scenario(str(path))
 
 
-def resolver(scenario, step, template):
+def resolver(template):
     return ports.RequestSpec(template.method, template.path, template.body,
                              query=wire_query(template.query or {}))
 

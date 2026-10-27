@@ -29,9 +29,9 @@ class MemberUi(SyntheticUi):
             "payload": payload, "after": after, "usePath": use_path,
         })
 
-    def perform_step(self, scenario, step, context, permit):
-        result = super().perform_step(scenario, step, context, permit)
-        if step.action == "open":
+    def perform_step(self, context, permit, *, business_header_names=()):
+        result = super().perform_step(context, permit, business_header_names=business_header_names)
+        if permit.action == "open":
             context.page.evaluate("""configuration => {
                 const send = (path, value) => fetch(path, {
                     method: 'POST', headers: {'Content-Type': 'application/json'},

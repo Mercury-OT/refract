@@ -52,7 +52,7 @@ def _field_absent_scenario():
     )
 
 
-def _resolver(scenario, step, template):
+def _resolver(template):
     return ports.RequestSpec(
         method=template.method,
         path=template.path,

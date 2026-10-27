@@ -48,18 +48,18 @@ class MinimalResponseNormalizer(ports.ResponseNormalizer):
             raw=resp,
         )
 
-def resolve_request(scenario, step, template) -> ports.RequestSpec:
-    logical_path = template.path.strip("/")
+def resolve_request(action: ports.RequestAction) -> ports.RequestSpec:
+    logical_path = action.path.strip("/")
     if logical_path == "records":
         target_path = "/items"
     elif logical_path.startswith("records/"):
         target_path = f"/items/{logical_path.removeprefix('records/')}"
     else:
-        raise ValueError(f"minimal adapter cannot resolve {template.method} {template.path}")
+        raise ValueError(f"minimal adapter cannot resolve {action.method} {action.path}")
     return ports.RequestSpec(
-        method=template.method,
+        method=action.method,
         path=target_path,
-        body=template.body,
+        body=action.body,
     )
 
 

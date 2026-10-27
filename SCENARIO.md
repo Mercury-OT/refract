@@ -678,6 +678,25 @@ which remain distinguishable from live responses.
 
 ### Run values and string composition
 
+The [maintainer's R1 revision of 2026-10-27](docs/roadmap.md#maintainer-decision-r1-revision-2026-10-27)
+allows composition and prohibits transformation: bounded `concat` joins strings
+without changing any operand's content. It is legitimate under revised R1, not
+an exception. Formatting, timezone conversion, truncation, case conversion,
+arithmetic, templates, conditions, and missing-value fallbacks are not enabled.
+Existing parameter declarations and run-value sources retain their contracts.
+
+**Committed scope:** parameter-level `concat` whose operands are string literals
+or references to string-valued parameters. Other currently accepted composition
+forms are outside this commitment. In particular, step-level concat with
+prior-response operands (`from_step` with `response_field`), and concat in
+assertion-value positions, are **frozen: retention is not promised**. They remain
+accepted by the current loader and execution engine. This governance decision
+does not remove syntax, change runtime behavior, or change `schema_version: 1`.
+Further support requires a concrete use case and separate review.
+Requests and assertions may still use ordinary `from_parameter` references to
+a committed composed parameter. The frozen assertion form is `concat` declared
+directly in an assertion value, not a reference to that parameter.
+
 Declare a unique-value source and reuse its value through ordinary parameters:
 
 ```yaml
@@ -745,7 +764,10 @@ rules still apply. A nested `literal` key in an unwrapped parameter is not an
 escape. The wrapper is not a new step-level value form. Actual responses and
 values obtained from references are never parsed again as declaration syntax.
 
-In later steps, concat can combine earlier actual response strings:
+The following describes an implemented but frozen form, outside the commitment
+above: in later steps, concat can combine earlier actual response strings.
+**Retention is not promised; this example documents current acceptance rather
+than recommending new use.**
 
 ```yaml
 concat:
@@ -755,8 +777,9 @@ concat:
 ```
 
 This value can occupy existing string-capable positions, such as a body value,
-path segment, query/header value, fill value or supported assertion value. It
-does not turn a request body or query container into a string, change numeric
+path segment, query/header value, fill value or supported assertion value. These
+uses remain subject to the frozen status above, including direct assertion-value
+concat. It does not turn a request body or query container into a string, change numeric
 assertion types, allow dynamic keys, or replace a reference-only identity slot.
 Response operands can use the existing dictionary/member and named-result forms;
 their sources must still be earlier request-bearing steps. Parameter declarations
@@ -1224,6 +1247,33 @@ Projection `PASSED` requires actual checks without failure or degradation.
 Any FAILED/ERROR makes the domain/run FAILED. BLOCKED without a failure makes the
 domain DEGRADED, even if another check passed, and is visible in `degradations()`.
 `EMPTY` and `NOT_SELECTED` cannot satisfy the strict gate.
+
+## Operation inputs and expectation ownership
+
+Core evaluates expectations; operation adapters receive only the prepared inputs
+needed by their interface. Request mapping uses `RequestAction` with method,
+bound logical path, body, query, and business headers. Browser context creation
+receives session and mode/context data; primitive execution receives its permit
+and only the business-header names needed for credential-collision checks.
+Neither interface receives Scenario, Step, or assertion objects. The UI permit
+does not carry the complete resolved-binding map. Core keeps those bindings for
+checks and diagnostic reports.
+
+Core-owned operation data is copied independently of declarations and retained
+comparison data. A frozen outer object does not make its nested containers
+immutable. Authentication/browser handles remain opaque; the explicit mock
+queue intentionally shares its cursor across contexts, with an independent
+retained fixture plan for validation. Caller-supplied mocks and legitimate
+action values may equal expected values; they are not generated from assertions.
+
+The resolver and UI open/action boundary errors identify the failed operation
+without reproducing the adapter exception text, which can contain request or
+credential data. Existing core comparisons and failure states retain their
+meaning. The Python adapter signatures have changed; there is no compatibility
+fallback that supplies the former declaration objects. YAML remains unchanged.
+These mechanisms reduce accidental coupling and shared-data mutation, not
+malicious Python execution or consistently fabricated observations. See the
+[evidence trust boundaries](docs/threat-model.md).
 
 ## UI evidence and mock sources
 

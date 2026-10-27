@@ -25,7 +25,7 @@ def run(flow):
     })
     result = backend.run(flow, auth=FakeAuth(), api=api, state=None,
         recorder=FakeRecorder(), normalizer=FakeNormalizer(),
-        resolve_request=lambda scenario, step, template: RequestSpec(template.method, template.path, template.body))
+        resolve_request=lambda template: RequestSpec(template.method, template.path, template.body))
     return result
 
 
@@ -59,7 +59,7 @@ def execute(raw, responses=None, *, api=None, normalizer=None, **kwargs):
     api, recorder = api or FakeApi(responses), FakeRecorder()
     result = backend.run(flow, auth=FakeAuth(), api=api, state=None, recorder=recorder,
         normalizer=normalizer or FakeNormalizer(),
-        resolve_request=lambda scenario, step, template: RequestSpec(template.method, template.path, template.body), **kwargs)
+        resolve_request=lambda template: RequestSpec(template.method, template.path, template.body), **kwargs)
     return result, api, recorder
 
 
@@ -336,7 +336,7 @@ def test_port_timeout_during_later_poll_attempt_is_error_not_budget_failure(fail
     clock = FakeClock()
     api = BrokenApi({("GET", "first"): {"json": {"success": False}}})
     kwargs = dict(api=api, recorder=BrokenRecorder(), normalizer=BrokenNormalizer(),
-        resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path),
+        resolve_request=lambda t: ports.RequestSpec(t.method, t.path),
         poll_config=PollConfig(timeout=2, interval=1), now=clock.now, sleep=clock.sleep)
     if projection == "backend":
         result = backend.run(flow, auth=FakeAuth(), state=None, **kwargs)
@@ -365,7 +365,7 @@ def test_state_probe_timeout_is_not_retried_as_expired_poll_budget(mode):
         flow = scenario()
         flow.steps[0].expect.backend_state = [Assertion("span_exists", {"span": "created"})]
         result = backend.run(flow, auth=FakeAuth(), api=FakeApi(), state=state, recorder=FakeRecorder(),
-            normalizer=FakeNormalizer(), resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path))
+            normalizer=FakeNormalizer(), resolve_request=lambda t: ports.RequestSpec(t.method, t.path))
     assert [step.status for step in result.steps] == [ERROR, BLOCKED]
     assert state.calls == 1
 
@@ -388,7 +388,7 @@ def test_nested_wait_inside_normalizer_is_not_the_outer_poll_budget(projection):
     clock = FakeClock()
     api = FakeApi({("GET", "first"): {"json": {"success": False}}})
     kwargs = dict(api=api, recorder=FakeRecorder(), normalizer=NestedWait(),
-        resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path),
+        resolve_request=lambda t: ports.RequestSpec(t.method, t.path),
         poll_config=PollConfig(timeout=5, interval=1), now=clock.now, sleep=clock.sleep)
     if projection == "backend":
         result = backend.run(flow, auth=FakeAuth(), state=None, **kwargs)

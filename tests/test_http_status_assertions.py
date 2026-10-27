@@ -33,7 +33,7 @@ def execute(scenario, status=201, *, projection="backend", normalizer=None, api=
     api = api or FakeApi({("GET", "create"): {"status": status, "json": {"success": True}}})
     normalizer = normalizer or FakeNormalizer()
     args = dict(api=api, normalizer=normalizer,
-                resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path, t.body), **kwargs)
+                resolve_request=lambda t: ports.RequestSpec(t.method, t.path, t.body), **kwargs)
     if projection == "e2e":
         return run_ui(scenario, None, **args), api
     return backend.run(scenario, auth=FakeAuth(), state=None, recorder=FakeRecorder(), **args), api

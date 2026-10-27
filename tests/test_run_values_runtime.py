@@ -52,7 +52,7 @@ class EchoApi(FakeApi):
 def adapters(api=None, ui=None, auth=None):
     return runner.Adapters(auth=auth or FakeAuth(), api=api or EchoApi(), state=None,
         ui=ui, recorder_factory=FakeRecorder, normalizer=FakeNormalizer(),
-        resolve_request=lambda scenario, step, template: ports.RequestSpec(
+        resolve_request=lambda template: ports.RequestSpec(
             template.method, template.path, template.body, query=wire_query(template.query or {}),
             headers=dict(template.headers or {})))
 
@@ -77,15 +77,15 @@ def test_each_execution_projection_gets_a_unique_value_and_contract_reuses_backe
         def __init__(self):
             super().__init__()
             self.sent = []
-        def perform_step(self, scenario, step, context, permit):
+        def perform_step(self, context, permit, *, business_header_names=()):
             # Fixed test data by execution order, never values from assertions.
             name = names[len(self.sent) + 1]
             spec = ports.RequestSpec("POST", "records", {"name": name})
             self._rendered = rendered(name)
             self._outgoing = [spec]
             self._recorded = [ports.RecordedResponse(201, {}, response({"name": name}), "", None, spec)]
-            self.sent.append(copy.deepcopy(step.request))
-            return super().perform_step(scenario, step, context, permit)
+            self.sent.append(copy.deepcopy(spec))
+            return super().perform_step(context, permit, business_header_names=business_header_names)
     ui = CaptureUi()
     api = EchoApi()
     report = runner.run_scenario(source_file(tmp_path, unique_document(ui=True)), adapters(api, ui),

@@ -39,7 +39,7 @@ class ScriptedUi(FakeUi):
         self.terminal = terminal
         self.evidence = []
 
-    def perform_step(self, scenario, step, context, permit):
+    def perform_step(self, context, permit, *, business_header_names=()):
         index = len(self.permits)
         if self.terminal == (index, "error"):
             self.permits.append(permit)
@@ -51,7 +51,7 @@ class ScriptedUi(FakeUi):
         self._recorded = [ports.RecordedResponse(200, {}, copy.deepcopy(self.payloads[index]), "", None, r)
                           for r in self._outgoing]
         self._rendered = self.renders[index]
-        result = super().perform_step(scenario, step, context, permit)
+        result = super().perform_step(context, permit, business_header_names=business_header_names)
         if self.mutate:
             result = self.mutate(index, result, permit)
         self.evidence.append(result)

@@ -69,7 +69,7 @@ class FakeUi(ports.UiDriver, ports.StepwiseUiDriver):
     def supports_stepwise_mode(self, mode):
         return mode in {"mock", "live"}
 
-    def open_stepwise(self, scenario, session=None, *, mode, mock_plan=None,
+    def open_stepwise(self, session=None, *, mode, mock_plan=None,
                       mock_queue=None, user=None, session_generation=0, context_id=""):
         self.open_calls += 1
         context = {"mode": mode, "mock_plan": mock_plan or [], "mock_queue": mock_queue,
@@ -84,12 +84,12 @@ class FakeUi(ports.UiDriver, ports.StepwiseUiDriver):
     def snapshot(self, context):
         return copy.deepcopy(self._rendered)
 
-    def perform_step(self, scenario, step, context, permit):
+    def perform_step(self, context, permit, *, business_header_names=()):
         index = len(self.permits)
         self.permits.append(permit)
         self.contexts.append(context)
         if self.scripts is not None:
-            return self.scripts[index](self, step, context, permit)
+            return self.scripts[index](self, context, permit)
         responses = copy.deepcopy(self._recorded)
         traffic = []
         for i, request in enumerate(self._outgoing):

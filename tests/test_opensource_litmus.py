@@ -83,7 +83,7 @@ from tests.fakes import FakeAuth, FakeApi, FakeNormalizer, FakeRecorder, FakeSta
 s = load_scenario('tests/fixtures/synthetic_scenario.yaml')
 assert s.id == 'refracto.synthetic_probe'
 
-def _resolver(scenario, step, template):
+def _resolver(template):
     return ports.RequestSpec(method=template.method, path=template.path, body={})
 
 api = FakeApi(responses={('POST', 'resource/action'): {'status': 200, 'json': {'success': True, 'data': {'taskId': 'T1'}}}})

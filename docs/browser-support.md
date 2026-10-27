@@ -55,7 +55,7 @@ class RecordsUi(ports.UiDriver, ports.StepwiseUiDriver):
     def supports_stepwise_mode(self, mode):
         return mode in {"live", "mock"}
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None,
+    def open_stepwise(self, session, *, mode, mock_plan=None,
                       mock_queue=None, user=None, session_generation=0,
                       context_id=""):
         # This adapter defines session as Playwright browser context options,
@@ -66,9 +66,8 @@ class RecordsUi(ports.UiDriver, ports.StepwiseUiDriver):
             session_generation=session_generation, context_id=context_id,
         )
 
-    def perform_step(self, scenario, step, context, permit):
-        if step.request is not None:
-            self.browser.validate_request_headers(context, step.request.headers)
+    def perform_step(self, context, permit, *, business_header_names=()):
+        self.browser.validate_request_header_names(context, business_header_names)
         if permit.action == "open":
             if permit.target != "records.page":
                 raise ValueError("unknown page target")
@@ -156,13 +155,23 @@ forwards the request. Those transport names cannot be business declarations.
 Actual-server tests compare the business and credential values, effective trace,
 and removal of private markers independently.
 
-Before performing a primitive, call `validate_request_headers(context, headers)`
-as in the adapter above. This mechanical name check rejects declared business
+Before performing a primitive, call
+`validate_request_header_names(context, business_header_names)` as in the adapter
+above. Core supplies a sorted tuple of unique lowercase names, without expected
+values or the rest of the request expectation. This mechanical name check rejects declared business
 headers that collide with the context's `extra_http_headers`, which the adapter
 supplied as session credentials. It does not use expected values to drive the
 page. Standard credential and transport header names are also forbidden as
 business declarations. Product-specific authentication mechanisms beyond these
 context headers remain the adapter's responsibility.
+
+UI adapters receive neither Scenario nor Step. The permit carries the current
+action input and execution identity, not the complete resolved-binding map.
+Core retains expectations, evaluates actual evidence, and keeps diagnostic
+bindings in its report. Do not reconstruct the old interface through a wrapper
+or read expectations to select targets or fill observations. This input boundary
+reduces accidental coupling; it does not sandbox in-process adapter code. See
+the [threat model](threat-model.md).
 
 When one associated method/path request exists, a wrong or missing declared
 header produces a failed request assertion. With several candidates, an explicit

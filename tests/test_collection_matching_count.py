@@ -46,7 +46,7 @@ def execute(scenario, payloads=None, **kwargs):
         ("GET", sid): {"json": response(data)} for sid, data in (payloads or {}).items()})
     result = backend.run(scenario, auth=FakeAuth(), api=api, state=None,
         recorder=FakeRecorder(), normalizer=FakeNormalizer(),
-        resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path, t.body), **kwargs)
+        resolve_request=lambda t: ports.RequestSpec(t.method, t.path, t.body), **kwargs)
     return result, api
 
 
@@ -255,7 +255,7 @@ def test_polling_real_attempts_and_terminal_semantics(tmp_path, projection, poli
         result, _ = execute(scenario, api=api, **timing)
     else:
         result = run_ui(scenario, None, api=api,
-            resolve_request=lambda s, st, t: ports.RequestSpec(t.method, t.path, t.body), **timing)
+            resolve_request=lambda t: ports.RequestSpec(t.method, t.path, t.body), **timing)
     assert [s.status for s in result.steps] == (["PASSED", "PASSED"] if ready else
         (["FAILED", "PASSED"] if policy == "FAIL" else ["SKIPPED", "BLOCKED"]))
     records = [r for r in result.provider_recordings if r.step_id == "list"]

@@ -54,7 +54,7 @@ class SequencedApi(ports.ApiDriver):
         )
 
 
-def _resolver(scenario, step, template):
+def _resolver(template):
     return ports.RequestSpec(
         method=template.method,
         path=template.path,

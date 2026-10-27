@@ -303,7 +303,7 @@ def test_explicit_api_e2e_needs_no_ui_and_poll_uses_actual_attempts():
             return super().send(spec, session)
     api, clock, ui = Api(), Clock(), ScriptedUi()
     result = run(s, ui, api=api,
-                 resolve_request=lambda s, step, t: ports.RequestSpec(t.method, t.path, t.body),
+                 resolve_request=lambda t: ports.RequestSpec(t.method, t.path, t.body),
                  poll_config=PollConfig(timeout=2, interval=1), now=clock.now, sleep=clock.sleep)
     assert result.status == "PASSED"
     assert len(api.sent) == 2 and ui.open_calls == 0
@@ -325,7 +325,7 @@ def _mixed_api_ui_case(polling, mutate=None):
         return mutate(index, result, recorder) if mutate else result
     ui = ScriptedUi(mutate=edit)
     result = run(s, ui, api=api, recorder=recorder,
-                 resolve_request=lambda s, step, t: ports.RequestSpec(t.method, t.path, t.body),
+                 resolve_request=lambda t: ports.RequestSpec(t.method, t.path, t.body),
                  poll_config=PollConfig(timeout=2, interval=1), now=clock.now, sleep=clock.sleep)
     return result, ui, api
 
@@ -388,7 +388,7 @@ def test_ui_cannot_reuse_accepted_api_or_polling_identity(source, stream):
 def test_ui_failure_never_calls_api_to_repair_missing_request():
     api = FakeApi()
     result = run(scenario(), ScriptedUi(requests=[[], []]), api=api,
-                 resolve_request=lambda s, step, t: ports.RequestSpec(t.method, t.path, t.body))
+                 resolve_request=lambda t: ports.RequestSpec(t.method, t.path, t.body))
     assert result.steps[0].status == "ERROR"
     assert api.sent == []
 
@@ -410,7 +410,7 @@ def test_live_c5_all_post_resolution_terminal_states_keep_bindings(terminal, exp
     result = run(scenario(count=3, references=True), ui)
     assert [r.status for r in result.steps] == ["PASSED", expected, "PASSED" if terminal == "failed" else "BLOCKED"]
     assert result.steps[1].resolved_bindings == {"previous": "1"}
-    assert result.steps[1].resolved_bindings is not ui.permits[1].resolved_bindings
+    assert not hasattr(ui.permits[1], "resolved_bindings")
     assert result.steps[2].resolved_bindings == ({"previous": "1"} if terminal == "failed" else {})
     assert ui.close_calls == 1
 
@@ -432,7 +432,7 @@ def test_live_c5_atomic_failure_blocked_and_falsy_values():
 
 def test_unavailable_or_throwing_context_never_performs_action():
     class Driver(ScriptedUi):
-        def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
+        def open_stepwise(self, session, *, mode, mock_plan=None, **identity):
             self.open_calls += 1
             raise RuntimeError("cannot open")
     ui = Driver()
@@ -486,7 +486,7 @@ def test_direct_api_e2e_has_the_same_strict_port_boundaries(component):
             if component == "responses": raise RuntimeError("responses")
             return super().responses()
     result = run(s, None, api=Api(), state=LiveState("wrong-trace" if component == "state" else "ok"),
-                 recorder=Recorder(), resolve_request=lambda s, step, t: ports.RequestSpec(t.method, t.path, t.body))
+                 recorder=Recorder(), resolve_request=lambda t: ports.RequestSpec(t.method, t.path, t.body))
     assert result.steps[0].status == "ERROR"
 
 
@@ -497,7 +497,7 @@ def test_paired_direct_api_without_server_trace_uses_local_correlation_not_state
     s = scenario(count=1)
     s.steps[0] = Step("read", RequestTemplate("GET", "status"),
                       Expect(response=[Assertion("success")]), action="request")
-    mapping = lambda scenario, step, t: ports.RequestSpec(t.method, t.path, t.body)
+    mapping = lambda t: ports.RequestSpec(t.method, t.path, t.body)
     api = NoServerTrace()
     result = run(s, None, api=api, resolve_request=mapping)
     assert result.status == "PASSED"

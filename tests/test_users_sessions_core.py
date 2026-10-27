@@ -83,7 +83,7 @@ def run(raw, *, auth=None, api=None, normalizer=None, poll_config=None, now=None
     recorder = recorder or Recorder()
     result = backend.run(scenario, auth=auth, api=api, recorder=recorder, state=None,
         normalizer=normalizer or Normalizer(),
-        resolve_request=lambda scenario, step, template: RequestSpec(template.method, template.path, template.body),
+        resolve_request=lambda template: RequestSpec(template.method, template.path, template.body),
         poll_config=poll_config, now=now, sleep=sleep)
     return scenario, result, auth, api
 

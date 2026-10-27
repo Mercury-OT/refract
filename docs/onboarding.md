@@ -17,6 +17,21 @@ A request/response-only integration needs four adapter-facing pieces:
    field map.
 4. `resolve_request` maps a declared logical request to the target's real request.
 
+The callable is `resolve_request(action: ports.RequestAction) -> ports.RequestSpec`.
+Its five fields are the bound logical method, path, body, query, and business
+headers. It does not receive Scenario, Step, expectations, or the full parameter
+map. The outer value is frozen; nested containers are independent copies owned
+by the resolver. Preserve declared business values and return the target routing
+as RequestSpec. Core compares it with its independently retained declaration.
+
+Adapters using the former three-argument resolver must update their Python
+signature; there is no legacy retry. UI adapters likewise remove Scenario/Step
+arguments as shown in [browser support](browser-support.md). Scenario YAML,
+include pins, and execution states do not change. Authentication and opaque
+browser/session handles retain their existing lifecycle. These input controls
+do not certify the truth of arbitrary adapter observations; see the
+[threat model](threat-model.md).
+
 The minimal wiring is copied directly from
 [`examples/minimal/adapters.py`](../examples/minimal/adapters.py):
 

@@ -316,7 +316,7 @@ def adapters_for(api=None, auth=None, recorder_factory=None):
     from tests.fakes import FakeApi, FakeAuth, FakeNormalizer, FakeRecorder
     return Adapters(auth or FakeAuth(), api or FakeApi(), None, None,
                     recorder_factory or FakeRecorder,
-                    lambda scenario, step, template: ports.RequestSpec(
+                    lambda template: ports.RequestSpec(
                         template.method, template.path, template.body), FakeNormalizer())
 
 
@@ -592,13 +592,13 @@ def test_dynamic_invalid_use_fails_before_consumer_mapping_and_send(tmp_path, po
     adapters = adapters_for(api, auth)
     original_mapper = adapters.resolve_request
     mapped = []
-    def mapper(scenario, step, template):
-        mapped.append(step.id)
-        return original_mapper(scenario, step, template)
+    def mapper(template):
+        mapped.append(template.path)
+        return original_mapper(template)
     adapters.resolve_request = mapper
     report = run_scenario(path, adapters, projections=("backend", "contract"))
     assert [step.status for step in report.domains[0].steps] == ["PASSED", "BLOCKED", "COMPLETED"]
-    assert mapped == ["before"] and len(api.sent) == 1 and auth.calls == 1
+    assert mapped == ["source"] and len(api.sent) == 1 and auth.calls == 1
     error_step = report.domains[0].steps[1]
     assert error_step.resolved_bindings == {}
     assert "SENSITIVE-DYNAMIC" not in error_step.detail

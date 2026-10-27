@@ -61,20 +61,17 @@ class ObservedUi(DemoUiDriver):
         super().__init__(config)
         self.opens = self.closes = 0
         self.contexts, self.permits, self.results = [], [], []
-        self.scenario_ids = []
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None, **identity):
+    def open_stepwise(self, session, *, mode, mock_plan=None, **identity):
         self.opens += 1
-        self.scenario_ids.append(scenario.id)
-        context = super().open_stepwise(scenario, session, mode=mode, mock_plan=mock_plan, **identity)
+        context = super().open_stepwise(session, mode=mode, mock_plan=mock_plan, **identity)
         self.contexts.append(context)
         return context
 
-    def perform_step(self, scenario, step, context, permit):
+    def perform_step(self, context, permit, *, business_header_names=()):
         self.contexts.append(context)
-        self.scenario_ids.append(scenario.id)
         self.permits.append(permit)
-        result = super().perform_step(scenario, step, context, permit)
+        result = super().perform_step(context, permit, business_header_names=business_header_names)
         self.results.append(result)
         return result
 
@@ -156,7 +153,8 @@ def _assert_sources(report, parent_path, child_path, child_scenario):
         assert report.source_lookup[step.id] == expected
 
 
-def _assert_ui_lifecycle(ui, domain, *, included):
+def _assert_ui_lifecycle(ui, report, *, included):
+    domain = report.domains[0]
     assert ui.opens == ui.closes == 1
     assert len(ui.permits) == 8
     assert all(context is ui.contexts[0] for context in ui.contexts)
@@ -165,7 +163,8 @@ def _assert_ui_lifecycle(ui, domain, *, included):
     assert len({permit.action_id for permit in ui.permits}) == 8
     assert len({permit.execution_id for permit in ui.permits}) == 1
     expected_root_id = "demo.include_items_ui" if included else "demo.include_items_ui_flat_control"
-    assert ui.scenario_ids == [expected_root_id] * 9
+    assert report.scenario_id == expected_root_id
+    assert all(not hasattr(permit, "scenario") and not hasattr(permit, "expect") for permit in ui.permits)
     separator = "/" if included else "_"
     expected_ids = [f"{prefix}{separator}{leaf}" for prefix in ("first", "second")
                     for leaf in ("open_page", "open_form", "fill_name", "create")]
@@ -188,7 +187,7 @@ def test_independent_flat_controls_execute_on_real_demo(demo_server, projection)
     path = API_FLAT if projection == "backend" else UI_FLAT
     report, adapters, ui = _run(path, demo_server, projection)
     if ui is not None:
-        _assert_ui_lifecycle(ui, report.domains[0], included=False)
+        _assert_ui_lifecycle(ui, report, included=False)
     else:
         assert adapters.api.sent == [
             ("POST", "items", {"name": "included-first", "rows": [1, 2, 3]}),
@@ -292,8 +291,8 @@ def test_ui_include_reuses_one_context_and_matches_flat_runtime(demo_server, fla
     _assert_sources(included, UI_INCLUDE, ROOT / "scenarios/include_shared/create_item_ui.yaml",
                     "demo.include_create_item_ui")
     domain, flat_domain = included.domains[0], flat.domains[0]
-    _assert_ui_lifecycle(ui, domain, included=True)
-    _assert_ui_lifecycle(flat_ui, flat_domain, included=False)
+    _assert_ui_lifecycle(ui, included, included=True)
+    _assert_ui_lifecycle(flat_ui, flat, included=False)
     assert [(p.action, p.target, p.value) for p in ui.permits] == [(p.action, p.target, p.value) for p in flat_ui.permits]
     if projection == "frontend":
         fixture_ids = ["initial-list", "create-1", "list-1", "second-open-list", "create-2", "list-2"]

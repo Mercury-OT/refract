@@ -23,16 +23,15 @@ class DemoUiDriver(ports.UiDriver, ports.StepwiseUiDriver):
     def supports_stepwise_mode(self, mode):
         return mode in {"mock", "live"}
 
-    def open_stepwise(self, scenario, session, *, mode, mock_plan=None,
+    def open_stepwise(self, session, *, mode, mock_plan=None,
                       mock_queue=None, user=None, session_generation=0, context_id=""):
         return self._browser.open(mode, mock_plan=mock_plan, mock_queue=mock_queue,
                                   user=user, session_generation=session_generation,
                                   context_id=context_id,
                                   context_options=getattr(session, "context", None))
 
-    def perform_step(self, scenario, step, context, permit):
-        if step.request is not None:
-            self._browser.validate_request_headers(context, step.request.headers)
+    def perform_step(self, context, permit, *, business_header_names=()):
+        self._browser.validate_request_header_names(context, business_header_names)
         if permit.action == "open":
             if permit.target not in {"items.page", "records.page"}:
                 raise ValueError("unknown page target")
