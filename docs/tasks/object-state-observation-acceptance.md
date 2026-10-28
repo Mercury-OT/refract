@@ -116,7 +116,8 @@ or runtime behavior.
 
 ## Accepted file scope and repository boundary
 
-The accepted changes comprise 15 modified tracked files and 14 new files:
+At local acceptance, the accepted changes comprised 15 modified tracked files
+and 14 new files:
 
 - Declaration: `refracto/declaration/{binding,loader,vocabulary}.py` and new
   `refracto/declaration/object_state.py`.
@@ -139,6 +140,30 @@ local origin/main were
 `52332e720170933c4b34eb6d99208ac9a4b76eb9`. No branch, commit, push, PR or merge was
 performed at that acceptance gate. The subsequently authorized task PR records
 hosted delivery; local checks alone do not prove completion of that workflow.
+
+## Submission follow-up: browser test budget
+
+The first PR run on `871b9bc` failed one existing browser boundary test; the
+branch-push full suite on the identical commit passed. The failure had no HTTP
+requests and an empty assertion-localization list. That output did not retain
+step errors, so it cannot uniquely establish the hosted failure's root cause.
+
+Thirty separate local executions of the same live case passed. A controlled
+two-second Chromium startup delay reproduced the visible symptoms with the
+test's 1500 ms budget: open ERROR, following steps BLOCKED, no HTTP request. With
+5000 ms, the same control completed the real flow and both API requests. This
+demonstrates a reachable startup-budget weakness, not proof of the original
+hosted cause.
+
+The supplemental fix is limited to `tests/browser/test_action_port_boundary.py`:
+use BrowserSupport's normal 5000 ms budget for this non-performance test and
+include step status/detail in assertion failure diagnostics. No assertion,
+negative control, production timeout, core behavior or YAML is weakened or
+changed. The six-case browser file passes; the modified original test also
+passes with the controlled startup delay. Independent review reran all six cases
+without skips and passed; architect acceptance includes this bounded CI repair.
+Renewed hosted checks remain required before merge. This adds one test file to the original
+29-file submission scope; all other supplemental edits are this evidence record.
 
 ## Limits
 
