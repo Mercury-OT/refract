@@ -358,7 +358,9 @@ class _VerifiedApi:
 def _assert_live_backend_state_for(step, state, trace_id, *, state_timeout=30,
                                   interval=1, now=None, sleep=None,
                                   bound_values=None, inputs=None):
-    if not step.expect.backend_state:
+    span_assertions = [a for a in step.expect.backend_state
+                       if a.check != "object_field_equals"]
+    if not span_assertions:
         return [], []
     if state is None:
         return [], ["declared backend_state unavailable: no StateProbe"]
@@ -367,14 +369,14 @@ def _assert_live_backend_state_for(step, state, trace_id, *, state_timeout=30,
     def observe():
         facts = _validate_state_facts(state.observe(trace_id), trace_id)
         return all(backend_proj._eval_span(a, facts, bound_values, inputs).ok
-                   for a in step.expect.backend_state), facts
+                   for a in span_assertions), facts
     try:
         facts = asyncwait.wait_until(observe, timeout=state_timeout, interval=interval,
                                     on_timeout=asyncwait.FAIL, now=now, sleep=sleep).value
     except asyncwait.WaitTimeout:
         facts = _validate_state_facts(state.observe(trace_id), trace_id)
     return [backend_proj._eval_span(a, facts, bound_values, inputs)
-            for a in step.expect.backend_state], []
+            for a in span_assertions], []
 
 
 def _before_context_error(scenario, projection, exc):
@@ -389,7 +391,7 @@ def _before_context_error(scenario, projection, exc):
 def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         projection="frontend", mode="mock", eval_response=None, state=None,
         recorder=None, api=None, resolve_request=None, poll_config=None,
-        mock_plan=None, now=None, sleep=None):
+        mock_plan=None, now=None, sleep=None, object_state=None):
     """No legacy path: every Scenario uses this one action/expectation loop."""
     needs_ui = any(s.action in {"open", "click", "fill"} or s.expect.frontend
                    for s in scenario.steps)
@@ -473,6 +475,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         recorder=_VerifiedRecorder(recorder, recordings), resolve_request=resolve_request,
                         normalizer=normalizer, poll_config=poll_config,
                         now=now, sleep=sleep, bound_values=bound,
+                        object_state=object_state, projection=projection,
                     )
                     recordings = _VerifiedRecorder(recorder, recordings).responses()
                     # API and UI share one run-level evidence namespace. This
@@ -553,6 +556,11 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                     status = FAILED if any(not c.ok for c in checks) else (PASSED if checks else COMPLETED)
                     sr = StepResult(step.id, status, checks=checks, skipped=skipped,
                                     trace_id=trace_id, not_checked=not_checked)
+                    if mode == "live":
+                        backend_proj.apply_object_observation(
+                            sr, step, object_state, projection=projection, user=user,
+                            session_generation=lease.generation, bound_values=bound,
+                            inputs=scenario.inputs)
             except binding.DependencyUnavailable as exc:
                 sr = (StepResult(declared.id, ERROR, detail=str(exc)) if prepared_ok else
                       StepResult(declared.id, BLOCKED, detail=str(exc), blocked_by=exc.sources))

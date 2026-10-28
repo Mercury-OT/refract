@@ -1,15 +1,14 @@
 """Backend projection.
 
-Authenticate, resolve and send declared request steps, evaluate response
-assertions, and evaluate backend-state assertions through the StateProbe port.
-If no StateProbe is wired, declared backend-state assertions degrade visibly
-instead of reading as a full pass.
+Authenticate, resolve and send declared request steps, evaluate responses,
+trace assertions through StateProbe, and one-shot object facts through the
+separate ObjectStateProbe. Missing evidence capabilities degrade visibly.
 """
 import dataclasses
 import copy
 import secrets
 import time
-from refracto import asyncwait, ports
+from refracto import asyncwait, ports, object_state as object_observation
 from refracto import headers as header_ops
 from refracto.query import wire_query, require_wire_query, request_path
 from refracto.normalization import normalize_response
@@ -166,11 +165,13 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
     `bound_values` carries this step's already-resolved `bind` values, used to
     resolve any `span_attr.value` that references a bound placeholder.
     """
+    span_assertions = [a for a in step.expect.backend_state
+                       if a.check != "object_field_equals"]
     checks, skipped = [], []
-    if not step.expect.backend_state:
+    if not span_assertions:
         return checks, skipped
     if state is None:
-        for a in step.expect.backend_state:
+        for a in span_assertions:
             # Resolved assertion parameters can contain sensitive binding values.
             # Preserve the unmet check and degradation without echoing its data.
             skipped.append(f"{a.check} — no StateProbe (backend-state evidence unavailable)")
@@ -183,7 +184,7 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
     # Poll on the full backend-state predicate, not merely on span-name presence.
     def _poll():
         facts = state.observe(trace_id)
-        ok = all(_eval_span(a, facts, bound_values, inputs).ok for a in step.expect.backend_state)
+        ok = all(_eval_span(a, facts, bound_values, inputs).ok for a in span_assertions)
         return (ok, facts)
 
     try:
@@ -193,10 +194,10 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
         # On timeout, report the specific failing assertions against the most
         # recent observation rather than a generic timeout marker.
         facts = state.observe(trace_id)
-        for a in step.expect.backend_state:
+        for a in span_assertions:
             checks.append(_eval_span(a, facts, bound_values, inputs))
     else:
-        for a in step.expect.backend_state:
+        for a in span_assertions:
             checks.append(_eval_span(a, res.value, bound_values, inputs))
     return checks, skipped
 
@@ -430,7 +431,8 @@ def _require_live_response(response):
 
 def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
                      normalizer, auth=None, session=_NO_SESSION, poll_config=None,
-                     now=None, sleep=None, bound_values=None, session_lease=None):
+                     now=None, sleep=None, bound_values=None, session_lease=None,
+                     object_state=None, projection="backend"):
     """Execute a prepared explicit request (also reused by the e2e loop)."""
     if step.action == "request" and step.expect.frontend:
         raise ValueError("direct API action with UI assertions is not supported")
@@ -466,12 +468,38 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
     # Own the validated request before any driver/normalizer callback runs so a
     # retained alias cannot change later poll attempts or the header baseline.
     spec = copy.deepcopy(spec)
-    return _run_step(step, template, spec, api, session, recorder, normalizer,
-                     state, poll_config, now, sleep, bound_values, scenario.inputs)
+    result, norm = _run_step(step, template, spec, api, session, recorder, normalizer,
+                            state, poll_config, now, sleep, bound_values, scenario.inputs)
+    terminal = (result.status != SKIPPED and not (
+        result.response_origin is not None and result.response_origin.timed_out))
+    if terminal:
+        apply_object_observation(result, step, object_state, projection=projection,
+            user=scenario.effective_user(step),
+            session_generation=session_lease.generation if session_lease is not None else None,
+            bound_values=bound_values, inputs=scenario.inputs)
+    return result, norm
+
+
+def apply_object_observation(result, step, probe, *, projection, user,
+                             session_generation, bound_values=None, inputs=None):
+    """Keep response results and earlier snapshots when observation acquisition fails."""
+    try:
+        checks, skipped = object_observation.observe(
+            step, probe, result.trace_id, projection=projection, user=user,
+            session_generation=session_generation, observations=result.state_observations,
+            bound_values=bound_values, inputs=inputs)
+        result.checks.extend(checks)
+        result.skipped.extend(skipped)
+        if any(not check.ok for check in result.checks):
+            result.status = FAILED
+        elif result.checks and result.status == "COMPLETED":
+            result.status = PASSED
+    except object_observation.ObservationError as exc:
+        result.status, result.detail = ERROR, str(exc)
 
 
 def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
-        poll_config=None, now=None, sleep=None):
+        poll_config=None, now=None, sleep=None, object_state=None):
 
     recorder = ProtectedRecorder(recorder)
     step_results = []
@@ -532,7 +560,7 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
             sr, norm = execute_api_step(scenario, prepared, api=api, state=state,
                 recorder=recorder, resolve_request=resolve_request, normalizer=normalizer,
                 session=lease.credentials, session_lease=lease, poll_config=poll_config, now=now, sleep=sleep,
-                bound_values=bound_values)
+                bound_values=bound_values, object_state=object_state)
             if step.action != "request" or step.expect.frontend:
                 sr.not_checked.append("UI actions/checks are outside backend projection")
         except binding.DependencyUnavailable as exc:

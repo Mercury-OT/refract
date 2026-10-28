@@ -639,6 +639,7 @@ truth or completeness of the adapter's normalization.
 | --- | --- |
 | `span_exists` | `span` |
 | `span_attr` | `span`, `attr`, `op`, `value` |
+| `object_field_equals` | `object`, `id`, `field`, `value` |
 
 `span_attr` uses `>`, `>=`, `<`, `<=`, or `==`; ordering requires finite numeric
 operands, excluding booleans and numeric strings. Unsupported observed types
@@ -654,6 +655,52 @@ strictly matched outgoing request as local correlation. This is not evidence
 that the server echoed or observed that trace. A contradictory returned trace is
 an error in e2e; UI traffic still needs its separate action-origin association.
 State assertions still require actual StateProbe facts, not this fallback alone.
+
+### Business-object state observations
+
+The [create/read/storage example](examples/sqlite_records/scenarios/create_and_verify_storage.yaml)
+checks a semantic `record` by the actual ID returned by the preceding create
+step. `object` and `field` are nonempty literal business names, not table or
+column names. `id` uses an existing value reference, resolving to a nonempty
+string or exact integer; bool, null, empty strings and containers are invalid.
+`value` is a finite scalar or an existing reference to one. Direct `concat` is
+not accepted in this new assertion's `id` or `value`; referencing an already
+composed parameter is allowed. Equality preserves
+types, including false versus zero and explicit null versus an absent field.
+Known invalid inputs fail loading; unavailable or invalid prior-response inputs
+block their consuming step before its action. No current-step self-reference,
+dynamic field name, SQL, additional include level or storage configuration is
+introduced. The frontend assertion of the same name still uses its existing
+`anchor` parameter and keeps its UI meaning.
+
+Wire the separate optional `Adapters.object_state` to an `ObjectStateProbe`.
+Core groups checks by semantic object and exact ID type/value, requests their
+fields once, and evaluates them against a single returned snapshot. The probe
+receives only object/ID/field selection and execution identity, not expected
+values or assertions. Its mapping to concrete storage and its read-only
+connection belong to the adapter. Existing trace-based `StateProbe` checks are
+unchanged; database observations are never represented as fabricated spans.
+
+Observation occurs after the step's real response, even if an ordinary response
+assertion failed. A successful terminal API poll leads to one object lookup;
+an unsuccessful poll or SKIP does not. Object lookup does not retry until a
+value matches and does not inherit span polling. This slice covers synchronous
+committed state, not eventual-consistency waiting. Different objects need not
+share a transaction; multiple fields on the same object must share a snapshot.
+
+A complete lookup with no object, an absent field or an unequal value fails the
+check. Ambiguous matches, wrong query/object identity, query exceptions,
+incomplete observations and malformed facts cause ERROR. An absent object probe
+is visible degradation and cannot pass the strict gate. Backend and live e2e
+share this evaluation. Frontend mock execution and contract do not query storage
+and mark these declarations outside their checked scope.
+
+`StepResult.state_observations` retains copied facts, the observation's identity
+and source label, hidden from default repr as sensitive data. It is not a new
+reference source or include result. Identity echo and source labels establish
+local correspondence, not truth authentication. A matching stored row proves
+only the observed values at that time; it does not by itself prove the entire
+causal history, future durability or correctness of an arbitrary adapter.
 
 ## Parameters and prior response values
 

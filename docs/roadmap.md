@@ -89,13 +89,19 @@ Scenario outcomes from separate sample-mapping checks; see the
 [results](tasks/mapping-fidelity-acceptance.md). It adds no runtime capability,
 YAML change or universal adapter certification. This finite exercise is not a
 standing prerequisite campaign for future product-facing work.
-Database-evidence work remains paused. Flow execution semantics remain a design
-question; a read-only review view may be evaluated separately. The subsequent sequence
-does not authorize those implementations or introduce a mapping language, general
-security framework, or new report status.
+The maintainer approved a narrow resumption of state evidence on 2026-10-28:
+[read-only semantic object observation](tasks/object-state-observation.md), one
+synthetic create/read flow and one SQLite implementation. Scenario declarations
+retain business meaning; concrete queries stay in the adapter and core evaluates
+the facts. Development, independent audit and local acceptance passed; the
+maintainer separately authorized submission on 2026-10-29. Other storage channels and asynchronous consistency remain
+deferred. Flow execution semantics remain a design question; a read-only review
+view may be evaluated separately. No mapping language, general security framework
+or new report status is authorized.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
+| Locally accepted | [Read-only object-state observation](tasks/object-state-observation.md) | Approved `backend_state.object_field_equals` expression implemented with separate read-only SQLite snapshots. Independent audit and local architect acceptance passed: 222 new cases, 4541 full-suite tests and 3964 core tests per Python version. [Results](tasks/object-state-observation-acceptance.md) distinguish actual storage checks from API responses and limit the claim to the tested integration. | Submission separately authorized on 2026-10-29; PR checks, merge, main checks and cleanup remain required. Other storage channels, async observation and real-product validation are not included. |
 | Verified | [Mapping fidelity and counterexamples](tasks/mapping-fidelity.md) | Independent audit and local architect acceptance passed on 2026-10-28: 13 panel tests, 4319 full-suite tests, 3742 core tests per supported Python version. [Results](tasks/mapping-fidelity-acceptance.md) distinguish actual Scenario passes from failed mapping checks. No production or YAML change. | Public delivery is recorded in the authorized task PR. Stop after the fixed panel; preserve these test controls rather than starting a general conformance campaign. |
 | Delivered | [Action-port expectation and ownership boundary](tasks/action-port-boundary.md) | Delivered through PR #36 in main `ee4691e`; eight branch/PR checks and four main jobs passed, task branches cleaned up. [Local verification](tasks/action-port-boundary-acceptance.md): full sequential suite 4306 passed; core suites 3729 passed each. | Preserve action-input, evidence-ownership and threat boundaries. Mapping fidelity is a separate finite exercise. |
 | Locally accepted | [Scoped unique values and explicit literal parameters](tasks/scoped-unique-values-literal-parameters.md) | Approved source/projection/include isolation and explicit literal rules implemented; independent audit passed. Full sequential suite: 4257 passed; fresh Python 3.11 and 3.12 core suites: 3686 passed each. Format 1, one-level inclusion and authentication behavior remain. | Separate public submission authorized on 2026-10-26; PR checks, merge, main checks and cleanup remain required delivery gates. |

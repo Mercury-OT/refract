@@ -11,6 +11,7 @@ from refracto.declaration import vocabulary as vocab
 from refracto.declaration import http_status
 from refracto.declaration import field_comparison
 from refracto.declaration import numeric_comparison
+from refracto.declaration import object_state
 from refracto.declaration import values as value_ops
 from refracto.declaration.collections import is_scalar
 from refracto.query import wire_query
@@ -319,6 +320,17 @@ def _request(raw, parameters, prior, bindings, where):
                            declared_path=template_path, query=query, headers=headers)
 
 
+def _validate_object_state(params, parameters):
+    """Check known use-site values, including substituted include parameters."""
+    for key, require in (("id", object_state.require_id), ("value", object_state.require_expected)):
+        known = _known(params[key], parameters)
+        if known is not UNKNOWN and known is not STRING:
+            try:
+                require(known)
+            except ValueError as exc:
+                raise DeclarationError(str(exc)) from None
+
+
 def _assertions(point, raw, parameters, prior, bindings):
     if not isinstance(raw, list):
         raise DeclarationError(f"expect.{point} must be a list")
@@ -351,7 +363,7 @@ def _assertions(point, raw, parameters, prior, bindings):
                     or not all(http_status.valid(value) for value in statuses)
                     or len(statuses) != len(set(statuses))):
                 raise DeclarationError("status_in.values must be a nonempty list of distinct literal integers from 100 through 599")
-        for key in set(params) & {"anchor", "field", "span", "attr"}:
+        for key in set(params) & {"anchor", "field", "span", "attr", "object"}:
             _string(params[key], f"{point}.{check}.{key}")
         if check in numeric_comparison.CHECKS:
             value = _value(params["value"], parameters, prior, bindings,
@@ -398,6 +410,10 @@ def _assertions(point, raw, parameters, prior, bindings):
             if key == "id" and not isinstance(value, ValueRef):
                 raise DeclarationError("object_field_equals.id must be a value reference")
             params[key] = value
+        if point == "backend_state" and check == object_state.CHECK:
+            if isinstance(params["value"], StringConcat):
+                raise DeclarationError("object-state expected value must be a scalar or reference")
+            _validate_object_state(params, parameters)
         if check == "span_attr":
             op, value = params["op"], params["value"]
             if op not in vocab.COMPARISON_OPS:
@@ -649,6 +665,10 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         if len(steps) > 1000:
             raise DeclarationError("composition exceeds 1000 expanded leaves")
         validate_instantiated(result)
+        for step in result.steps:
+            for assertion in step.expect.backend_state:
+                if assertion.check == object_state.CHECK:
+                    _validate_object_state(assertion.params, result.parameters)
     return result
 
 

@@ -258,6 +258,7 @@ class Consumer:
 
 
 EXAMPLES = {
+    "examples/sqlite_records/scenarios/create_and_verify_storage.yaml": Consumer("tests/test_object_state_sqlite.py::test_sqlite_committed_record_matches_observed_state", "backend, API e2e; real local SQLite storage"),
     "examples/documents/scenarios/owner_peer.yaml": Consumer("tests/test_documents_users_sessions.py::test_owner_reads_and_distinct_same_role_peer_is_denied", "backend, contract, API e2e"),
     "examples/documents/scenarios/permission_sessions.yaml": Consumer("tests/test_documents_users_sessions.py::test_permission_change_old_session_then_reauthenticate_same_account", "backend, contract, API e2e"),
     "examples/documents/scenarios/shared/create_document.yaml": Consumer("tests/test_documents_users_sessions.py::test_owner_reads_and_distinct_same_role_peer_is_denied", "backend, contract, API e2e", "examples/documents/scenarios/owner_peer.yaml"),
@@ -306,7 +307,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 24
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 25
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps

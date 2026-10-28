@@ -5,7 +5,7 @@ adapter ports, and aggregate the results into a RunReport. The contract
 projection consumes provider recordings produced by the backend projection, so
 it may only be requested together with `backend`.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import copy
 import math
 from collections.abc import Callable
@@ -48,6 +48,7 @@ class Adapters:
     recorder_factory: object            # callable -> Recorder
     resolve_request: Callable[[RequestAction], RequestSpec]
     normalizer: object = None           # ResponseNormalizer
+    object_state: object = field(default=None, kw_only=True)  # ObjectStateProbe
 
 
 _VALID_PROJECTIONS = {"backend", "frontend", "e2e", "contract"}
@@ -106,7 +107,7 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
                              state=adapters.state, recorder=rec,
                              resolve_request=adapters.resolve_request,
                              normalizer=adapters.normalizer, poll_config=poll_config,
-                             now=now, sleep=sleep)
+                             now=now, sleep=sleep, object_state=adapters.object_state)
         provider_recordings = d.provider_recordings
         provider_steps = d.steps
         report.domains.append(d)
@@ -120,7 +121,7 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
                                             api=adapters.api, resolve_request=adapters.resolve_request,
                                             state=adapters.state, recorder=rec,
                                             normalizer=adapters.normalizer, poll_config=poll_config,
-                                            now=now, sleep=sleep))
+                                            now=now, sleep=sleep, object_state=adapters.object_state))
     if "contract" in projections:
         report.domains.append(contract_proj.run(executions["contract"], provider_recordings, adapters.normalizer,
                                                execution_steps=provider_steps))

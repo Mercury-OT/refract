@@ -35,6 +35,7 @@ _TERMS = {
         "collection_matching_count": ("field", "matching", "count"),
     },
     "backend_state": {
+        "object_field_equals": ("object", "id", "field", "value"),
         "span_exists": ("span",),
         "span_attr": ("span", "attr", "op", "value"),
     },

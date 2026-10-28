@@ -23,6 +23,7 @@ from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.declaration import values as value_ops
 from refracto.declaration import field_comparison
 from refracto.declaration import numeric_comparison
+from refracto.declaration import object_state
 from refracto.declaration.collections import is_scalar, resolve_matching
 from refracto.query import wire_query, request_path
 from refracto import headers as header_ops
@@ -271,6 +272,13 @@ def prepare_step(step, scenario, prior_norms):
                 except ValueError:
                     invalid(original.params["value"], "resolved response header value must be a bounded string")
             for key in {"value", "id"} & set(assertion.params):
+                if point == "backend_state" and assertion.check == object_state.CHECK:
+                    require = object_state.require_id if key == "id" else object_state.require_expected
+                    try:
+                        require(assertion.params[key])
+                    except ValueError as exc:
+                        invalid(original.params[key], str(exc))
+                    continue
                 if assertion.check in numeric_comparison.CHECKS and key == "value":
                     try:
                         numeric_comparison.require_expected(assertion.check, assertion.params[key])

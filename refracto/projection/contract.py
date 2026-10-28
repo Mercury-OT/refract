@@ -76,13 +76,17 @@ def _execution_provenance(scenario, recordings, execution_steps):
 
 
 def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> DomainResult:
+    not_checked = [f"{step.id}: object_field_equals is outside contract scope"
+                   for step in scenario.steps
+                   if any(a.check == "object_field_equals" for a in step.expect.backend_state)]
     try:
         ensure_bound_run_values(scenario)
     except ValueError as exc:
-        return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))])
+        return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))],
+                            not_checked=not_checked)
     consumer = store.consumer_contract(scenario)
     if not consumer.entries or not any(step.request and step.expect.response for step in scenario.steps):
-        return DomainResult(projection="contract", steps=[])
+        return DomainResult(projection="contract", steps=[], not_checked=not_checked)
     try:
         generations, unexecuted = _execution_provenance(scenario, provider_recordings, execution_steps)
         provider = store.provider_contract(provider_recordings, normalizer,
@@ -92,7 +96,8 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> D
                             for step in scenario.steps if step.request is not None},
             required_sessions=generations)
     except Exception as exc:
-        return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))])
+        return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))],
+                            not_checked=not_checked)
     mismatches, errors, evaluated = [], [], 0
     for key, requirement in consumer.entries.items():
         if key[0] in unexecuted:
@@ -142,4 +147,5 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> D
 
     summary = [StepResult(step_id="contract", status=status, checks=checks)] if evaluated else []
     return DomainResult(projection="contract",
-                        steps=errors + summary + list(unexecuted.values()))
+                        steps=errors + summary + list(unexecuted.values()),
+                        not_checked=not_checked)
