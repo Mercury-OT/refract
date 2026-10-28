@@ -1,0 +1,50 @@
+schema_version: 1
+scenario: records.create_and_verify_storage
+description: Create a record and check its observed stored state
+# One logical user is the default for both steps.
+users: [creator]
+parameters:
+  # The existing run value is reused within one execution.
+  record_code: {from_run: unique}
+  record_name: Example record
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          code: {from_parameter: record_code}
+          name: {from_parameter: record_name}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: id}
+  - id: read
+    do:
+      request:
+        method: GET
+        path:
+          - records
+          - {from_step: create, response_field: id}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - check: field_equals
+          field: id
+          value: {from_step: create, response_field: id}
+      # These are business names, not table or column names. Both checks
+      # consume one observation of the object identified by the actual response.
+      backend_state:
+        - check: object_field_equals
+          object: record
+          id: {from_step: create, response_field: id}
+          field: code
+          value: {from_parameter: record_code}
+        - check: object_field_equals
+          object: record
+          id: {from_step: create, response_field: id}
+          field: name
+          value: {from_parameter: record_name}

@@ -52,6 +52,15 @@ def build_adapters(app: MinimalRestApp | None = None) -> runner.Adapters:
 The recorder is Refract's existing in-memory recorder, not another target port.
 The example implements no `StateProbe` and no `UiDriver`.
 
+For an independently read storage observation, wire the separate optional
+`ObjectStateProbe` through `Adapters.object_state`. The
+[SQLite example](../examples/sqlite_records/README.md) uses only the standard
+library and an independent read-only connection. Its Scenario declares a
+business object, observed ID, field and expected value; SQL and connection
+configuration remain adapter responsibilities. Core receives actual facts and
+performs the comparison. This does not change the minimum request/response
+integration above or the existing trace-based `StateProbe`.
+
 The declaration uses `schema_version: 1`, a required `users` list, a `parameters` mapping, and ordered
 steps. API commands are under `do.request`; response checks are under
 `expect.response`. Preparation is another visible step. Later steps can use

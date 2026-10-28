@@ -86,6 +86,35 @@ class StateFacts:
     spans: list = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObjectStateQuery:
+    """One read-only observation request, without assertions or expected values."""
+
+    observation_id: str = field(repr=False)
+    projection: str
+    step_id: str
+    trace_id: str = field(repr=False)
+    user: str | None = field(repr=False)
+    session_generation: int
+    object: str
+    id: str | int = field(repr=False, metadata={"sensitive": True})
+    fields: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ObservedObject:
+    id: str | int = field(repr=False, metadata={"sensitive": True})
+    fields: dict = field(repr=False, metadata={"sensitive": True})
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectStateFacts:
+    query: ObjectStateQuery = field(repr=False, metadata={"sensitive": True})
+    source: str = field(repr=False, metadata={"sensitive": True})
+    complete: bool
+    objects: list[ObservedObject] = field(repr=False, metadata={"sensitive": True})
+
+
 @dataclass
 class NormalizedResponse:
     succeeded: bool
@@ -235,6 +264,13 @@ class ResponseNormalizer(ABC):
 class StateProbe(ABC):
     @abstractmethod
     def observe(self, trace_id: str) -> StateFacts: ...
+
+
+class ObjectStateProbe(ABC):
+    """Return actual object facts through an independently configured reader."""
+
+    @abstractmethod
+    def observe_object(self, query: ObjectStateQuery) -> ObjectStateFacts: ...
 
 
 class UiDriver(ABC):
