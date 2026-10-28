@@ -76,21 +76,28 @@ not by general-purpose completeness.
 ## Current priority
 
 The [action-port expectation and ownership boundary](tasks/action-port-boundary.md)
-has passed independent audit and local architect acceptance, with its bounded
-[threat model](threat-model.md). See the [verification record](tasks/action-port-boundary-acceptance.md).
-It narrows action interfaces to execution inputs, with mechanical tests protecting
-declaration and evidence ownership, and makes no YAML change. The maintainer's
-submission authorization applies after these gates; PR/main CI and cleanup
-remain required before public delivery is complete.
-A small mapping-fidelity and counterexample exercise follows that boundary work.
+was delivered through PR #36 in main `ee4691e`, after eight branch/PR checks and
+four main jobs passed. It narrows action interfaces to execution inputs, with
+mechanical tests protecting declaration and evidence ownership and no YAML change.
+See its [verification record](tasks/action-port-boundary-acceptance.md) and bounded
+[threat model](threat-model.md).
+
+The maintainer authorized the bounded
+[mapping-fidelity exercise](tasks/mapping-fidelity.md) on 2026-10-28, including
+public submission after audit and acceptance. Its four fault classes distinguish
+Scenario outcomes from separate sample-mapping checks; see the
+[results](tasks/mapping-fidelity-acceptance.md). It adds no runtime capability,
+YAML change or universal adapter certification. This finite exercise is not a
+standing prerequisite campaign for future product-facing work.
 Database-evidence work remains paused. Flow execution semantics remain a design
 question; a read-only review view may be evaluated separately. The subsequent sequence
-does not authorize implementation or introduce a mapping language, general
+does not authorize those implementations or introduce a mapping language, general
 security framework, or new report status.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Locally accepted | [Action-port expectation and ownership boundary](tasks/action-port-boundary.md) | Independent audit and architect acceptance passed. Full sequential suite: 4306 passed; fresh Python 3.11 and 3.12 core suites: 3729 passed each. Existing YAML, format 1, one-level include and vocabulary remain unchanged. | Submission authorized on 2026-10-27; require green PR/main CI and branch cleanup. Mapping-fidelity evaluation remains a subsequent task, not part of this delivery. |
+| Verified | [Mapping fidelity and counterexamples](tasks/mapping-fidelity.md) | Independent audit and local architect acceptance passed on 2026-10-28: 13 panel tests, 4319 full-suite tests, 3742 core tests per supported Python version. [Results](tasks/mapping-fidelity-acceptance.md) distinguish actual Scenario passes from failed mapping checks. No production or YAML change. | Public delivery is recorded in the authorized task PR. Stop after the fixed panel; preserve these test controls rather than starting a general conformance campaign. |
+| Delivered | [Action-port expectation and ownership boundary](tasks/action-port-boundary.md) | Delivered through PR #36 in main `ee4691e`; eight branch/PR checks and four main jobs passed, task branches cleaned up. [Local verification](tasks/action-port-boundary-acceptance.md): full sequential suite 4306 passed; core suites 3729 passed each. | Preserve action-input, evidence-ownership and threat boundaries. Mapping fidelity is a separate finite exercise. |
 | Locally accepted | [Scoped unique values and explicit literal parameters](tasks/scoped-unique-values-literal-parameters.md) | Approved source/projection/include isolation and explicit literal rules implemented; independent audit passed. Full sequential suite: 4257 passed; fresh Python 3.11 and 3.12 core suites: 3686 passed each. Format 1, one-level inclusion and authentication behavior remain. | Separate public submission authorized on 2026-10-26; PR checks, merge, main checks and cleanup remain required delivery gates. |
 | Locally accepted | [Run-value boundary review](tasks/run-value-boundary-review.md) | Specific offset diagnostics and delivery-status wording corrected; shared-target collision controls added. Historical independent audit passed; 4194 full-suite and 3624 fresh core tests passed. | Preserve these corrections; included in the separately authorized scoped-value submission. The scoped-value task addresses the recorded design limits. |
 | Delivered | [Browser observation of ordinary form requests](tasks/browser-form-request-observation.md) | Delivered through PR #34 in main `85bb13d`; see the [historical independent audit and local acceptance](tasks/browser-form-request-observation-acceptance.md). Scenario syntax, core and ports are unchanged. | Preserve actual request evidence and form-decoding boundaries. |
