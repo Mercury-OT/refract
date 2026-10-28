@@ -21,7 +21,9 @@ UNUSED = "unused-parameter-must-not-cross-port-417"
 
 class BoundaryUi(SyntheticUi):
     def __init__(self, base_url, *, corrupt_fixture=False):
-        super().__init__(base_url)
+        # Interface isolation is not a startup-speed requirement. Use the
+        # browser helper's normal budget, including a cold Chromium launch.
+        super().__init__(base_url, timeout_ms=5000)
         self.open_arguments = []
         self.operation_arguments = []
         self.corrupt_fixture = corrupt_fixture
@@ -80,11 +82,20 @@ def run(path, ui, mode, fixtures=None):
                        mock_plan=fixtures if mode == "mock" else None)
 
 
+def failure_summary(report):
+    # localize() reports failed checks, while a port ERROR may have no checks.
+    # Keep diagnostics to core status/details, without raw port evidence.
+    return {"checks": report.localize(), "steps": [
+        (domain.projection, step.step_id, step.status, step.detail)
+        for domain in report.domains for step in domain.steps
+    ]}
+
+
 @pytest.mark.parametrize("mode", ["live", "mock"])
 def test_real_browser_operations_do_not_receive_expectations_or_assertion_only_bindings(http_peer, tmp_path, mode):
     ui = BoundaryUi(http_peer.base_url)
     report = run(declaration(tmp_path / "boundary.yaml"), ui, mode, plan())
-    assert report.status == "PASSED", report.localize()
+    assert report.status == "PASSED", failure_summary(report)
     assert report.degradations() == []
     assert len(ui.open_arguments) == 1
     assert ui.open_arguments[0]["session"] is None
@@ -120,7 +131,7 @@ def test_changed_expectations_do_not_change_corresponding_browser_action_inputs(
     valid = run(declaration(tmp_path / "correct.yaml"), first, mode, plan())
     wrong = run(declaration(tmp_path / "different.yaml", expected="different-review-only-value"),
                 second, mode, plan())
-    assert valid.status == "PASSED", valid.localize()
+    assert valid.status == "PASSED", failure_summary(valid)
     assert wrong.status == "FAILED", wrong.localize()
     assert wrong.domains[0].steps[-1].status == "FAILED"
     assert visible_operation_content(first) == visible_operation_content(second)
