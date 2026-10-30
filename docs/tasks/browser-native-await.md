@@ -83,19 +83,24 @@ and bounded associated request completion. No global network-idle rule is added.
 Post-await fetches initially have no synchronous JavaScript origin. Retain at
 most 128 unresolved local fetch handles until the native collector classifies
 their exact request marker. Before delivery, the collector claims only the
-proven origin, or discards a background handle. An early response callback then
+proven origin. Background handles retire on fetch settlement/rejection without
+a synchronous collector call. An early response callback then
 clones/drains only a claimed response using the existing 8 MiB/deadline bounds,
 without consuming or replacing the application's original response. Missing or
 overflowed handles for associated requests are errors, never successful evidence.
 Resolve/reject removes handles; context closure releases the remaining page state.
 No background body is drained to manufacture evidence. This is local completion
 bookkeeping, not a new declaration, port, wire marker or inference from values.
+Continuous background traffic under simulated slow protocol communication must
+not starve foreground completion; a regression test uses a separate process with
+an external bound. The ordinary action deadline is not an operating-system-level
+preemption guarantee for a blocked renderer or protocol call.
 
 ## Implementation and acceptance, conditional on the gate
 
 Preserve native CORS/preflight, separate credential destinations, request counts,
-raw headers/body ownership, live/mock isolation and existing deadlines. No
-unbounded waiting, no new ports or report state, no expectation access by the
+raw headers/body ownership, live/mock isolation and existing deadlines. No new
+polling or global network-idle wait, no new ports or report state, no expectation access by the
 collector. Late results and user/session/context changes must not cross identities.
 Incomplete collection remains visible through existing failure paths.
 

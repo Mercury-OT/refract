@@ -200,10 +200,11 @@ class NativeCollector:
 
     def _claim(self, entry):
         nonce = entry.pop('claim', None)
-        if nonce is None:
+        if nonce is None or entry['action'] is None:
             return
-        # Classification precedes this exact-request response-clone claim. A
-        # background handle is discarded without reading its response body.
+        # Only proven invocation work needs a response-clone claim. Background
+        # handles retire on fetch settlement/rejection without a synchronous CDP
+        # call: per-background RPCs can starve action deadlines under traffic.
         expression = 'window.__refractBrowser.claimNative(' + json.dumps(nonce) + ',' + json.dumps(entry['action']) + ')'
         result = self.session.send('Runtime.evaluate', {
             'expression': expression, 'returnByValue': True,

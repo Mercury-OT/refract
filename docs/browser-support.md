@@ -236,7 +236,8 @@ next action's evidence.
 For a native post-await fetch, the collector first verifies its invocation, then
 claims that exact local fetch handle for passive response-copy reading before
 allowing delivery. The application's response remains untouched. Background
-handles are discarded without draining; at most 128 unresolved handles are kept.
+handles retire on fetch settlement/rejection without a collector call or body
+draining; at most 128 unresolved handles are kept.
 An unavailable handle for an associated request is an error. This keeps response
 collection working when the application does not read the body itself.
 
@@ -247,6 +248,8 @@ rules. Timeouts, transport failures, ambiguous targets, rendering failures, and
 cleanup failures are visible errors; browser-operation failures release the
 owned resources. Rendering and logical-path callbacks should be short, read-only
 functions; Python callbacks must return control to the helper.
+The action deadline does not forcibly preempt a blocked renderer or synchronous
+protocol call. It is not an operating-system process execution limit.
 
 ## Explicit mock plans
 
