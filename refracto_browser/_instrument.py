@@ -186,7 +186,8 @@ _TEMPLATE = r"""(() => {
       const entry = {origin};
       if (origin) begin(origin);
       else if (nativeRequests.size < 128) nativeRequests.set(nonce, entry);
-      // The collector claims/discards the exact handle before request delivery.
+      // The collector claims associated handles before request delivery.
+      // Background handles retire on settlement without collector RPC or drain.
       // Missing/overflow handles cannot produce associated response evidence.
       then.call(promise, response => {
         nativeRequests.delete(nonce);
