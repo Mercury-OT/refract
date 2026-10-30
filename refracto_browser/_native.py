@@ -14,6 +14,7 @@ from refracto import ports
 from refracto.headers import header_map, match_headers, require_header_items
 from refracto.query import parse_query
 from ._request_body import is_form_content_type, parse_form_body
+from ._async_origin import ASYNC_DEPTH, invocation_origin
 
 _MARKER = re.compile(r'^__refract_native_([0-9a-f]{32})__(.*)$')
 _NOTICE = 'background diagnostics truncated'
@@ -23,6 +24,11 @@ class NativeCollector:
     def __init__(self, owner, context, policy, base):
         self.owner, self.context, self.policy, self.base = owner, context, policy, base
         self.session = context.browser_context.new_cdp_session(context.page)
+        # Capture native await registration ancestry without pausing product code.
+        self.session.send('Debugger.enable')
+        self.session.send('Debugger.setBreakpointsActive', {'active': False})
+        self.session.send('Debugger.setSkipAllPauses', {'skip': True})
+        self.session.send('Debugger.setAsyncCallStackDepth', {'maxDepth': ASYNC_DEPTH})
         self.target_id = self.session.send('Target.getTargetInfo')['targetInfo']['targetId']
         self.target_guard = context.browser.new_browser_cdp_session()
         self.target_guard.on('Target.attachedToTarget', self._target)
@@ -73,8 +79,9 @@ class NativeCollector:
             if identity in self.requests or 'redirectResponse' in event:
                 raise ValueError()
             frames = event.get('initiator', {}).get('stack', {}).get('callFrames', [])
-            # Only the immediate native-call frame is eligible. Async parent stacks
-            # or a matching endpoint cannot promote an unrelated request.
+            # A direct marker remains authoritative. A marker with no direct
+            # origin can use only bounded invocation ancestry, never a matching
+            # endpoint, current action or arbitrary asynchronous ancestor.
             marker = (_MARKER.fullmatch(frames[0].get('functionName', ''))
                       if frames and event.get('type') in {'Fetch', 'XHR'} else None)
             action = None
@@ -82,10 +89,12 @@ class NativeCollector:
                 if marker.group(1) in self.markers:
                     raise ValueError()
                 self.markers.add(marker.group(1))
-                action = unquote(marker.group(2)) or None
+                action = (unquote(marker.group(2)) or invocation_origin(
+                    event.get('initiator', {}).get('stack')))
                 if action is not None and action not in self.context.permits:
                     raise ValueError()
-            self.requests[identity] = {'event': event, 'action': action, 'done': False}
+            self.requests[identity] = {'event': event, 'action': action, 'done': False,
+                'claim': marker.group(1) if marker and not marker.group(2) and event.get('type') == 'Fetch' else None}
             if identity in self.extra_requests:
                 self._request_extra(self.extra_requests.pop(identity))
             if identity in self.extra_responses:
@@ -179,13 +188,28 @@ class NativeCollector:
                 queue.index += 1
                 entry['fixture_id'] = fixture.fixture_id
                 self.mock_pending.append(identity)
+                self._claim(entry)
                 self.target_guard.send('Fetch.fulfillRequest', {
                     'requestId': event['requestId'], 'responseCode': fixture.status,
                     'responseHeaders': [{'name': name, 'value': value} for name, value in headers.items()],
                     'body': base64.b64encode(text.encode()).decode('ascii'),
                 })
                 return
+        self._claim(entry)
         self.target_guard.send('Fetch.continueRequest', {'requestId': event['requestId']})
+
+    def _claim(self, entry):
+        nonce = entry.pop('claim', None)
+        if nonce is None:
+            return
+        # Classification precedes this exact-request response-clone claim. A
+        # background handle is discarded without reading its response body.
+        expression = 'window.__refractBrowser.claimNative(' + json.dumps(nonce) + ',' + json.dumps(entry['action']) + ')'
+        result = self.session.send('Runtime.evaluate', {
+            'expression': expression, 'returnByValue': True,
+        })
+        if 'exceptionDetails' in result or (entry['action'] is not None and result.get('result', {}).get('value') is not True):
+            raise ValueError()
 
     @staticmethod
     def _raw_headers(headers):

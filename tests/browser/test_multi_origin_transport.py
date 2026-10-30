@@ -223,10 +223,19 @@ def test_global_credential_configuration_is_rejected_before_navigation(browser, 
     assert all(peer.requests == [] for peer in origins)
 
 
-@pytest.mark.parametrize('target', ['awaited','timer'])
-def test_native_async_and_timer_are_diagnostics_not_current_action(browser, target):
+def test_native_await_preserves_current_action_without_changing_next_action(browser):
     support, context = browser()
-    first = click(support, context, target)
+    first = click(support, context, 'awaited')
+    second = click(support, context, 'simple')
+    assert len(first.traffic) == len(second.traffic) == 1
+    assert first.traffic[0].action_id != second.traffic[0].action_id
+    assert first.traffic[0].request_id != second.traffic[0].request_id
+    assert first.traffic[0].request.path == second.traffic[0].request.path == 'service/echo'
+
+
+def test_native_timer_remains_diagnostic_not_current_action(browser):
+    support, context = browser()
+    first = click(support, context, 'timer')
     context.page.wait_for_timeout(50)
     second = click(support, context, 'simple')
     assert first.traffic == []
