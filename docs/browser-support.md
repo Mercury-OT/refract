@@ -203,12 +203,27 @@ button.addEventListener('click', () =>
 );
 ```
 
-Native `async`/`await` continuations and timer callbacks do not inherit origin.
-For example, a fetch before the first `await` may belong to the action, while a
-fetch after that `await` remains diagnostic. Navigation-driven fetches are also
-diagnostic. Matching a declared method/path, returning an expected response, or
-arriving during another action never creates an origin. Each recorded supported
-request has its own request ID, paired response, and trace identifier.
+The legacy single-origin helper leaves native `async`/`await` continuations
+diagnostic. The opt-in multi-origin Chromium collector additionally associates
+requests after native `await` using bounded browser async stacks and exact
+callback invocation markers. It accepts only supported `await`/`Promise.then`
+transitions to the nearest marker. A null-origin callback is a barrier, including
+a synthetic event invoked inside a trusted action. Missing or truncated ancestry,
+timer callbacks and unknown async transitions cannot inherit an older action.
+No source-function, endpoint, response-content or time-window matching is used.
+Async collection is capped at 32 parent stacks; parsing also bounds frame counts
+and names. Deeper or unavailable relationships remain unsupported evidence, not
+permission to infer an origin from a matching request.
+
+A helper directly invoked by an action may retain that action's origin even if
+the application does not await it. This proves invocation ownership, not that
+the action waited for completion. Late observations retain their original
+identity and cannot satisfy the next step. Independently scheduled background
+work, including other consumers of a shared promise, remains diagnostic.
+Navigation-driven fetches also remain diagnostic. Each supported request keeps
+its actual network identity and paired response; a browser identity does not
+invent a server trace. See the [native-await task](tasks/browser-native-await.md)
+for the feasibility gate and negative controls.
 
 The helper waits for the current action's tracked requests and event-handler
 completion promises, then offers bounded animation-frame rendering opportunities.
@@ -217,6 +232,13 @@ not assign an origin to its native async continuations. Collection includes the
 complete response body. Background traffic does not impose a global network-idle
 condition. Diagnostic records collected between actions are delivered with the
 next action's evidence.
+
+For a native post-await fetch, the collector first verifies its invocation, then
+claims that exact local fetch handle for passive response-copy reading before
+allowing delivery. The application's response remains untouched. Background
+handles are discarded without draining; at most 128 unresolved handles are kept.
+An unavailable handle for an associated request is an error. This keeps response
+collection working when the application does not read the body itself.
 
 `timeout_ms` defaults to 5000 and must be positive and finite. Target readiness,
 interaction, request collection, and rendering opportunities share the action's
@@ -350,8 +372,9 @@ are not printed in that note. A slow background request is not a reason to wait
 for global network idle.
 
 This mode still excludes streams, WebSocket, EventSource, workers/service workers,
-frames/popups, redirect following, and generalized authentication flows. Native async
-continuations and timers retain the documented association limitation. A missing
+frames/popups, redirect following, and generalized authentication flows. Native
+async ownership is limited to the bounded ancestry described above; timers and
+unsupported or missing async ancestry remain diagnostic. A missing
 declared request remains an error even when the page loaded successfully. Mock
 requests never fall through to live API services. Native mock preflight is not
 supported. Complete raw response headers are unavailable for native fulfilled

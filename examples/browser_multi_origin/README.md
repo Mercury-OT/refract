@@ -9,8 +9,10 @@ normalization and existing authentication wiring. Browser collection remains in
 The same ten files under `scenarios/` run against two separately written frontends:
 
 - `promise.js` starts requests inside a click handler or registered Promise work.
-- `async.js` starts each request after a native `await`. Its missing action
-  association is an explicitly retained limitation, not a passing substitute.
+- `async.js` starts each request after a native `await`. The bounded native-await
+  collector associates these requests without changing this implementation or
+  the Scenario files. Missing or unsupported async ancestry remains unavailable;
+  this example is not a claim of support for all asynchronous browser behavior.
 
 Every run starts fresh local application state. Record IDs are actual observed
 strings entered into the application's ID input; no dynamic target syntax is
@@ -34,7 +36,7 @@ reading the Scenario or adapter expectations.
 | c09 | An anonymous protected write is refused. |
 | c10 | A named user can perform a protected read. |
 
-All 20 implementation/case units remain in measurement results, including
+All 20 implementation/case units remain in measurement results, including any
 missing-association failures. The maintenance variant changes the control IDs
 and API path prefix through two explicit adapter configuration fields. It must
 not change any Scenario file or business obligation.

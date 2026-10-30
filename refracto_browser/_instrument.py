@@ -23,7 +23,16 @@ _TEMPLATE = r"""(() => {
   const call = (origin, callback, self, args) => {
     const previous = state.origin;
     state.origin = origin;
-    try { return Reflect.apply(callback, self, args); }
+    try {
+      if (!nativeTransport) return Reflect.apply(callback, self, args);
+      // Each invocation, including an unassociated event, establishes a scope.
+      // Chromium retains this frame at native await/Promise registration sites.
+      // Keeping a null scope prevents an outer trusted event from claiming a
+      // nested synthetic event. This wrapper preserves the callback's return.
+      const name = '__refract_invocation_' + hex(16) + '__' +
+        (origin ? encodeURIComponent(origin) : '');
+      return ({[name]() { return Reflect.apply(callback, self, args); }})[name]();
+    }
     finally { state.origin = previous; }
   };
   const observe = (promise, origin) => {
@@ -122,11 +131,48 @@ _TEMPLATE = r"""(() => {
     'x-refract-action-id': origin || '',
     'x-refract-traceparent': '00-' + hex(16) + '-' + hex(8) + '-01'
   });
-  const nativeCall = (origin, callback, self, args) => {
-    const name = '__refract_native_' + hex(16) + '__' + (origin ? encodeURIComponent(origin) : '');
+  const nativeCall = (origin, callback, self, args, nonce = hex(16)) => {
+    const name = '__refract_native_' + nonce + '__' + (origin ? encodeURIComponent(origin) : '');
     // A computed method name is visible in Chromium's immediate initiator frame.
     // It needs no eval, request mutation, header or URL marker.
     return ({[name]() { return Reflect.apply(callback, self, args); }})[name]();
+  };
+  const nativeRequests = new Map();
+  const drainNativeResponse = (response, origin) => {
+    // This callback is registered before returning the original fetch promise,
+    // so its copy is made before the application can consume the response.
+    try {
+      const copy = response.clone();
+      const read = (async () => {
+        if (!copy.body) return;
+        const reader = copy.body.getReader();
+        let bytes = 0;
+        try {
+          while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) return;
+            bytes += chunk.value.byteLength;
+            if (bytes > 8 * 1024 * 1024) {
+              void reader.cancel();
+              throw new Error('native response exceeds byte budget');
+            }
+          }
+        } finally { reader.releaseLock(); }
+      })();
+      then.call(read, () => end(origin), () => {
+        state.errors.push('native response completion failed'); end(origin);
+      });
+    } catch (error) {
+      state.errors.push('native response completion failed'); end(origin);
+    }
+  };
+  state.claimNative = (nonce, origin) => {
+    const entry = nativeRequests.get(nonce);
+    nativeRequests.delete(nonce);
+    if (!entry) return false;
+    entry.origin = origin;
+    if (origin) begin(origin);
+    return true;
   };
   window.fetch = function(input, init) {
     const origin = state.origin;
@@ -135,40 +181,21 @@ _TEMPLATE = r"""(() => {
         state.errors.push('opaque browser response is unsupported');
         throw new Error('unsupported browser response visibility');
       }
-      begin(origin);
-      try {
-        const promise = nativeCall(origin, fetch, this, [input, init]);
-        then.call(promise, response => {
-          if (!origin) { end(origin); return; }
-          // Drain a separate copy so an unconsumed application response still
-          // reaches native completion. The application keeps its original body.
-          try {
-            const copy = response.clone();
-            const read = (async () => {
-              if (!copy.body) return;
-              const reader = copy.body.getReader();
-              let bytes = 0;
-              try {
-                while (true) {
-                  const chunk = await reader.read();
-                  if (chunk.done) return;
-                  bytes += chunk.value.byteLength;
-                  if (bytes > 8 * 1024 * 1024) {
-                    void reader.cancel();
-                    throw new Error('native response exceeds byte budget');
-                  }
-                }
-              } finally { reader.releaseLock(); }
-            })();
-            then.call(read, () => end(origin), () => {
-              state.errors.push('native response completion failed'); end(origin);
-            });
-          } catch (error) {
-            state.errors.push('native response completion failed'); end(origin);
-          }
-        }, () => end(origin));
-        return promise;
-      } catch (error) { end(origin); throw error; }
+      const nonce = hex(16);
+      const promise = nativeCall(origin, fetch, this, [input, init], nonce);
+      const entry = {origin};
+      if (origin) begin(origin);
+      else if (nativeRequests.size < 128) nativeRequests.set(nonce, entry);
+      // The collector claims/discards the exact handle before request delivery.
+      // Missing/overflow handles cannot produce associated response evidence.
+      then.call(promise, response => {
+        nativeRequests.delete(nonce);
+        if (entry.origin) drainNativeResponse(response, entry.origin);
+      }, () => {
+        nativeRequests.delete(nonce);
+        if (entry.origin) end(entry.origin);
+      });
+      return promise;
     }
     const options = {...init};
     const merged = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));

@@ -7,10 +7,9 @@ from examples.browser_multi_origin.run import CASES, ROOT, digest, run_case
 
 @pytest.mark.parametrize("case", CASES)
 @pytest.mark.parametrize("implementation", ["promise", "async"])
-def test_fixed_consumer_panel_retains_supported_and_unassociated_results(case, implementation):
+def test_fixed_consumer_panel_supports_both_unchanged_implementations(case, implementation):
     row = run_case(case, implementation)
-    supported = implementation == "promise" or case == "c01_static_ready"
-    assert row["status"] == ("PASSED" if supported else "FAILED"), row["steps"]
+    assert row["status"] == "PASSED", row["steps"]
     assert row["scenario_sha256"] == digest(ROOT / "scenarios" / (case + ".yaml"))
     assert {request["channel"] for request in row["server_requests"]} >= {"page", "static"}
     api = [request for request in row["server_requests"]
@@ -18,20 +17,16 @@ def test_fixed_consumer_panel_retains_supported_and_unassociated_results(case, i
     if case == "c01_static_ready":
         assert not api
     else:
-        assert api  # A residual must exercise a real request, not fail at setup.
+        assert api  # A passing declaration must exercise the actual target.
     for received in row["server_requests"]:
         names = {name.lower() for name in received["headers"]}
         assert not any(name.startswith("x-refract-") for name in names)
         assert "traceparent" not in names
         if received["channel"] != "api":
             assert "authorization" not in names and "cookie" not in names
-    if supported:
-        assert all(record["actual_origin"] == row["service_origins"]["api"]
-                   for record in row["recorded_requests"])
-        assert len(api) == len(row["recorded_requests"])
-    else:
-        assert not row["recorded_requests"]
-        assert any(step["status"] == "ERROR" and "missing" in step["detail"] for step in row["steps"])
+    assert all(record["actual_origin"] == row["service_origins"]["api"]
+               for record in row["recorded_requests"])
+    assert len(api) == len(row["recorded_requests"])
     if case == "c09_anonymous_refusal":
         assert all("authorization" not in {key.lower() for key in request["headers"]} for request in api)
     if case == "c10_named_access":
@@ -40,10 +35,11 @@ def test_fixed_consumer_panel_retains_supported_and_unassociated_results(case, i
 
 
 @pytest.mark.parametrize("case", CASES)
-def test_fixed_maintenance_change_preserves_scenarios_and_obligations(case):
+@pytest.mark.parametrize("implementation", ["promise", "async"])
+def test_fixed_maintenance_change_preserves_scenarios_and_obligations(case, implementation):
     path = ROOT / "scenarios" / (case + ".yaml")
     original = digest(path)
-    row = run_case(case, "promise", maintenance=True)
+    row = run_case(case, implementation, maintenance=True)
     assert row["status"] == "PASSED", row["steps"]
     assert row["scenario_sha256"] == original == digest(path)
     assert row["binding_configuration"] == {"selector_prefix": "v2-", "api_prefix": "/service"}
