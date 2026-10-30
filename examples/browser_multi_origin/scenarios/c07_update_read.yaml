@@ -1,0 +1,101 @@
+schema_version: 1
+scenario: records.multi_origin.c07_update_read
+description: Change a created record and read the changed content.
+users: []
+parameters:
+  record_code:
+    from_run: unique
+  record_name: Example record
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: name
+  do: fill
+  target: name
+  value:
+    from_parameter: record_name
+- id: code
+  do: fill
+  target: code
+  value:
+    from_parameter: record_code
+- id: create
+  do: click
+  target: create
+  expect:
+    request:
+      method: POST
+      path:
+      - records-api
+      - records
+      body:
+        name:
+          from_parameter: record_name
+        code:
+          from_parameter: record_code
+    response:
+    - check: status_equals
+      value: 201
+    - check: success
+    - check: has
+      field: id
+    - check: field_equals
+      field: code
+      value:
+        from_parameter: record_code
+- id: select_record
+  do: fill
+  target: record_id
+  value:
+    from_step: create
+    response_field: id
+- id: changed_name
+  do: fill
+  target: name
+  value: Changed record
+- id: update
+  do: click
+  target: update
+  expect:
+    request:
+      method: PATCH
+      path:
+      - records-api
+      - records
+      - from_step: create
+        response_field: id
+      body:
+        name: Changed record
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: field_equals
+      field: id
+      value:
+        from_step: create
+        response_field: id
+- id: read
+  do: click
+  target: read
+  expect:
+    request:
+      method: GET
+      path:
+      - records-api
+      - records
+      - from_step: create
+        response_field: id
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: field_equals
+      field: id
+      value:
+        from_step: create
+        response_field: id
+    - check: field_equals
+      field: name
+      value: Changed record

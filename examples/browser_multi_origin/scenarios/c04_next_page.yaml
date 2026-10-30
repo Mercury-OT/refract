@@ -1,0 +1,67 @@
+schema_version: 1
+scenario: records.multi_origin.c04_next_page
+description: Pagination requests different records without changing the page limit.
+users: []
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: first_page
+  do: fill
+  target: page
+  value: '1'
+- id: page_one
+  do: click
+  target: next
+  expect:
+    request:
+      method: GET
+      path:
+      - records-api
+      - records
+      query:
+        page: 1
+        limit: 1
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: collection_matching_count
+      field: records
+      matching:
+        id: r1
+      count: 1
+- id: next_page
+  do: fill
+  target: page
+  value: '2'
+- id: page_two
+  do: click
+  target: next
+  expect:
+    request:
+      method: GET
+      path:
+      - records-api
+      - records
+      query:
+        page: 2
+        limit: 1
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: collection_length
+      field: records
+      op: ==
+      value: 1
+    - check: field_not_equals
+      field: records
+      value:
+        from_step: page_one
+        response_field: records
+    - check: collection_matching_count
+      field: records
+      matching:
+        id: r2
+      count: 1

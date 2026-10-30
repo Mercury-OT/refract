@@ -1,0 +1,30 @@
+schema_version: 1
+scenario: records.multi_origin.c09_anonymous_refusal
+description: Anonymous protected write is refused by authentication.
+users: []
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: name
+  do: fill
+  target: name
+  value: Example record
+- id: refused
+  do: click
+  target: protected_write
+  expect:
+    request:
+      method: POST
+      path:
+      - records-api
+      - protected
+      body:
+        name: Example record
+    response:
+    - check: status_equals
+      value: 401
+    - check: failure
+    - check: field_equals
+      field: reason
+      value: authentication_required

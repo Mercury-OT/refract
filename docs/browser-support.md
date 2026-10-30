@@ -280,7 +280,90 @@ projection. Core retains an independent fixture plan to verify the observed
 consumption and responses. A standalone helper caller can also explicitly share
 a queue; unrelated runs must use separate queues.
 
-## Transport and data boundaries
+## Opt-in finite multi-origin HTTP
+
+The single-origin behavior described below remains the default. A product adapter
+can explicitly select `BrowserNetworkPolicy` for a page, finite APIs and static
+resources served from different origins. This changes Python integration
+configuration, not Scenario YAML, assertion vocabulary, or format 1.
+
+```python
+from refracto_browser import ApiEndpoint, BrowserNetworkPolicy, BrowserSupport
+
+policy = BrowserNetworkPolicy(
+    api_endpoints=(ApiEndpoint(
+        origin="https://example.com:8443",
+        path_prefix="/api",
+        logical_prefix="",
+    ),),
+    resource_origins=("https://example.net:443",),
+    credential_origins=("https://example.com:8443",),
+)
+browser = BrowserSupport(
+    "https://example.com:443", read_rendered, network_policy=policy,
+)
+```
+
+Here the page is on the default HTTPS port, the API is on port 8443, and static
+assets may come from a separate host. `/api/records` maps to logical `records`.
+The empty logical prefix owns the whole logical path space: adding an overlapping
+endpoint is rejected, not resolved by request timing or response content. With
+multiple services, assign disjoint logical prefixes. Prefix matching is bounded
+by path segments. Do not supply `logical_path` as a second mapping mechanism.
+
+Origins are exact scheme/host/effective-port identities. The page origin is
+allowed for resources, not automatically for API evidence or credentials. API,
+resource and credential permissions are independent. Additional credential header
+names have explicit destination sets in `credential_headers`. The existing
+authenticator supplies browser storage; this helper does not inject credentials,
+perform login, or silently strip credentials to repair an unsafe configuration.
+Global context authentication headers are unsuitable when any reachable origin
+is outside their allowed destinations. Unsupported proxy, HTTP authentication and
+client-certificate configurations fail rather than claiming untested protection.
+
+The native Chromium collector associates requests using a per-request initiator
+identity and the browser's network request ID. It adds no internal wire headers,
+does not use another HTTP client to replay the request, and waits for browser
+completion before accepting the response. Browser CORS and application-authored
+preflights remain effective. No permissive CORS headers or disabled security
+settings are supplied by the helper. Actual origin and network identity are
+retained as sensitive `BrowserNetworkIdentity` metadata in the paired traffic and
+recording. Core also checks the usual permit, user, session and request identities.
+
+Explicit `no-cors` fetch mode is unsupported: debugger access to response bytes
+must not turn an opaque browser response into usable evidence. Associated fetch
+responses are passively drained through a clone without replacing the response
+returned to the application. Native response capture has an 8 MiB limit and the
+existing action deadline; over-limit data is an error, never a partial pass.
+
+A native request without a transmitted trace has no server trace ID. Its browser
+identity is sufficient for request/response association, but is not substituted
+for server-side evidence. Declared trace-dependent state checks still cannot pass
+without their required trace. This opt-in branch does not relax the existing
+trace requirement for unmarked adapter evidence.
+
+Finite background HTTP remains diagnostic and cannot satisfy an action's request
+check. Retained diagnostics are bounded to 100 records and 256 KiB of complete
+serialized records per context, including request values; truncation has a
+visible note. This is not a bound on all browser memory. Payloads and credentials
+are not printed in that note. A slow background request is not a reason to wait
+for global network idle.
+
+This mode still excludes streams, WebSocket, EventSource, workers/service workers,
+frames/popups, redirect following, and generalized authentication flows. Native async
+continuations and timers retain the documented association limitation. A missing
+declared request remains an error even when the page loaded successfully. Mock
+requests never fall through to live API services. Native mock preflight is not
+supported. Complete raw response headers are unavailable for native fulfilled
+mocks, so header-dependent checks cannot pass by treating fixture headers as
+observed evidence. Browser-level interception rejects secondary-page/frame
+requests before HTTP delivery, rather than merely closing a popup afterward.
+
+See the [approved scope](tasks/browser-multi-origin-http.md). This mechanism guards
+cooperative adapter errors and observation mix-ups, not hostile in-process code
+or scripts deliberately impersonating internal browser instrumentation.
+
+## Default single-origin transport and data boundaries
 
 This helper supports finite HTTP responses, JSON-object request bodies and
 ordinary UTF-8 URL-encoded form bodies on its existing fetch/XHR paths. It

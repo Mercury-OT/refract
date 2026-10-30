@@ -1,0 +1,46 @@
+schema_version: 1
+scenario: records.multi_origin.c05_create
+description: Fill and create a record with a run-unique code.
+users: []
+parameters:
+  record_code:
+    from_run: unique
+  record_name: Example record
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: name
+  do: fill
+  target: name
+  value:
+    from_parameter: record_name
+- id: code
+  do: fill
+  target: code
+  value:
+    from_parameter: record_code
+- id: create
+  do: click
+  target: create
+  expect:
+    request:
+      method: POST
+      path:
+      - records-api
+      - records
+      body:
+        name:
+          from_parameter: record_name
+        code:
+          from_parameter: record_code
+    response:
+    - check: status_equals
+      value: 201
+    - check: success
+    - check: has
+      field: id
+    - check: field_equals
+      field: code
+      value:
+        from_parameter: record_code

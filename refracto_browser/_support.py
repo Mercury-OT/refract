@@ -14,7 +14,9 @@ from refracto import ports
 from refracto.headers import header_map, match_headers, require_header_items, validate_name
 from refracto.query import parse_query
 
-from ._instrument import SCRIPT
+from ._instrument import SCRIPT, NATIVE_SCRIPT
+from ._policy import BrowserNetworkPolicy
+from ._native import NativeCollector
 from ._request_body import is_form_content_type, parse_form_body
 
 
@@ -81,6 +83,7 @@ class _Context:
     traffic_cursor: int = 0
     diagnostic_cursor: int = 0
     mock_cursor: int = 0
+    native: object = None
 
     def __repr__(self):
         return "<BrowserSupport context>"
@@ -94,8 +97,12 @@ class BrowserSupport:
     deliberately omit browser handles, URLs, bodies, options, and input values.
     """
 
-    def __init__(self, base_url, read_rendered, logical_path=None, timeout_ms=5000):
+    def __init__(self, base_url, read_rendered, logical_path=None, timeout_ms=5000, *, network_policy=None):
         self._origin = _origin(base_url)
+        if network_policy is not None and (type(network_policy) is not BrowserNetworkPolicy or logical_path is not None):
+            raise ValueError("native browser policy cannot use a logical-path callback")
+        self._network_policy = network_policy
+        self._page_origin = network_policy.bind(base_url) if network_policy is not None else None
         if not callable(read_rendered) or (logical_path is not None and not callable(logical_path)):
             raise ValueError("browser rendering and path mappings must be callable")
         if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, (int, float)) or not math.isfinite(timeout_ms) or timeout_ms <= 0:
@@ -144,12 +151,15 @@ class BrowserSupport:
         if options.get("service_workers", "block") != "block":
             raise ValueError("browser service workers are unsupported")
         options["service_workers"] = "block"
+        if self._network_policy is not None:
+            self._network_policy.validate_context_options(self._page_origin, options)
         plan = copy.deepcopy(list(mock_plan or []))
         queue = mock_queue or ports.MockResponseQueue(plan)
         context = _Context(self, mode, queue.plan, mock_queue=queue, user=user,
                            session_generation=session_generation, context_id=context_id,
                            credential_header_names=frozenset(
-                               name.lower() for name in options.get("extra_http_headers", {})))
+                               name.lower() for name in options.get("extra_http_headers", {}))
+                           | frozenset(self._network_policy.credential_headers if self._network_policy is not None else ()))
         try:
             # Import lazily: even importing this package needs no browser extra.
             context.playwright = _acquire_playwright()
@@ -158,9 +168,12 @@ class BrowserSupport:
             context.browser_context = context.browser.new_context(**options)
             context.browser_context.set_default_timeout(self._timeout_ms)
             context.browser_context.set_default_navigation_timeout(self._timeout_ms)
-            context.browser_context.add_init_script(SCRIPT)
-            context.browser_context.route("**/*", lambda route: self._route(context, route))
+            context.browser_context.add_init_script(NATIVE_SCRIPT if self._network_policy is not None else SCRIPT)
+            if self._network_policy is None:
+                context.browser_context.route("**/*", lambda route: self._route(context, route))
             context.page = context.browser_context.new_page()
+            if self._network_policy is not None:
+                context.native = NativeCollector(self, context, self._network_policy, self._page_origin)
             context.page.on("response", lambda response: self._capture_mock_headers(context, response))
             context.page.on("pageerror", lambda _: context.errors.append("browser event handler failed"))
             context.page.on("worker", lambda _: context.errors.append("browser workers are unsupported"))
@@ -308,6 +321,8 @@ class BrowserSupport:
                     }""")
             if permit.action == "open":
                 self._settle(context, permit.action_id)
+            if context.native is not None:
+                context.native.collect(permit.action_id)
             self._check(context)
             rendered = self.snapshot(context)
             # Snapshot and header reads pump browser events. Freeze a finite
@@ -317,7 +332,8 @@ class BrowserSupport:
             diagnostic_end = len(context.diagnostics)
             mock_end = len(context.mock_recordings)
             mock_recordings = list(context.mock_recordings[mock_start:mock_end])
-            self._collect_mock_headers(context, mock_recordings)
+            if context.native is None:
+                self._collect_mock_headers(context, mock_recordings)
             self._check(context)
             self._remaining(context)
             current, diagnostics = [], list(context.diagnostics[diagnostic_start:diagnostic_end])
@@ -334,6 +350,7 @@ class BrowserSupport:
                 diagnostic_outgoing=[recording.request for recording in diagnostics],
                 diagnostic_recorded=diagnostics,
                 mock_recordings=mock_recordings,
+                diagnostic_notes=list(context.native.notes) if context.native is not None else [],
             ))
             context.traffic_cursor = traffic_end
             context.diagnostic_cursor = diagnostic_end

@@ -8,8 +8,11 @@ import dataclasses
 import hashlib
 import hmac
 import json
+import ipaddress
+import re
 import secrets
 import time
+from urllib.parse import urlsplit
 
 from refracto import asyncwait, ports
 from refracto import headers as header_ops
@@ -58,9 +61,70 @@ def _request_values_equal(actual, expected):
 def _recording_values_equal(actual, expected):
     return type(actual) is ports.RecordedResponse and type(expected) is ports.RecordedResponse and all(
         _request_values_equal(actual.request, expected.request) if f.name == "request"
+        else _network_values_equal(actual.browser_identity, expected.browser_identity) if f.name == "browser_identity"
         else _evidence_equal(getattr(actual, f.name), getattr(expected, f.name))
         for f in dataclasses.fields(ports.RecordedResponse)
     )
+
+
+def _network_values_equal(actual, expected):
+    if actual is None or expected is None:
+        return actual is expected
+    return type(actual) is type(expected) is ports.BrowserNetworkIdentity and all(
+        _evidence_equal(getattr(actual, name), getattr(expected, name))
+        for name in ("origin", "request_id"))
+
+
+def _network_key(identity, context_id):
+    """Validate transport provenance without importing the browser collector."""
+    if type(identity) is not ports.BrowserNetworkIdentity:
+        raise TypeError("browser network identity must be BrowserNetworkIdentity")
+    if type(identity.request_id) is not str or not identity.request_id.strip():
+        raise ValueError("browser network request identity is required")
+    origin = identity.origin
+    try:
+        if type(origin) is not str or any(ord(c) < 33 or ord(c) > 126 for c in origin):
+            raise ValueError()
+        parsed = urlsplit(origin)
+        host = parsed.hostname
+        if (parsed.scheme not in {"http", "https"} or not host or host.endswith(".")
+                or parsed.username is not None or parsed.password is not None
+                or parsed.path or parsed.query or parsed.fragment):
+            raise ValueError()
+        if ":" in host:
+            host = "[" + ipaddress.IPv6Address(host).compressed + "]"
+        elif re.fullmatch(r"[a-z0-9_-]+(?:\.[a-z0-9_-]+)*", host) is None:
+            raise ValueError()
+        port = parsed.port
+        if port is not None and not 1 <= port <= 65535:
+            raise ValueError()
+        suffix = "" if port in (None, 443 if parsed.scheme == "https" else 80) else f":{port}"
+        if origin != f"{parsed.scheme}://{host}{suffix}":
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise ValueError("browser network origin must be canonical HTTP(S)") from None
+    # Chromium network IDs are context-local. Origin is intentionally not part
+    # of the key: changing a claimed origin must not make a replay look new.
+    return ("browser-network", context_id, identity.request_id)
+
+
+def _native_trace(request, response):
+    """A native correlation ID must never stand in for absent wire trace data."""
+    observed = [value for name, value in header_ops.require_header_items(response.request_header_items)
+                if name.lower() == "traceparent"]
+    if request.traceparent is None and response.trace_id is None:
+        if observed:
+            raise ValueError("native trace evidence was omitted")
+        return False
+    if observed != [request.traceparent]:
+        raise ValueError("native trace does not match observed request headers")
+    if (type(request.traceparent) is not str or type(response.trace_id) is not str
+            or not request.traceparent or not response.trace_id):
+        raise ValueError("native request/response trace is incomplete")
+    parts = request.traceparent.split("-")
+    if len(parts) != 4 or parts[1] != response.trace_id:
+        raise ValueError("native request/response trace mismatch")
+    return True
 
 
 def _signature_payload(data):
@@ -187,6 +251,13 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     _require_equal("permit token", evidence.permit_token, permit.token)
     if type(evidence.traffic) is not list:
         raise TypeError("rendered and traffic must be dict/list")
+    if (type(evidence.diagnostic_notes) is not list or any(
+            type(note) is not str or note not in {
+                "background diagnostics truncated", "background HTTP acquisition failed"}
+            for note in evidence.diagnostic_notes)
+            or len(evidence.diagnostic_notes) > 2
+            or len(set(evidence.diagnostic_notes)) != len(evidence.diagnostic_notes)):
+        raise ValueError("unsupported browser diagnostic note")
     _validate_rendered(evidence.rendered)
     local_requests, local_traces = set(), set()
     for traffic in evidence.traffic:
@@ -208,14 +279,26 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
         if not _request_values_equal(req, resp.request):
             raise ValueError("request/response pairing mismatch")
         _require_equal("request identity pairing", resp.request_id, traffic.request_id)
-        if not all(type(v) is str and v for v in (req.method, req.path, req.traceparent, resp.trace_id)):
-            raise ValueError("traffic transport and trace identity are required")
-        parts = req.traceparent.split("-")
-        if len(parts) != 4 or parts[1] != resp.trace_id:
-            raise ValueError("request/response trace mismatch")
-        if resp.trace_id in seen_traces | local_traces:
-            raise ValueError("replayed request trace")
-        local_traces.add(resp.trace_id)
+        native = traffic.browser_identity is not None or resp.browser_identity is not None
+        if native:
+            key = _network_key(traffic.browser_identity, permit.context_id)
+            _network_key(resp.browser_identity, permit.context_id)
+            if not _network_values_equal(traffic.browser_identity, resp.browser_identity):
+                raise ValueError("browser network identity pairing mismatch")
+            if key in seen_requests | local_requests:
+                raise ValueError("replayed browser network identity")
+            local_requests.add(key)
+        if not all(type(v) is str and v for v in (req.method, req.path)):
+            raise ValueError("traffic transport identity is required")
+        if not native or _native_trace(req, resp):
+            if not all(type(v) is str and v for v in (req.traceparent, resp.trace_id)):
+                raise ValueError("traffic trace identity is required")
+            parts = req.traceparent.split("-")
+            if len(parts) != 4 or parts[1] != resp.trace_id:
+                raise ValueError("request/response trace mismatch")
+            if resp.trace_id in seen_traces | local_traces:
+                raise ValueError("replayed request trace")
+            local_traces.add(resp.trace_id)
         _require_equal("recording step", resp.step_id, permit.step_id)
         _require_equal("recording attempt", resp.attempt_index, 0)
         _require_equal("recording final", resp.is_final, True)
@@ -239,6 +322,13 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
         _validate_diagnostic_identity(resp.request_id, accepted_requests, "request identity")
         _validate_diagnostic_identity(resp.trace_id, accepted_traces, "trace")
         _validate_diagnostic_request(resp.request, accepted_traces)
+        if resp.browser_identity is not None:
+            key = _network_key(resp.browser_identity, permit.context_id)
+            if key in accepted_requests:
+                raise ValueError("diagnostic reused browser network identity")
+            _native_trace(resp.request, resp)
+            accepted_requests.add(key)
+            local_requests.add(key)
     local_consumption = []
     if permit.mode == "mock":
         if type(evidence.mock_recordings) is not list:
@@ -512,7 +602,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         rendered = evidence.rendered
                     checks = [eval_frontend(a, rendered, bound_values=bound, inputs=scenario.inputs)
                               for a in step.expect.frontend]
-                    skipped, not_checked, trace_id = [], [], None
+                    skipped, not_checked, trace_id = [], list(evidence.diagnostic_notes) if evidence else [], None
                     if step.request is not None:
                         matches = [t for t in evidence.traffic
                                    if t.request.method == step.request.method

@@ -1,0 +1,25 @@
+schema_version: 1
+scenario: records.multi_origin.c10_named_access
+description: Named user can perform a protected read.
+users:
+- creator
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: access
+  do: click
+  target: protected_read
+  expect:
+    request:
+      method: GET
+      path:
+      - records-api
+      - protected
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: field_equals
+      field: access
+      value: creator
