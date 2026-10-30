@@ -1,6 +1,7 @@
 """Browser-local instrumentation; origin markers are removed by the route."""
 
-SCRIPT = r"""(() => {
+_TEMPLATE = r"""(() => {
+  const nativeTransport = __NATIVE_TRANSPORT__;
   const add = EventTarget.prototype.addEventListener;
   const remove = EventTarget.prototype.removeEventListener;
   const then = Promise.prototype.then;
@@ -121,8 +122,54 @@ SCRIPT = r"""(() => {
     'x-refract-action-id': origin || '',
     'x-refract-traceparent': '00-' + hex(16) + '-' + hex(8) + '-01'
   });
+  const nativeCall = (origin, callback, self, args) => {
+    const name = '__refract_native_' + hex(16) + '__' + (origin ? encodeURIComponent(origin) : '');
+    // A computed method name is visible in Chromium's immediate initiator frame.
+    // It needs no eval, request mutation, header or URL marker.
+    return ({[name]() { return Reflect.apply(callback, self, args); }})[name]();
+  };
   window.fetch = function(input, init) {
     const origin = state.origin;
+    if (nativeTransport) {
+      if ((init?.mode || (input instanceof Request ? input.mode : 'cors')) === 'no-cors') {
+        state.errors.push('opaque browser response is unsupported');
+        throw new Error('unsupported browser response visibility');
+      }
+      begin(origin);
+      try {
+        const promise = nativeCall(origin, fetch, this, [input, init]);
+        then.call(promise, response => {
+          if (!origin) { end(origin); return; }
+          // Drain a separate copy so an unconsumed application response still
+          // reaches native completion. The application keeps its original body.
+          try {
+            const copy = response.clone();
+            const read = (async () => {
+              if (!copy.body) return;
+              const reader = copy.body.getReader();
+              let bytes = 0;
+              try {
+                while (true) {
+                  const chunk = await reader.read();
+                  if (chunk.done) return;
+                  bytes += chunk.value.byteLength;
+                  if (bytes > 8 * 1024 * 1024) {
+                    void reader.cancel();
+                    throw new Error('native response exceeds byte budget');
+                  }
+                }
+              } finally { reader.releaseLock(); }
+            })();
+            then.call(read, () => end(origin), () => {
+              state.errors.push('native response completion failed'); end(origin);
+            });
+          } catch (error) {
+            state.errors.push('native response completion failed'); end(origin);
+          }
+        }, () => end(origin));
+        return promise;
+      } catch (error) { end(origin); throw error; }
+    }
     const options = {...init};
     const merged = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
     for (const [name, value] of Object.entries(headers(origin))) merged.set(name, value);
@@ -144,12 +191,12 @@ SCRIPT = r"""(() => {
       state.errors.push('synchronous XMLHttpRequest is unsupported');
       throw new Error('unsupported browser transport');
     }
-    for (const [name, value] of Object.entries(headers(origin))) xhrHeader.call(this, name, value);
+    if (!nativeTransport) for (const [name, value] of Object.entries(headers(origin))) xhrHeader.call(this, name, value);
     begin(origin);
     let ended = false;
     const finish = () => { if (!ended) { ended = true; end(origin); } };
     add.call(this, 'loadend', finish, {once: true});
-    try { return xhrSend.call(this, body); }
+    try { return nativeTransport ? nativeCall(origin, xhrSend, this, [body]) : xhrSend.call(this, body); }
     catch (error) { remove.call(this, 'loadend', finish); finish(); throw error; }
   };
   // Unsupported transports must fail before a handshake can send context
@@ -166,3 +213,7 @@ SCRIPT = r"""(() => {
     window[name] = unsupported;
   }
 })();"""
+
+
+SCRIPT = _TEMPLATE.replace("__NATIVE_TRANSPORT__", "false")
+NATIVE_SCRIPT = _TEMPLATE.replace("__NATIVE_TRANSPORT__", "true")

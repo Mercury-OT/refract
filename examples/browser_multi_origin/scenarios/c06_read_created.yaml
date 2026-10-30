@@ -1,0 +1,76 @@
+schema_version: 1
+scenario: records.multi_origin.c06_read_created
+description: Read a newly created record by its observed string ID.
+users: []
+parameters:
+  record_code:
+    from_run: unique
+  record_name: Example record
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: name
+  do: fill
+  target: name
+  value:
+    from_parameter: record_name
+- id: code
+  do: fill
+  target: code
+  value:
+    from_parameter: record_code
+- id: create
+  do: click
+  target: create
+  expect:
+    request:
+      method: POST
+      path:
+      - records-api
+      - records
+      body:
+        name:
+          from_parameter: record_name
+        code:
+          from_parameter: record_code
+    response:
+    - check: status_equals
+      value: 201
+    - check: success
+    - check: has
+      field: id
+    - check: field_equals
+      field: code
+      value:
+        from_parameter: record_code
+- id: select_record
+  do: fill
+  target: record_id
+  value:
+    from_step: create
+    response_field: id
+- id: read
+  do: click
+  target: read
+  expect:
+    request:
+      method: GET
+      path:
+      - records-api
+      - records
+      - from_step: create
+        response_field: id
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: field_equals
+      field: id
+      value:
+        from_step: create
+        response_field: id
+    - check: field_equals
+      field: name
+      value:
+        from_parameter: record_name

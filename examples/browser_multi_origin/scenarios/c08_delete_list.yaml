@@ -1,0 +1,91 @@
+schema_version: 1
+scenario: records.multi_origin.c08_delete_list
+description: Delete a created record and observe its absence from the API list.
+users: []
+parameters:
+  record_code:
+    from_run: unique
+  record_name: Example record
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: name
+  do: fill
+  target: name
+  value:
+    from_parameter: record_name
+- id: code
+  do: fill
+  target: code
+  value:
+    from_parameter: record_code
+- id: create
+  do: click
+  target: create
+  expect:
+    request:
+      method: POST
+      path:
+      - records-api
+      - records
+      body:
+        name:
+          from_parameter: record_name
+        code:
+          from_parameter: record_code
+    response:
+    - check: status_equals
+      value: 201
+    - check: success
+    - check: has
+      field: id
+    - check: field_equals
+      field: code
+      value:
+        from_parameter: record_code
+- id: select_record
+  do: fill
+  target: record_id
+  value:
+    from_step: create
+    response_field: id
+- id: delete
+  do: click
+  target: delete
+  expect:
+    request:
+      method: DELETE
+      path:
+      - records-api
+      - records
+      - from_step: create
+        response_field: id
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: field_equals
+      field: deleted
+      value:
+        from_step: create
+        response_field: id
+- id: list
+  do: click
+  target: list
+  expect:
+    request:
+      method: GET
+      path:
+      - records-api
+      - records
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: collection_matching_count
+      field: records
+      matching:
+        code:
+          from_parameter: record_code
+      count: 0

@@ -51,6 +51,14 @@ class RequestSpec:
     headers: dict[str, str] = field(default_factory=dict, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BrowserNetworkIdentity:
+    """Actual browser origin/network identity, not a transmitted server trace."""
+
+    origin: str = field(repr=False, metadata={"sensitive": True})
+    request_id: str = field(repr=False, metadata={"sensitive": True})
+
+
 @dataclass
 class RecordedResponse:
     status: int
@@ -72,6 +80,7 @@ class RecordedResponse:
     session_generation: int | None = field(default=None, kw_only=True)
     request_header_items: list[tuple[str, str]] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
     header_items: list[tuple[str, str]] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    browser_identity: BrowserNetworkIdentity | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
@@ -181,6 +190,7 @@ class UiTraffic:
     user: str | None = None
     session_generation: int = 0
     context_id: str = ""
+    browser_identity: BrowserNetworkIdentity | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -216,6 +226,7 @@ class UiActionEvidence:
     user: str | None = None
     session_generation: int = 0
     context_id: str = ""
+    diagnostic_notes: list[str] = field(default_factory=list, kw_only=True, repr=False)
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -1,0 +1,43 @@
+schema_version: 1
+scenario: records.multi_origin.c02_public_list
+description: Public list contains all three initial records.
+users: []
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: list
+  do: click
+  target: list
+  expect:
+    request:
+      method: GET
+      path:
+      - records-api
+      - records
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: collection_length
+      field: records
+      op: ==
+      value: 3
+    - check: collection_matching_count
+      field: records
+      matching:
+        id: r1
+        name: First
+      count: 1
+    - check: collection_matching_count
+      field: records
+      matching:
+        id: r2
+        name: Second
+      count: 1
+    - check: collection_matching_count
+      field: records
+      matching:
+        id: r3
+        name: Third
+      count: 1

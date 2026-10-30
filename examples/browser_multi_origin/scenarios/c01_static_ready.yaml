@@ -1,0 +1,17 @@
+schema_version: 1
+scenario: records.multi_origin.c01_static_ready
+description: Page and independently hosted static asset are visibly ready.
+users: []
+steps:
+- id: open
+  do: open
+  target: records.page
+  expect:
+    ui:
+    - check: visible
+      anchor: page
+    - check: objects_matching_count
+      anchor: page
+      field: ready
+      value: ready
+      count: 1

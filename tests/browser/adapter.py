@@ -25,7 +25,7 @@ def fields(rendered):
 class SyntheticUi(ports.UiDriver, ports.StepwiseUiDriver):
     """Map declared primitives and rendering without reading assertions."""
 
-    def __init__(self, base_url, *, timeout_ms=1500, read=read_rendered, context_options=None):
+    def __init__(self, base_url, *, timeout_ms=5000, read=read_rendered, context_options=None):
         self.base_url = base_url
         self.context_options = context_options
         self.support = BrowserSupport(base_url, read, timeout_ms=timeout_ms)

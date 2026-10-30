@@ -1,0 +1,36 @@
+schema_version: 1
+scenario: records.multi_origin.c03_filter
+description: Category query reaches the server unchanged and filters results.
+users: []
+steps:
+- id: open
+  do: open
+  target: records.page
+- id: category
+  do: fill
+  target: category
+  value: guide
+- id: filter
+  do: click
+  target: filter
+  expect:
+    request:
+      method: GET
+      path:
+      - records-api
+      - records
+      query:
+        category: guide
+    response:
+    - check: status_equals
+      value: 200
+    - check: success
+    - check: collection_length
+      field: records
+      op: ==
+      value: 2
+    - check: collection_matching_count
+      field: records
+      matching:
+        category: guide
+      count: 2

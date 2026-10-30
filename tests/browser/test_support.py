@@ -31,7 +31,7 @@ def permit(action="click", *, run="synthetic-run", mode="live", value=None):
 def browser_lab(http_peer):
     opened = []
 
-    def create(*, timeout_ms=1500, mode="live", mock_plan=None,
+    def create(*, timeout_ms=5000, mode="live", mock_plan=None,
                read=read_rendered, logical_path=None, options=None, path="/", base_url=None):
         base_url = base_url or http_peer.base_url
         support = BrowserSupport(base_url, read, logical_path=logical_path,

@@ -5,7 +5,7 @@ import struct
 from dataclasses import fields
 
 from refracto.declaration.values import equal
-from refracto.ports import RecordedResponse, RequestSpec
+from refracto.ports import BrowserNetworkIdentity, RecordedResponse, RequestSpec
 
 
 def _evidence_equal(actual, expected):
@@ -17,6 +17,9 @@ def _evidence_equal(actual, expected):
     """
     if type(actual) is not type(expected):
         return False
+    if type(actual) is BrowserNetworkIdentity:
+        return all(_evidence_equal(getattr(actual, item.name), getattr(expected, item.name))
+                   for item in fields(BrowserNetworkIdentity))
     if isinstance(actual, dict):
         return ({(type(key), key) for key in actual} == {(type(key), key) for key in expected}
                 and all(_evidence_equal(actual[key], expected[key]) for key in actual))
