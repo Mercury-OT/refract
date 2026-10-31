@@ -72,7 +72,7 @@ _LOOKUP = """() => config => {
 
 _ARM = """({config, selected, actionId}) => {
     const state = window.__refractBrowser;
-    const arm = {action_id: actionId, type: 'click', selection: null};
+    const arm = {action_id: actionId, type: 'click', selection: null, control: selected.control};
     arm.guard = event => {
         const current = config.lookup(config);
         if (!current || !selected.row.isConnected || !selected.control.isConnected ||

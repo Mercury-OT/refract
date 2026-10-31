@@ -5,6 +5,18 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-10-31: bounded same-tab object navigation
+
+BrowserSupport can retain an actual scoped-click selection across a supported
+same-origin HTML document replacement. Existing ObjectTarget mappings and the
+perform_step signature are unchanged. No Scenario migration or schema-version
+change is required. A native anchor must itself be the mapped control; a trusted
+click handler may also navigate synchronously. Deferred navigation, redirects and
+forms are not added. New-document startup requests remain background, and the
+destination still needs its declared UI checks. See the
+[browser guide](docs/browser-support.md#object-specific-clicks) and
+[task contract](docs/tasks/same-tab-object-navigation.md).
+
 ## 2026-10-31: object-specific UI click selection
 
 See the [scoped task](docs/tasks/ui-object-target-selection.md) for authorization

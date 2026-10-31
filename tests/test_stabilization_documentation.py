@@ -262,6 +262,7 @@ class Consumer:
 
 
 EXAMPLES = {
+    "examples/ui_object_navigation/scenario.yaml": Consumer("tests/browser/test_object_navigation_consumers.py::test_same_scenario_navigates_edits_and_reads_the_selected_object", "live UI e2e; two full-document Chromium consumers and real HTTP"),
     "examples/ui_object_targets/scenario.yaml": Consumer("tests/browser/test_ui_object_target_consumers.py::test_same_scenario_selects_nonfirst_record_and_edits_only_its_object", "live UI e2e; two synthetic Chromium consumers and real HTTP"),
     "examples/sqlite_records/scenarios/create_and_verify_storage.yaml": Consumer("tests/test_object_state_sqlite.py::test_sqlite_committed_record_matches_observed_state", "backend, API e2e; real local SQLite storage"),
     "examples/documents/scenarios/owner_peer.yaml": Consumer("tests/test_documents_users_sessions.py::test_owner_reads_and_distinct_same_role_peer_is_denied", "backend, contract, API e2e"),
@@ -312,7 +313,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 26
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 27
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps

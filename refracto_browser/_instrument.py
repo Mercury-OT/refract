@@ -12,13 +12,48 @@ _TEMPLATE = r"""(() => {
   const listeners = new WeakMap();
   const xhrs = new WeakMap();
   const state = window.__refractBrowser = {
-    armed: null, event: null, origin: null, pending: {}, errors: []
+    armed: null, event: null, origin: null, syncOrigin: null, pending: {}, errors: []
   };
+  const pushError = Array.prototype.push;
+  const receipt = payload => {
+    if (typeof window.__refractNavigationReceipt !== 'function') {
+      Reflect.apply(pushError, state.errors, ['navigation receipt channel unavailable']); return;
+    }
+    window.__refractNavigationReceipt(JSON.stringify(payload));
+  };
+  const departing = kind => ({kind, action: state.armed.action_id,
+    pending: state.pending[state.armed.action_id] || 0, errors: state.errors.length > 0});
+  if (window.navigation) add.call(window.navigation, 'navigate', event => {
+    const arm = state.armed;
+    if (!arm?.selection || event.destination.sameDocument) return;
+    let form = 'unsupported';
+    if (event.isTrusted && !event.formData && event.downloadRequest === null &&
+        state.event?.isTrusted) {
+      if (arm.control instanceof HTMLAnchorElement && event.sourceElement === arm.control &&
+          event.userInitiated) form = 'anchor';
+      else if (event.sourceElement === null && state.syncOrigin === arm.action_id &&
+               state.origin === arm.action_id) form = 'script';
+    }
+    receipt({...departing('navigate'), form, url: event.destination.url});
+  });
+  add.call(window, 'pagehide', () => {
+    if (state.armed?.selection) receipt(departing('pagehide'));
+  });
+  const stateReceipt = () => {
+    if (state.armed?.selection) receipt(departing('state'));
+  };
+  // Preserve old-document errors even if destruction skips pagehide delivery.
+  state.errors.push = function(...items) {
+    const result = Reflect.apply(pushError, this, items);
+    stateReceipt();
+    return result;
+  };
+  const reportError = message => state.errors.push(message);
   const begin = origin => {
-    if (origin) state.pending[origin] = (state.pending[origin] || 0) + 1;
+    if (origin) { state.pending[origin] = (state.pending[origin] || 0) + 1; stateReceipt(); }
   };
   const end = origin => {
-    if (origin) state.pending[origin]--;
+    if (origin) { state.pending[origin]--; stateReceipt(); }
   };
   const call = (origin, callback, self, args) => {
     const previous = state.origin;
@@ -40,7 +75,7 @@ _TEMPLATE = r"""(() => {
     begin(origin);
     // Native then avoids registering our own bookkeeping as product work.
     then.call(Promise.resolve(promise), () => end(origin), () => {
-      state.errors.push('event completion failed'); end(origin);
+      reportError('event completion failed'); end(origin);
     });
   };
   const capture = options => typeof options === 'boolean' ? options : !!options?.capture;
@@ -51,12 +86,13 @@ _TEMPLATE = r"""(() => {
         let allowed = false;
         try { allowed = arm.guard(event) === true; } catch (_) {}
         if (!allowed) {
-          state.errors.push('object target changed before click');
+          reportError('object target changed before click');
           event.preventDefault();
           event.stopImmediatePropagation();
           return null;
         }
         state.event = event;
+        receipt({kind: 'selection', action: arm.action_id, selection: arm.selection});
       } else if (event.target instanceof Element && event.target.closest(arm.selector)) state.event = event;
     }
     return arm && state.event === event ? arm.action_id : null;
@@ -64,9 +100,13 @@ _TEMPLATE = r"""(() => {
   const invoke = (listener, self, event) => {
     const origin = eventOrigin(event);
     const callback = typeof listener === 'function' ? listener : listener.handleEvent;
-    const result = call(origin, callback, typeof listener === 'function' ? self : listener, [event]);
-    observe(result, origin);
-    return result;
+    const previousSync = state.syncOrigin;
+    state.syncOrigin = origin;
+    try {
+      const result = call(origin, callback, typeof listener === 'function' ? self : listener, [event]);
+      observe(result, origin);
+      return result;
+    } finally { state.syncOrigin = previousSync; }
   };
   EventTarget.prototype.addEventListener = function(type, listener, options) {
     if (!listener || (typeof listener !== 'function' && typeof listener !== 'object'))
@@ -171,10 +211,10 @@ _TEMPLATE = r"""(() => {
         } finally { reader.releaseLock(); }
       })();
       then.call(read, () => end(origin), () => {
-        state.errors.push('native response completion failed'); end(origin);
+        reportError('native response completion failed'); end(origin);
       });
     } catch (error) {
-      state.errors.push('native response completion failed'); end(origin);
+      reportError('native response completion failed'); end(origin);
     }
   };
   state.claimNative = (nonce, origin) => {
@@ -189,7 +229,7 @@ _TEMPLATE = r"""(() => {
     const origin = state.origin;
     if (nativeTransport) {
       if ((init?.mode || (input instanceof Request ? input.mode : 'cors')) === 'no-cors') {
-        state.errors.push('opaque browser response is unsupported');
+        reportError('opaque browser response is unsupported');
         throw new Error('unsupported browser response visibility');
       }
       const nonce = hex(16);
@@ -227,7 +267,7 @@ _TEMPLATE = r"""(() => {
   XMLHttpRequest.prototype.send = function(body) {
     const origin = state.origin;
     if (xhrs.get(this)?.async === false) {
-      state.errors.push('synchronous XMLHttpRequest is unsupported');
+      reportError('synchronous XMLHttpRequest is unsupported');
       throw new Error('unsupported browser transport');
     }
     if (!nativeTransport) for (const [name, value] of Object.entries(headers(origin))) xhrHeader.call(this, name, value);
@@ -244,7 +284,7 @@ _TEMPLATE = r"""(() => {
     const original = window[name];
     if (!original) continue;
     const unsupported = function() {
-      state.errors.push('unsupported browser transport');
+      reportError('unsupported browser transport');
       throw new Error('unsupported browser transport');
     };
     unsupported.prototype = original.prototype;

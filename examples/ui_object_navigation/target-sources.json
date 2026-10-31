@@ -1,0 +1,9 @@
+{
+  "boundary": "Normal synthetic sources frozen before adapter and consumer test authoring; shared records service disclosed.",
+  "sha256": {
+    "../ui_object_targets/app.py": "4606d0bc6bfb6875781809298240bdf17adf9b70a766d2b0686a473882587618",
+    "app.py": "563be9e281ebb9eb6b52d0706db7d9d2c2944cb90be59ed2cb32203e943acffa",
+    "editor.js": "f96462d190e317debbcdd0cc9e7e5fcd3b1f7881b4ec7229ff32900c60beceee"
+  },
+  "version": 1
+}

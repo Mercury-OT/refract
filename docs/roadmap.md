@@ -81,13 +81,24 @@ owned-snapshot/falsy-body validation, regression-test timing and selected Python
 migration guidance. Eight branch/PR checks and four main jobs passed; task
 branches were removed. Its historical acceptance record remains unchanged.
 
-The maintainer next approved [object-specific UI control selection](tasks/ui-object-target-selection.md)
-on 2026-10-31. Keep format 1, one action per step and one-level inclusion; add only
-optional click object_id, explicit adapter capability and checked selection
-evidence. No existing product is changed to supply identity. Two newly authored
-neutral consumers test the mechanism, not adoption benefit. Development,
-independent audit and architect acceptance precede the authorized PR/main CI
-and cleanup sequence. Object absence remains paused; Flow is not part of this task.
+The [object-specific UI control selection](tasks/ui-object-target-selection.md)
+task was delivered through PR #42 in main `f77450f`: optional click object_id,
+explicit adapter capability and checked selection evidence. Eight branch/PR
+checks and four main jobs passed; task branches were removed. Its two new neutral
+consumers demonstrate the mechanism, not adoption benefit.
+
+The maintainer approved [same-tab object navigation](tasks/same-tab-object-navigation.md)
+on 2026-10-31, subject to a feasibility gate. Separate real-browser probes found
+a reliable bounded route for a pinned anchor's default navigation and a trusted
+click handler's synchronous location change. Keep current format 1 YAML, core
+ports and one-level inclusion. New-document bootstrap requests remain background;
+asynchronous navigation and broader browser flows are not included. Development,
+independent browser/consumer audits and architect acceptance passed; the final
+full suite has 5103 passing tests. See the
+[acceptance record](tasks/same-tab-object-navigation-acceptance.md). Hosted delivery
+uses the authorized PR/main CI and cleanup sequence, evidenced separately in the
+associated PR and commit history. Object absence remains paused; Flow is not part
+of this task.
 
 The [action-port expectation and ownership boundary](tasks/action-port-boundary.md)
 was delivered through PR #36 in main `ee4691e`, after eight branch/PR checks and

@@ -17,8 +17,9 @@ from refracto.query import parse_query
 from ._instrument import SCRIPT, NATIVE_SCRIPT
 from ._policy import BrowserNetworkPolicy
 from ._native import NativeCollector
+from ._navigation import NavigationCollector
 from ._request_body import is_form_content_type, parse_form_body
-from ._object_target import ObjectTarget, PinnedObjectTarget, observed_selection, require_browser_id
+from ._object_target import ObjectTarget, PinnedObjectTarget, require_browser_id
 
 
 _runtime = threading.local()
@@ -85,6 +86,7 @@ class _Context:
     diagnostic_cursor: int = 0
     mock_cursor: int = 0
     native: object = None
+    navigation: object = None
 
     def __repr__(self):
         return "<BrowserSupport context>"
@@ -291,16 +293,23 @@ class BrowserSupport:
         """Perform exactly one open, click, or fill, then collect bounded evidence."""
         context = self._context(context)
         self._authorize(context, permit, url, selector, object_target)
+        if context.navigation is not None:
+            context.navigation.opening = object_target is None
         context.deadline = time.monotonic() + self._timeout_ms / 1000
         start, diagnostic_start, mock_start = context.traffic_cursor, context.diagnostic_cursor, context.mock_cursor
         try:
             self._check(context)
             selection = None
             if permit.action == "open":
+                if context.navigation is not None:
+                    context.navigation.opening = True
                 context.page.goto(url, wait_until="domcontentloaded", timeout=self._remaining(context))
             else:
                 pinned = None
                 if object_target is not None:
+                    if context.navigation is None:
+                        context.navigation = NavigationCollector(self, context)
+                    context.navigation.begin(permit)
                     pinned = PinnedObjectTarget(context.page, object_target, permit.object_id,
                                                 permit.action_id, lambda: self._remaining(context))
                     locator = pinned.control
@@ -327,9 +336,11 @@ class BrowserSupport:
                         locator.click(timeout=self._remaining(context))
                     else:
                         locator.fill(permit.value, timeout=self._remaining(context))
+                    if pinned is not None:
+                        context.navigation.check(wait=True)
                     self._settle(context, permit.action_id)
                     if pinned is not None:
-                        selection = observed_selection(context.page, permit.action_id)
+                        selection = context.navigation.selection()
                 finally:
                     try:
                         context.page.evaluate("""() => {
@@ -374,6 +385,8 @@ class BrowserSupport:
                 diagnostic_notes=list(context.native.notes) if context.native is not None else [],
                 object_selection=selection,
             ))
+            if context.navigation is not None:
+                context.navigation.end()
             context.traffic_cursor = traffic_end
             context.diagnostic_cursor = diagnostic_end
             context.mock_cursor = mock_end
@@ -381,6 +394,8 @@ class BrowserSupport:
         except Exception:
             self._fail(context, "browser action or evidence collection failed")
         finally:
+            if context.navigation is not None:
+                context.navigation.opening = False
             context.deadline = None
 
     def _settle(self, context, action_id):
