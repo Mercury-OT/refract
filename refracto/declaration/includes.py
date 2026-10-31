@@ -257,8 +257,9 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
                                   for a in getattr(original.expect, point)]
                            for point in ("frontend", "response", "backend_state")})
         value = _map(original.value, convert)
+        object_id = _map(original.object_id, convert)
         step = replace(original, id=f"{sid}/{original.id}", request=request,
-                       expect=expect, value=value, bind=list(used.values()),
+                       expect=expect, value=value, object_id=object_id, bind=list(used.values()),
                        user=None if implicit_anonymous else user)
         result.append(step)
         if reference_bindings is not None:

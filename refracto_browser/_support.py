@@ -18,6 +18,7 @@ from ._instrument import SCRIPT, NATIVE_SCRIPT
 from ._policy import BrowserNetworkPolicy
 from ._native import NativeCollector
 from ._request_body import is_form_content_type, parse_form_body
+from ._object_target import ObjectTarget, PinnedObjectTarget, observed_selection, require_browser_id
 
 
 _runtime = threading.local()
@@ -241,7 +242,7 @@ class BrowserSupport:
             # Browser strings are not trusted error text.
             raise RuntimeError("browser origin instrumentation failed")
 
-    def _authorize(self, context, permit, url, selector):
+    def _authorize(self, context, permit, url, selector, object_target=None):
         if not isinstance(permit, ports.UiActionPermit):
             raise ValueError("browser action requires an action permit")
         if permit.mode != context.mode or permit.action not in {"open", "click", "fill"}:
@@ -253,7 +254,14 @@ class BrowserSupport:
         if not all(type(value) is str and value for value in
                    (permit.execution_id, permit.action_id, permit.step_id, permit.token)):
             raise ValueError("browser action permit has invalid identity")
-        if permit.action == "open":
+        if object_target is not None:
+            if (type(object_target) is not ObjectTarget or permit.action != "click"
+                    or url is not None or selector is not None or permit.object_id is None):
+                raise ValueError("browser object selection requires one scoped click mapping")
+            require_browser_id(permit.object_id)
+        elif permit.object_id is not None:
+            raise ValueError("browser scoped click requires an object target mapping")
+        elif permit.action == "open":
             if selector is not None or not isinstance(url, str) or _origin(url) != self._origin:
                 raise ValueError("browser open requires one same-origin URL")
         elif url is not None or not isinstance(selector, str) or not selector.strip():
@@ -279,33 +287,40 @@ class BrowserSupport:
         _authorizations[permit.token] = self
         context.permits[permit.action_id] = permit
 
-    def perform(self, context, permit, *, url=None, selector=None):
+    def perform(self, context, permit, *, url=None, selector=None, object_target=None):
         """Perform exactly one open, click, or fill, then collect bounded evidence."""
         context = self._context(context)
-        self._authorize(context, permit, url, selector)
+        self._authorize(context, permit, url, selector, object_target)
         context.deadline = time.monotonic() + self._timeout_ms / 1000
         start, diagnostic_start, mock_start = context.traffic_cursor, context.diagnostic_cursor, context.mock_cursor
         try:
             self._check(context)
+            selection = None
             if permit.action == "open":
                 context.page.goto(url, wait_until="domcontentloaded", timeout=self._remaining(context))
             else:
-                # Native CSS parsing excludes Playwright's additional selector engines.
-                context.page.wait_for_function("""selector => {
+                pinned = None
+                if object_target is not None:
+                    pinned = PinnedObjectTarget(context.page, object_target, permit.object_id,
+                                                permit.action_id, lambda: self._remaining(context))
+                    locator = pinned.control
+                else:
+                    # Native CSS parsing excludes Playwright's additional selector engines.
+                    context.page.wait_for_function("""selector => {
                     const visible = [...document.querySelectorAll(selector)].filter(element => {
                         const style = getComputedStyle(element);
                         const rect = element.getBoundingClientRect();
                         return style.visibility !== 'hidden' && style.visibility !== 'collapse' && rect.width > 0 && rect.height > 0;
                     });
                     return visible.length > 0;
-                }""", arg=selector, timeout=self._remaining(context))
-                locator = context.page.locator("css=:is(" + selector + "):visible")
-                if locator.count() != 1:
-                    raise RuntimeError("browser target is ambiguous")
-                context.page.evaluate("""arm => {
+                    }""", arg=selector, timeout=self._remaining(context))
+                    locator = context.page.locator("css=:is(" + selector + "):visible")
+                    if locator.count() != 1:
+                        raise RuntimeError("browser target is ambiguous")
+                    context.page.evaluate("""arm => {
                     window.__refractBrowser.armed = arm;
                     window.__refractBrowser.event = null;
-                }""", {"action_id": permit.action_id, "selector": selector,
+                    }""", {"action_id": permit.action_id, "selector": selector,
                         "type": "click" if permit.action == "click" else "input"})
                 try:
                     if permit.action == "click":
@@ -313,12 +328,18 @@ class BrowserSupport:
                     else:
                         locator.fill(permit.value, timeout=self._remaining(context))
                     self._settle(context, permit.action_id)
+                    if pinned is not None:
+                        selection = observed_selection(context.page, permit.action_id)
                 finally:
-                    context.page.evaluate("""() => {
+                    try:
+                        context.page.evaluate("""() => {
                         window.__refractBrowser.armed = null;
                         window.__refractBrowser.event = null;
                         window.__refractBrowser.origin = null;
-                    }""")
+                        }""")
+                    finally:
+                        if pinned is not None:
+                            pinned.close()
             if permit.action == "open":
                 self._settle(context, permit.action_id)
             if context.native is not None:
@@ -351,6 +372,7 @@ class BrowserSupport:
                 diagnostic_recorded=diagnostics,
                 mock_recordings=mock_recordings,
                 diagnostic_notes=list(context.native.notes) if context.native is not None else [],
+                object_selection=selection,
             ))
             context.traffic_cursor = traffic_end
             context.diagnostic_cursor = diagnostic_end

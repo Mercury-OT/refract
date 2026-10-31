@@ -571,7 +571,8 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
                 continue
             if step.request is None:
                 sr = StepResult(step.id, "NOT_APPLICABLE",
-                    not_checked=["UI action/checks are outside backend projection"], user=user)
+                    not_checked=["UI action/checks are outside backend projection"] + (
+                        ["object_id selection is outside backend projection"] if step.object_id is not None else []), user=user)
                 flow.finish(step, sr)
                 step_results.append(sr)
                 continue
@@ -585,6 +586,8 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
                 bound_values=bound_values, object_state=object_state)
             if step.action != "request" or step.expect.frontend:
                 sr.not_checked.append("UI actions/checks are outside backend projection")
+            if step.object_id is not None:
+                sr.not_checked.append("object_id selection is outside backend projection")
         except binding.DependencyUnavailable as exc:
             sr = (StepResult(step.id, ERROR, detail=str(exc)) if prepared_ok else
                   StepResult(step.id, BLOCKED, detail=str(exc), blocked_by=exc.sources))

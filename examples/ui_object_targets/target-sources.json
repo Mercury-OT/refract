@@ -1,0 +1,9 @@
+{
+  "format_version": 1,
+  "purpose": "Target sources frozen before the adapter and Scenario were written",
+  "sha256": {
+    "app.py": "4606d0bc6bfb6875781809298240bdf17adf9b70a766d2b0686a473882587618",
+    "table.js": "6f59fd1952057e548be03cdd3c820f07aa207261de2c8725ff75b9ca13ecfe34",
+    "cards.js": "5b80e24e7962f938b012a8ea6a4c7fe4061903634ac67d2f18b6d07f2efa10cb"
+  }
+}

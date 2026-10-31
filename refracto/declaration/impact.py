@@ -336,6 +336,8 @@ def _values(step, index):
     if is_include(step) and isinstance(step.get("with"), dict):
         for key, value in sorted(step["with"].items()):
             yield prefix + "/with/" + _pointer(key), value
+    if step.get("do") == "click" and "object_id" in step:
+        yield prefix + "/object_id", step["object_id"]
     if step.get("do") == "fill" and "value" in step:
         yield prefix + "/value", step["value"]
     request = step.get("do", {}).get("request") if isinstance(step.get("do"), dict) else None

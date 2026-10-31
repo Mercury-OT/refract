@@ -129,7 +129,7 @@ def _native_trace(request, response):
 
 def _signature_payload(data):
     return json.dumps(
-        [data[k] for k in ("execution_id", "action_id", "step_id", "mode", "action", "target", "value",
+        [data[k] for k in ("execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id",
                            "user", "session_generation", "context_id")],
         ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True,
     ).encode()
@@ -138,7 +138,8 @@ def _signature_payload(data):
 def _issue_permit(secret, execution_id, step, mode, lease, context_id):
     data = dict(execution_id=execution_id, action_id=secrets.token_hex(16),
                 step_id=step.id, mode=mode, action=step.action,
-                target=step.target, value=copy.deepcopy(step.value), user=lease.user,
+                target=step.target, value=copy.deepcopy(step.value), object_id=copy.deepcopy(step.object_id),
+                user=lease.user,
                 session_generation=lease.generation, context_id=context_id)
     return ports.UiActionPermit(
         **data, token=hmac.new(secret, _signature_payload(data), hashlib.sha256).hexdigest(),
@@ -233,22 +234,35 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
                        mock_plan, consumed):
     if type(result) is not ports.UiActionResult:
         raise TypeError("perform_step must return UiActionResult")
-    if result.evidence is None:
-        return None
-    evidence = result.evidence
-    if type(evidence) is not ports.UiActionEvidence:
-        raise TypeError("action evidence must be UiActionEvidence")
     data = {k: getattr(permit, k) for k in (
-        "execution_id", "action_id", "step_id", "mode", "action", "target", "value",
+        "execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id",
         "user", "session_generation", "context_id")}
     signed = hmac.new(secret, _signature_payload(data), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(permit.token, signed):
         raise ValueError("action permit was modified")
+    if result.evidence is None:
+        if permit.object_id is not None:
+            raise ValueError("scoped UI action requires object selection evidence")
+        return None
+    evidence = result.evidence
+    if type(evidence) is not ports.UiActionEvidence:
+        raise TypeError("action evidence must be UiActionEvidence")
     for name in ("execution_id", "action_id", "step_id", "mode", "user", "session_generation", "context_id"):
         _require_equal(name, getattr(evidence, name), getattr(permit, name))
     if evidence.permit_token in accepted_tokens:
         raise ValueError("replayed action evidence")
     _require_equal("permit token", evidence.permit_token, permit.token)
+    selection = evidence.object_selection
+    if permit.object_id is None:
+        if selection is not None:
+            raise ValueError("unscoped UI action must not claim object selection")
+    else:
+        if type(selection) is not ports.UiObjectSelection:
+            raise TypeError("scoped UI action requires UiObjectSelection")
+        _require_equal("selected object", selection.object_id, permit.object_id)
+        if any(type(count) is not int or count != 1
+               for count in (selection.object_matches, selection.control_matches)):
+            raise ValueError("UI object and control selection must both be unique")
     if type(evidence.traffic) is not list:
         raise TypeError("rendered and traffic must be dict/list")
     if (type(evidence.diagnostic_notes) is not list or any(
@@ -492,6 +506,10 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         if needs_ui and (not isinstance(ui, ports.StepwiseUiDriver)
                          or ui.supports_stepwise_mode(mode) is not True):
             raise ValueError("primitive UI capability not supported")
+        if any(step.object_id is not None for step in scenario.steps):
+            if (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
+                    "UI object targeting", ui.supports_object_targeting, mode) is not True):
+                raise ValueError("UI object targeting capability not supported")
         if mode == "mock":
             _validate_mock_plan(mock_plan)
         for step in scenario.steps:
@@ -548,7 +566,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 blocked.user = user
                 results.append(blocked)
                 continue
-            resolved, norm = {}, None
+            resolved, norm, object_selection = {}, None, None
             lease = None
             prepared_ok = False
             try:
@@ -592,6 +610,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         sensitive_headers = sensitive_headers or _has_returned_headers(outcome)
                         evidence = _validate_evidence(outcome, permit, secret, accepted_tokens,
                                                       seen_requests, seen_traces, retained_plan, consumed)
+                        object_selection = copy.deepcopy(evidence.object_selection) if evidence is not None else None
                         if evidence is None:
                             sr = StepResult(step.id, SKIPPED, skipped=[outcome.skip_reason])
                             sr.resolved_bindings = resolved
@@ -658,6 +677,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
             except Exception as exc:
                 sr = StepResult(declared.id, ERROR, detail=str(exc))
                 norm = None
+            sr.object_selection = object_selection
             sr.resolved_bindings = resolved
             sr.user = user
             sr.session_generation = lease.generation if lease is not None else None

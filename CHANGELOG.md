@@ -5,6 +5,29 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-10-31: object-specific UI click selection
+
+See the [scoped task](docs/tasks/ui-object-target-selection.md) for authorization
+and delivery gates. This addition keeps schema_version: 1 and the existing
+perform_step signature; ordinary clicks retain their previous mapping.
+
+- A click may now carry object_id. Step and UiActionPermit hide it from default
+  repr; it participates in permit signing and strict integrity checks.
+- StepwiseUiDriver.supports_object_targeting(mode) defaults to false. Drivers
+  supporting scoped clicks must opt in explicitly. Unsupported Scenarios fail
+  before UI context creation instead of silently ignoring the ID.
+- Scoped UiActionEvidence must contain UiObjectSelection with the actual ID and
+  exact integer object_matches/control_matches, both 1. Core checks and copies
+  this into StepResult.object_selection. Unscoped evidence must omit it.
+- BrowserSupport.perform accepts ObjectTarget as an alternative to url/selector.
+  Map existing product identity using rows, relative control and read_id; do not
+  inject identity metadata or guess from labels/order. The helper supplies the
+  selection receipt and protects selection at click dispatch.
+
+See [the mapping guide](docs/browser-support.md#object-specific-clicks) and
+[synthetic consumers](examples/ui_object_targets/README.md). A custom adapter's
+receipt is a checked claim, not independent proof of its truthfulness.
+
 ## 2026-10-27: operation-only adapter inputs
 
 Commit: `ee4691e0daf04826050b4ea06e94159cee787557` (inspect with `git show <commit>`).
