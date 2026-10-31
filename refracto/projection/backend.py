@@ -26,13 +26,29 @@ from refracto.projection.recording import ProtectedRecorder, _evidence_equal
 
 _NO_SESSION = object()
 
+# Only these fixed names may enter action-error diagnostics. Custom exception
+# names, like messages, can contain operation data; report an approved base.
+_ACTION_ERROR_CATEGORIES = {
+    ArithmeticError: "ArithmeticError", AssertionError: "AssertionError",
+    AttributeError: "AttributeError", ConnectionError: "ConnectionError",
+    FileNotFoundError: "FileNotFoundError", ImportError: "ImportError",
+    IndexError: "IndexError", KeyError: "KeyError", LookupError: "LookupError",
+    MemoryError: "MemoryError", NameError: "NameError",
+    NotImplementedError: "NotImplementedError", OSError: "OSError",
+    PermissionError: "PermissionError", RuntimeError: "RuntimeError",
+    SyntaxError: "SyntaxError", TimeoutError: "TimeoutError",
+    TypeError: "TypeError", ValueError: "ValueError", Exception: "Exception",
+}
+
 
 def _call_action_port(operation, callback, *args, **kwargs):
     """Action inputs are sensitive; do not retain an adapter's exception text."""
     try:
         return callback(*args, **kwargs)
-    except Exception:
-        raise ValueError(f"{operation} failed") from None
+    except Exception as exc:
+        category = next((_ACTION_ERROR_CATEGORIES[base] for base in type(exc).__mro__
+                         if base in _ACTION_ERROR_CATEGORIES), "Exception")
+        raise ValueError(f"{operation} failed ({category})") from None
 
 
 def gen_traceparent() -> str:
@@ -239,7 +255,11 @@ def _check_option_b(step, template, spec):
     if step.request.method.upper() != spec.method.upper():
         raise ValueError(
             f"resolver changed declared method {step.request.method!r} -> {spec.method!r}")
-    if not values.equal(template.body or {}, spec.body or {}):
+    # None and an empty mapping retain their established absent-body equivalence;
+    # other falsy values must keep their actual types through ownership checks.
+    declared_body = {} if template.body is None else template.body
+    actual_body = {} if spec.body is None else spec.body
+    if not values.equal(declared_body, actual_body):
         raise ValueError(
             "resolver changed declared business body; transport mapping must not invent values")
 
@@ -463,11 +483,13 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
         headers=copy.deepcopy(template.headers),
     )
     spec = _call_action_port("Request resolver", resolve_request, action)
-    _check_option_b(step, template, spec)
+    if type(spec) is not ports.RequestSpec:
+        raise TypeError("resolver must return RequestSpec")
     # The resolver can retain its result or alias the supplied action containers.
-    # Own the validated request before any driver/normalizer callback runs so a
-    # retained alias cannot change later poll attempts or the header baseline.
+    # Own it first, then validate the actual snapshot that will be executed.
+    # A copy hook must not change the business request after it passes checks.
     spec = copy.deepcopy(spec)
+    _check_option_b(step, template, spec)
     result, norm = _run_step(step, template, spec, api, session, recorder, normalizer,
                             state, poll_config, now, sleep, bound_values, scenario.inputs)
     terminal = (result.status != SKIPPED and not (

@@ -526,10 +526,13 @@ def test_span_attr_type_mismatch_is_failed_not_error(tmp_path):
     y = tmp_path / "s.yaml"
     y.write_text(_SPAN_ATTR_YAML, encoding="utf-8")
     s = load_scenario(str(y))
+    clock = FakeClock()
     state = FakeStateProbe()
     state.observe = lambda tid: ports.StateFacts(tid, [ports.Span("dataset.import", {"row_count": "3"})])
     res = backend.run(s, auth=FakeAuth(), api=FakeApi(), state=state, recorder=FakeRecorder(),
-                      resolve_request=_resolver, normalizer=FakeNormalizer())
+                      resolve_request=_resolver, normalizer=FakeNormalizer(),
+                      now=clock.now, sleep=clock.sleep)
+    assert clock.t == 30  # Preserve the state-observation window without real sleeping.
     assert res.steps[0].status == FAILED
     assert not res.passed
     failing = [c for c in res.checks if c.check == "span_attr" and not c.ok]

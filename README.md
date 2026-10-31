@@ -125,6 +125,9 @@ request/response integration.
 For optional Playwright support in UI adapters, see
 [`docs/browser-support.md`](docs/browser-support.md).
 
+For changes affecting existing Python integrations, see the
+[selected compatibility notes](CHANGELOG.md).
+
 ## Philosophy
 
 See [`MANIFESTO.md`](MANIFESTO.md) for the beliefs and vision behind this framework.

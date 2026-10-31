@@ -434,7 +434,7 @@ def test_legacy_resolver_never_retried_with_declaration(tmp_path, projection):
                           adapters(resolver=legacy, api=api), projections=(projection,))
     assert [step.status for step in result.domains[0].steps] == [ERROR, BLOCKED]
     assert not api.sent and not entered
-    assert result.domains[0].steps[0].detail == "Request resolver failed"
+    assert result.domains[0].steps[0].detail == "Request resolver failed (TypeError)"
 
 
 @pytest.mark.parametrize("where", ["open", "perform"])
@@ -471,7 +471,7 @@ def test_resolver_input_repr_and_callback_error_omit_sensitive_values(tmp_path, 
 
     result = run_scenario(write(tmp_path, raw), adapters(resolver=broken), projections=(projection,))
     assert result.domains[0].steps[0].status == ERROR
-    assert result.domains[0].steps[0].detail == "Request resolver failed"
+    assert result.domains[0].steps[0].detail == "Request resolver failed (RuntimeError)"
     assert secret not in repr(seen[0]) + repr(result) + result.domains[0].steps[0].detail
 
 
@@ -501,5 +501,163 @@ def test_ui_callback_error_does_not_copy_credentials_or_fill_values(tmp_path, wh
     configured.auth = CredentialAuth()
     result = run_scenario(write(tmp_path, raw), configured, projections=("frontend",), mock_plan=[])
     assert result.domains[0].steps[0].status == ERROR
-    assert result.domains[0].steps[0].detail == ("UI open failed" if where == "open" else "UI action failed")
+    operation = "UI open" if where == "open" else "UI action"
+    assert result.domains[0].steps[0].detail == f"{operation} failed (RuntimeError)"
     assert secret not in repr(result) + result.domains[0].steps[0].detail
+
+
+@pytest.mark.parametrize("projection", ["backend", "e2e"])
+@pytest.mark.parametrize("base, category", [
+    (TypeError, "TypeError"), (ValueError, "ValueError"),
+    (RuntimeError, "RuntimeError"), (TimeoutError, "TimeoutError"),
+    (Exception, "Exception"),
+])
+def test_resolver_errors_retain_only_an_approved_builtin_category(tmp_path, projection, base, category):
+    sensitive = "sensitive-exception-identity"
+    serialized = []
+
+    def forbidden_text(self):
+        serialized.append(True)
+        raise AssertionError("exception serialization is forbidden")
+
+    # Custom names can contain arbitrary data; even the name is not safe output.
+    error = type(sensitive + "\n", (base,), {
+        "__module__": sensitive, "__str__": forbidden_text, "__repr__": forbidden_text,
+    })
+
+    def broken(action):
+        raise error(sensitive)
+
+    api = FakeApi()
+    result = run_scenario(write(tmp_path, document([api_step(), api_step("later")])),
+                          adapters(resolver=broken, api=api), projections=(projection,))
+    steps = result.domains[0].steps
+    assert [step.status for step in steps] == [ERROR, BLOCKED]
+    assert steps[0].detail == f"Request resolver failed ({category})"
+    assert not api.sent and not serialized
+    assert sensitive not in repr(result) + steps[0].detail
+
+
+@pytest.mark.parametrize("projection", ["frontend", "e2e"])
+@pytest.mark.parametrize("where", ["open", "perform"])
+def test_ui_error_category_preserves_cleanup_without_exposing_custom_identity(tmp_path, projection, where):
+    sensitive = "sensitive-custom-ui-exception"
+    error = type(sensitive, (TypeError,), {})
+
+    class Broken(SpyUi):
+        def open_stepwise(self, session, **kwargs):
+            if where == "open":
+                raise error(sensitive)
+            return super().open_stepwise(session, **kwargs)
+
+        def perform_step(self, context, permit, *, business_header_names=()):
+            raise error(sensitive)
+
+    first = {"id": "fill", "do": "fill", "target": "records.input", "value": "literal",
+             "expect": {"ui": [{"check": "visible", "anchor": "rows"}]}}
+    later = deepcopy(first)
+    later["id"] = "later"
+    ui = Broken(2, requests=[[], []])
+    result = run_scenario(write(tmp_path, document([first, later])), adapters(ui=ui),
+                          projections=(projection,), mock_plan=[] if projection == "frontend" else None)
+    steps = result.domains[0].steps
+    operation = "UI open" if where == "open" else "UI action"
+    assert [step.status for step in steps] == [ERROR, BLOCKED]
+    assert steps[0].detail == f"{operation} failed (TypeError)"
+    assert ui.close_calls == (0 if where == "open" else 1)
+    assert sensitive not in repr(result) + steps[0].detail
+
+
+@pytest.mark.parametrize("error_type", [KeyboardInterrupt, SystemExit])
+def test_action_wrapper_preserves_process_control_exceptions(error_type):
+    def stopped():
+        raise error_type()
+
+    with pytest.raises(error_type):
+        backend._call_action_port("Request resolver", stopped)
+
+
+@pytest.mark.parametrize("projection", ["backend", "e2e"])
+@pytest.mark.parametrize("copy_change", ["body", "method", "raw_type", "copied_type"])
+def test_only_validated_owned_resolver_snapshot_can_be_sent(tmp_path, projection, copy_change):
+    copied = []
+
+    class ChangedBody(dict):
+        def __deepcopy__(self, memo):
+            copied.append("body")
+            return {"injected": "undeclared-business-value"}
+
+    class WrongReturn:
+        def __init__(self, action):
+            self.action = action
+
+        def __deepcopy__(self, memo):
+            copied.append("raw_type")
+            return resolve(self.action)
+
+    def mapper(action):
+        spec = resolve(action)
+        if copy_change == "body":
+            spec.body = ChangedBody()
+        elif copy_change == "raw_type":
+            return WrongReturn(action)
+        else:
+            def changed(memo):
+                copied.append(copy_change)
+                return (ports.RequestSpec("DELETE", action.path) if copy_change == "method"
+                        else {"method": action.method, "path": action.path})
+            spec.__deepcopy__ = changed
+        return spec
+
+    api = FakeApi()
+    result = run_scenario(write(tmp_path, document([api_step(), api_step("later")])),
+                          adapters(resolver=mapper, api=api), projections=(projection,))
+    steps = result.domains[0].steps
+    assert [step.status for step in steps] == [ERROR, BLOCKED]
+    assert not api.sent
+    if copy_change in {"raw_type", "copied_type"}:
+        assert steps[0].detail == "resolver must return RequestSpec"
+    else:
+        assert "resolver changed declared" in steps[0].detail
+    assert copied == ([] if copy_change == "raw_type" else [copy_change])
+
+
+@pytest.mark.parametrize("projection", ["backend", "e2e"])
+@pytest.mark.parametrize("body", [[], False, 0, ""], ids=["list", "boolean", "integer", "string"])
+@pytest.mark.parametrize("during_copy", [False, True], ids=["returned", "copied"])
+def test_falsy_resolver_body_is_not_treated_as_an_absent_mapping(tmp_path, projection, body, during_copy):
+    class ChangedBody(dict):
+        def __deepcopy__(self, memo):
+            return deepcopy(body)
+
+    def mapper(action):
+        spec = resolve(action)
+        spec.body = ChangedBody() if during_copy else deepcopy(body)
+        return spec
+
+    api = FakeApi()
+    result = run_scenario(write(tmp_path, document([api_step(), api_step("later")])),
+                          adapters(resolver=mapper, api=api), projections=(projection,))
+    steps = result.domains[0].steps
+    assert [step.status for step in steps] == [ERROR, BLOCKED]
+    assert steps[0].detail == "resolver changed declared business body; transport mapping must not invent values"
+    assert not api.sent
+
+
+@pytest.mark.parametrize("projection", ["backend", "e2e"])
+@pytest.mark.parametrize("declared_body", [None, {}], ids=["absent", "empty"])
+@pytest.mark.parametrize("returned_body", [None, {}], ids=["absent", "empty"])
+def test_resolver_none_and_empty_mapping_bodies_keep_existing_compatibility(tmp_path, projection,
+                                                                          declared_body, returned_body):
+    def mapper(action):
+        spec = resolve(action)
+        spec.body = deepcopy(returned_body)
+        return spec
+
+    api = FakeApi()
+    result = run_scenario(write(tmp_path, document([api_step(body=declared_body)])),
+                          adapters(resolver=mapper, api=api), projections=(projection,))
+    assert result.status == PASSED
+    assert len(api.sent) == 1
+    assert type(api.sent[0].body) is type(returned_body)
+    assert api.sent[0].body == returned_body
