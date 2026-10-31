@@ -205,7 +205,7 @@ def test_handler_may_remove_selected_row_after_validated_click(object_lab):
     assert len(api_requests(peer)) == 1 and context.page.locator('.record').count() == 1
 
 
-def test_full_document_navigation_cannot_claim_a_lost_selection_receipt(object_lab):
+def test_non_html_document_navigation_cannot_claim_a_selection_receipt(object_lab):
     peer, support, context = object_lab(request=False, script="""
       document.addEventListener('click', event => {
         if (event.target.closest('button.edit')) location.href = '/next-document';

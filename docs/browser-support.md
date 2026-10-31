@@ -171,11 +171,34 @@ The guard cannot undo earlier pointer/hover effects and is not an atomic
 transaction against hostile page code. Legitimate row removal by the accepted
 click handler is allowed.
 
-This slice observes selection and completion in the current document. A scoped
-click that replaces/navigates the entire document is not supported: loss of the
-selection receipt is an execution error, never a pass. The supplied consumers
-open an in-page editor. Full-document selection receipt transport needs separate
-validation; do not infer support from these examples.
+The in-page consumers above remain unchanged. A separate
+[navigation consumer](../examples/ui_object_navigation/README.md) exercises
+object-scoped clicks that open a new HTML document in the same tab and exact
+origin (scheme, host and port). Supported forms are the pinned anchor's default
+navigation and synchronous navigation from the accepted click handler. For an
+anchor, map the control to the anchor itself, not an enclosing row or inner span;
+clicking a descendant of the pinned anchor remains valid.
+
+The helper retains the old document's actual selection receipt on the host,
+bound to its action, context and source document. It checks the native navigation
+observation against one main-frame document request and committed loader. It
+does not match navigation by URL, timing or expected content. Lost or ambiguous
+proof is an error. Existing current-document completion remains supported.
+
+This bounded navigation requires a successful same-origin GET HTML document.
+Redirects, other tabs/frames, native form submission, downloads, deferred
+Promise/await/timer navigation and unfinished old-document action work are not
+supported. They cannot be treated as an equivalent successful click. Context
+cleanup does not undo a target-side effect that already occurred.
+
+New-document startup requests remain background/diagnostic traffic, including
+when their URL matches an expectation. Navigation HTML is not an API response.
+Use existing UI checks to inspect the destination, then subsequent explicit
+steps for further actions or API reads. A correct selected-row receipt does not
+prove that the product opened the right editor; the example checks the editor's
+actually rendered object identity before filling or saving. No YAML field or
+core port changes are needed; see the
+[bounded contract](tasks/same-tab-object-navigation.md).
 
 `UiActionEvidence.object_selection` holds a `UiObjectSelection` with the actual
 object_id and exact integer object_matches/control_matches, both 1. Core checks

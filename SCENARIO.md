@@ -139,8 +139,10 @@ execution, not a multi-action adapter primitive.
 | API request | `do: {request: {method, path, query?, headers?, body?}}` | send the declared request |
 
 Targets map to elements, not multi-action business scripts. A click must not
-secretly navigate, fill fields, and submit. Wait does not trigger a scheduled
-job, change the host clock, or assert success.
+secretly perform an adapter's sequence of navigation, filling and submission.
+The product may naturally navigate in response to that one actual click; the
+browser helper's documented evidence limits still apply. Wait does not trigger
+a scheduled job, change the host clock, or assert success.
 
 An API action stores its request under `do.request`, never under `expect`.
 A UI action may declare `expect.request` to constrain the traffic it causes.
@@ -183,6 +185,11 @@ For example, after a `create` step has observed a normalized `id`:
 The complete [create, edit and read example](examples/ui_object_targets/scenario.yaml)
 runs unchanged against two synthetic browser implementations. It creates through
 an API and opens the actual UI editor; it does not test a creation form.
+The separate [full-document navigation example](examples/ui_object_navigation/scenario.yaml)
+uses the same declaration structure for a bounded same-tab, same-origin editor
+navigation. It checks the destination's rendered identity, then explicitly fills,
+saves and reads. The document and startup requests do not satisfy an API
+expectation on the click; see [browser support](docs/browser-support.md).
 
 Only `click` accepts `object_id`. Its value is a nonempty string or an exact
 integer, or an existing parameter/prior-response/member/named-result reference
