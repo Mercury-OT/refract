@@ -32,6 +32,10 @@ browser/session handles retain their existing lifecycle. These input controls
 do not certify the truth of arbitrary adapter observations; see the
 [threat model](threat-model.md).
 
+For an existing integration, the [selected compatibility notes](../CHANGELOG.md)
+provide dated commits, old/new signatures and the low-level binding-helper
+migration separately from adapter ports.
+
 The minimal wiring is copied directly from
 [`examples/minimal/adapters.py`](../examples/minimal/adapters.py):
 

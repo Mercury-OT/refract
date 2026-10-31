@@ -37,4 +37,5 @@ def pytest_ignore_collect(collection_path, config):
     )
     if demo_related and not _has_demo_deps():
         return True
-    return False
+    # This first-result hook must let pytest and other plugins apply exclusions.
+    return None
