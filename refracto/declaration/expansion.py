@@ -66,6 +66,8 @@ def expansion_view(scenario):
                 "do": {"request": request(step.request)} if step.action == "request" else step.action}
         if step.target is not None:
             item["target"] = step.target
+        if step.object_id is not None:
+            item["object_id"] = value(step.object_id)
         if step.action == "fill":
             item["value"] = value(step.value)
         if step.duration is not None:

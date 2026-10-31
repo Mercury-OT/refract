@@ -75,13 +75,19 @@ not by general-purpose completeness.
 
 ## Current priority
 
-The maintainer authorized a bounded [review follow-up](tasks/review-followup-20261031.md)
-on 2026-10-31: repair pytest ignore handling, action error diagnostics and request
-snapshot validation; remove real waiting from a regression test; and consolidate
-Python migration guidance. This precedes new capability work and authorizes no
-YAML change or object-absence assertion. Following independent audit and architect
-acceptance, the maintainer separately authorized submission of the ten-file
-repair scope on the same date; required PR and main CI still gate delivery.
+The [bounded review follow-up](tasks/review-followup-20261031.md) was delivered
+through PR #41 in main `19d5ef1`: pytest ignore handling, safe action diagnostics,
+owned-snapshot/falsy-body validation, regression-test timing and selected Python
+migration guidance. Eight branch/PR checks and four main jobs passed; task
+branches were removed. Its historical acceptance record remains unchanged.
+
+The maintainer next approved [object-specific UI control selection](tasks/ui-object-target-selection.md)
+on 2026-10-31. Keep format 1, one action per step and one-level inclusion; add only
+optional click object_id, explicit adapter capability and checked selection
+evidence. No existing product is changed to supply identity. Two newly authored
+neutral consumers test the mechanism, not adoption benefit. Development,
+independent audit and architect acceptance precede the authorized PR/main CI
+and cleanup sequence. Object absence remains paused; Flow is not part of this task.
 
 The [action-port expectation and ownership boundary](tasks/action-port-boundary.md)
 was delivered through PR #36 in main `ee4691e`, after eight branch/PR checks and
@@ -125,7 +131,8 @@ Scenario YAML or authorize Flow, broader transports or target changes.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Accepted; submission authorized | [Verified review repairs](tasks/review-followup-20261031.md) | Collection, safe diagnostics, owned-snapshot/falsy-body validation and regression-cost fixes passed independent audit and architect acceptance: 4842 full-suite tests, 4133 dev-only tests per Python version. Selected Python migrations now have a history-linked entry point. | Complete the separately authorized task-branch submission, required PR/main CI and cleanup. Object absence remains a separate expression proposal. |
+| Implemented and accepted | [Object-specific UI selection](tasks/ui-object-target-selection.md) | Optional click object_id with strict unique selection and receipt; format 1 and one-level includes unchanged. Two independent audits passed; 5032 full-suite tests and 4241 dev-only tests per Python version passed. [Results](tasks/ui-object-target-selection-acceptance.md) distinguish the two new synthetic consumers from adoption evidence. | Hosted delivery is recorded by the authorized task PR and main CI. Retain the current-document, strict-identity and unchanged-product boundaries. Object absence remains paused. |
+| Delivered | [Verified review repairs](tasks/review-followup-20261031.md) | Collection, safe diagnostics, owned-snapshot/falsy-body validation and regression-cost fixes passed independent audit and architect acceptance: 4842 full-suite tests, 4133 dev-only tests per Python version. Selected Python migrations now have a history-linked entry point. | Delivered through PR #41 in main `19d5ef1`; eight branch/PR checks and four main jobs passed, branches removed. |
 | Delivered | [Bounded native-await association](tasks/browser-native-await.md) | Independent mechanism/consumer audits and local architect acceptance passed again on 2026-10-31 after a background-communication fix: 4790 full-suite tests, 4081 dev-only tests per Python version, and both unchanged consumer implementations passing. [Results](tasks/browser-native-await-acceptance.md) retain the bounded evidence limitations. No declaration changes. | Delivered through PR #40 in main `4a4b8af`; eight final branch/PR checks and four main jobs passed, branches removed. Unsupported or missing ancestry cannot pass by inference; broader transports and Flow remain separate proposals. |
 | Delivered | [Bounded multi-origin browser HTTP](tasks/browser-multi-origin-http.md) | Independent audit and architect acceptance passed on 2026-10-30: 4725 full-suite tests, 4059 core tests per supported Python version, and a complete 100-unit comparison. [Results](tasks/browser-multi-origin-http-acceptance.md) retain the historical native-async association limit. No declaration changes. | Delivered through PR #39 in main `a14965a`; PR checks and four main jobs passed, both task branches removed. Broader browser compatibility and adoption benefit remain unverified. |
 | Delivered | [Read-only object-state observation](tasks/object-state-observation.md) | Approved `backend_state.object_field_equals` expression implemented with separate read-only SQLite snapshots. Independent audit and local architect acceptance passed: 222 new cases, 4541 full-suite tests and 3964 core tests per Python version. [Results](tasks/object-state-observation-acceptance.md) distinguish actual storage checks from API responses and limit the claim to the tested integration. | Delivered through PR #38 in main `3a0b1a5`; PR checks and four main jobs passed and branches were cleaned up. Other storage channels, async observation and real-product validation are not included. |

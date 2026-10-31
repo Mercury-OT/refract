@@ -46,8 +46,19 @@ _TEMPLATE = r"""(() => {
   const capture = options => typeof options === 'boolean' ? options : !!options?.capture;
   const eventOrigin = event => {
     const arm = state.armed;
-    if (arm && !state.event && event.isTrusted && arm.type === event.type &&
-        event.target instanceof Element && event.target.closest(arm.selector)) state.event = event;
+    if (arm && !state.event && event.isTrusted && arm.type === event.type) {
+      if (typeof arm.guard === 'function') {
+        let allowed = false;
+        try { allowed = arm.guard(event) === true; } catch (_) {}
+        if (!allowed) {
+          state.errors.push('object target changed before click');
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return null;
+        }
+        state.event = event;
+      } else if (event.target instanceof Element && event.target.closest(arm.selector)) state.event = event;
+    }
     return arm && state.event === event ? arm.action_id : null;
   };
   const invoke = (listener, self, event) => {

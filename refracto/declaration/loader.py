@@ -195,6 +195,13 @@ def _known(value, parameters):
         raise DeclarationError("invalid parameter dependency or concat operand") from None
 
 
+def _validate_object_id(value, parameters):
+    known = _known(value, parameters)
+    if known is not UNKNOWN and known is not STRING and not (
+            type(known) is int or type(known) is str and known != ""):
+        raise DeclarationError("object_id must be a non-empty string, exact integer, or existing reference")
+
+
 def _scalar_known(value, parameters):
     known = _known(value, parameters)
     return known is UNKNOWN or known is STRING or is_scalar(known)
@@ -577,7 +584,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                     raise DeclarationError("composition exceeds 1000 expanded leaves")
                 continue
         user = _step_user(item, users)
-        _mapping(item, {"id", "do", "target", "value", "duration", "expect", "poll", "on_failure", "user", "session"}, "step")
+        _mapping(item, {"id", "do", "target", "object_id", "value", "duration", "expect", "poll", "on_failure", "user", "session"}, "step")
         if "session" in item and (type(item["session"]) is not str or item["session"] != "new"):
             raise DeclarationError("session must be the literal string new; omit it to reuse")
         if "on_failure" in item and (type(item["on_failure"]) is not str or item["on_failure"] != "stop"):
@@ -600,6 +607,15 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         if ((set(item) & {"target", "value", "duration"}) - allowed) or not allowed <= set(item):
             raise DeclarationError(f"{action}: wrong action fields; required {sorted(allowed)}")
         target = _string(item["target"], "target") if "target" in item else None
+        object_id = None
+        if "object_id" in item:
+            if action != "click":
+                raise DeclarationError("object_id is only supported on click steps")
+            raw_id = item["object_id"]
+            object_id = _reference(raw_id, declared_parameters, prior, bindings, "object_id")
+            if object_id is None:
+                object_id = raw_id
+            _validate_object_id(object_id, declared_parameters)
         value = _data(item.get("value"), declared_parameters, prior, bindings, "value")
         duration = item.get("duration")
         if action == "wait" and (type(duration) is not int or duration < 0):
@@ -630,7 +646,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                 raise DeclarationError("poll.on_timeout must be FAIL or SKIP")
             poll = PollPolicy(policy)
         step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted,
-                    on_failure=item.get("on_failure", "continue"), user=user, session=item.get("session"))
+                    on_failure=item.get("on_failure", "continue"), user=user, session=item.get("session"),
+                    object_id=object_id)
         steps.append(step)
         reference_bindings.update({binding.placeholder: binding for binding in bindings})
         execution_ids.add(sid)
@@ -666,6 +683,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
             raise DeclarationError("composition exceeds 1000 expanded leaves")
         validate_instantiated(result)
         for step in result.steps:
+            if step.object_id is not None:
+                _validate_object_id(step.object_id, result.parameters)
             for assertion in step.expect.backend_state:
                 if assertion.check == object_state.CHECK:
                     _validate_object_state(assertion.params, result.parameters)

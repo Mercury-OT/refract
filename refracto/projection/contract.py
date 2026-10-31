@@ -79,6 +79,8 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> D
     not_checked = [f"{step.id}: object_field_equals is outside contract scope"
                    for step in scenario.steps
                    if any(a.check == "object_field_equals" for a in step.expect.backend_state)]
+    not_checked.extend(f"{step.id}: object_id selection is outside contract scope"
+                       for step in scenario.steps if step.object_id is not None)
     try:
         ensure_bound_run_values(scenario)
     except ValueError as exc:

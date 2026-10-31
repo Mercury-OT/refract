@@ -64,6 +64,8 @@ class StepResult:
     blocked_by: list[str] = field(default_factory=list, kw_only=True, compare=False)
     response_origin: ResponseOrigin | None = field(default=None, kw_only=True, compare=False)
     binding_sources: dict[str, BindingSource] = field(default_factory=dict, kw_only=True, compare=False)
+    object_selection: object = field(default=None, kw_only=True, repr=False,
+                                     compare=False, metadata={"sensitive": True})
     state_observations: list = field(default_factory=list, kw_only=True, repr=False,
                                     compare=False, metadata={"sensitive": True})
     user: str | None = field(default=None, kw_only=True)

@@ -29,6 +29,7 @@ DOCUMENT = ROOT / "SCENARIO.md"
 # Each signature identifies a context, never a copied declaration. Unknown,
 # duplicate and missing fences require an explicit inventory decision.
 CONTEXTS = {
+    "object_selection": "- id: open_editor\n",
     "query": "- id: next_page\n",
     "headers": "- id: submit\n",
     "comparison": "- check: field_equals\n",
@@ -140,7 +141,8 @@ def render_context(name, body):
             "        path: [records]\n        body:\n          composed:\n") + indent(body, "            ") + (
             "    expect:\n      response:\n        - check: success\n")
     earlier = {"query": "first_page", "comparison": "read_before", "collection": "create",
-               "dictionary": "create", "member": "locate", "stop": "create"}.get(name)
+               "dictionary": "create", "member": "locate", "stop": "create",
+               "object_selection": "create"}.get(name)
     prior = indent(yaml.safe_dump([request(earlier)], sort_keys=False), "  ") if earlier else ""
     if name == "results":
         return prefix + "steps:\n" + indent(yaml.safe_dump([request("create_request")],
@@ -221,6 +223,8 @@ def test_alternate_valid_fences_are_inventoried(opening, closing):
 
 
 @pytest.mark.parametrize("name,before,after", [
+    ("object_selection", "from_step: create", "from_step: missing_create"),
+    ("object_selection", "do: click", "do: open"),
     ("query", "from_step: first_page", "from_step: absent_page"),
     ("status_equals", "value: 201", "value: true"),
     ("dictionary", "key: id", "key: []"),
@@ -258,6 +262,7 @@ class Consumer:
 
 
 EXAMPLES = {
+    "examples/ui_object_targets/scenario.yaml": Consumer("tests/browser/test_ui_object_target_consumers.py::test_same_scenario_selects_nonfirst_record_and_edits_only_its_object", "live UI e2e; two synthetic Chromium consumers and real HTTP"),
     "examples/sqlite_records/scenarios/create_and_verify_storage.yaml": Consumer("tests/test_object_state_sqlite.py::test_sqlite_committed_record_matches_observed_state", "backend, API e2e; real local SQLite storage"),
     "examples/documents/scenarios/owner_peer.yaml": Consumer("tests/test_documents_users_sessions.py::test_owner_reads_and_distinct_same_role_peer_is_denied", "backend, contract, API e2e"),
     "examples/documents/scenarios/permission_sessions.yaml": Consumer("tests/test_documents_users_sessions.py::test_permission_change_old_session_then_reauthenticate_same_account", "backend, contract, API e2e"),
@@ -307,7 +312,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 25
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 26
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps
@@ -341,7 +346,10 @@ def test_consumer_inventory_names_real_functions_and_collected_nodes():
     # available owners here; full-suite CI collects AND executes every owner.
     demo_present = all(importlib.util.find_spec(name) is not None
                        for name in ("httpx", "fastapi", "uvicorn", "playwright"))
-    expected = {node for node in nodes if demo_present or not node.startswith("tests/demo/")}
+    browser_present = importlib.util.find_spec("playwright") is not None
+    expected = {node for node in nodes
+                if (demo_present or not node.startswith("tests/demo/"))
+                and (browser_present or not node.startswith("tests/browser/"))}
     result = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q",
         "-o", "addopts=", "-p", "no:cacheprovider", *sorted(expected)], cwd=ROOT,
         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True,

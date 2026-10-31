@@ -133,7 +133,7 @@ execution, not a multi-action adapter primitive.
 | Action | Declaration | Meaning |
 | --- | --- | --- |
 | Open | `do: open`, `target` | open one logical page |
-| Click | `do: click`, `target` | activate one logical control |
+| Click | `do: click`, `target`, optional `object_id` | activate one logical control, optionally for one observed business object |
 | Fill | `do: fill`, `target`, `value` | fill one logical input |
 | Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
 | API request | `do: {request: {method, path, query?, headers?, body?}}` | send the declared request |
@@ -156,6 +156,55 @@ percent data and ordinary punctuation are not dot-segment navigation.
 One step may have no expectations. The entire Scenario must have at least one
 effective request constraint or bounded assertion. An API command, wait, or
 empty expectation container alone does not make a test.
+
+### Selecting a control for a business object
+
+`target` names the logical control, such as `records.edit_button`. Optional
+`object_id` selects the object whose control is clicked. It does not replace the
+logical target with a selector, authorize a hidden search, or assert the result.
+For example, after a `create` step has observed a normalized `id`:
+
+```yaml
+- id: open_editor
+  do: click
+  target: records.edit_button
+  object_id: {from_step: create, response_field: id}
+  expect:
+    request:
+      method: GET
+      path: [records, {from_step: create, response_field: id}]
+    response:
+      - {check: status_equals, value: 200}
+      - {check: field_equals, field: id, value: {from_step: create, response_field: id}}
+    ui:
+      - {check: visible, anchor: records.editor}
+```
+
+The complete [create, edit and read example](examples/ui_object_targets/scenario.yaml)
+runs unchanged against two synthetic browser implementations. It creates through
+an API and opens the actual UI editor; it does not test a creation form.
+
+Only `click` accepts `object_id`. Its value is a nonempty string or an exact
+integer, or an existing parameter/prior-response/member/named-result reference
+resolving to one. Integer zero is valid; booleans, null, floats, empty strings,
+containers and direct `concat` are invalid. A reference to a composed string
+parameter is allowed. Known-invalid values fail declaration validation; missing
+or invalid response-derived values block the step before an action. All existing
+one-level include and reference-order rules apply.
+
+The UI adapter must explicitly support object targeting and return the actual
+selection receipt. Old adapters cannot silently ignore the ID. Matching is
+type-strict: numeric `22` and string `"22"` are distinct. Selection requires one
+object and one visible control; no match by the action deadline or any ambiguity
+is ERROR, with no arbitrary first match. A UI selection error stops later steps
+under the existing execution rules. A matching API response cannot substitute
+for selecting the right control. Backend and contract do not verify UI selection.
+
+The browser helper reads an existing product identity, such as a detail link or
+form action, and guards the selected row/control at click dispatch. It does not
+add identity attributes or infer IDs from display names or row order. Products
+with no reliable observable identity remain unsupported for this selection.
+See [adapter mapping and limitations](docs/browser-support.md#object-specific-clicks).
 
 ## Expectations and projections
 

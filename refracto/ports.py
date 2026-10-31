@@ -150,6 +150,7 @@ class UiActionPermit:
     user: str | None = None
     session_generation: int = 0
     context_id: str = ""
+    object_id: object = field(default=None, repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -194,6 +195,15 @@ class UiTraffic:
 
 
 @dataclass(frozen=True, kw_only=True)
+class UiObjectSelection:
+    """Observed scoped-control selection; consistency evidence, not attestation."""
+
+    object_id: object = field(repr=False, metadata={"sensitive": True})
+    object_matches: int
+    control_matches: int
+
+
+@dataclass(frozen=True, kw_only=True)
 class UiActionEvidence:
     """Adapter evidence returned for one permitted semantic UI action."""
 
@@ -227,6 +237,7 @@ class UiActionEvidence:
     session_generation: int = 0
     context_id: str = ""
     diagnostic_notes: list[str] = field(default_factory=list, kw_only=True, repr=False)
+    object_selection: UiObjectSelection | None = field(default=None, repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -295,6 +306,10 @@ class StepwiseUiDriver(ABC):
     def supports_stepwise_mode(self, mode: str) -> bool:
         """Explicitly opt into mock or live primitive execution."""
         ...
+
+    def supports_object_targeting(self, mode: str) -> bool:
+        """Opt in only when scoped clicks provide a validated selection receipt."""
+        return False
 
     @abstractmethod
     def open_stepwise(

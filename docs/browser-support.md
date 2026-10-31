@@ -86,8 +86,9 @@ class RecordsUi(ports.UiDriver, ports.StepwiseUiDriver):
 
 `open` creates an owned browser context at `about:blank`; the authorized `open`
 primitive performs navigation. It does not log in or prepare business objects.
-An `open` permit takes one absolute same-origin URL and no selector. A `click` or
-`fill` takes one CSS selector and no URL. Only `fill` accepts a value, which must
+An `open` permit takes one absolute same-origin URL and no selector. An ordinary
+`click` or `fill` takes one CSS selector and no URL. Object-specific clicks use
+the separate mapping below. Only `fill` accepts a value, which must
 already be a string. The helper passively waits for visibility and then requires
 exactly one visible match. It never chooses an arbitrary match or adds an extra
 business action to make an assertion pass.
@@ -122,6 +123,68 @@ truthfulness or independent proof of server-side identity.
 The executable [Demo adapter](../adapters/demo/ui.py) uses the same helper with
 its own mappings and rendering interpretation. Response normalization remains
 the product adapter's responsibility.
+
+## Object-specific clicks
+
+For a click with `object_id`, opt in through
+`supports_object_targeting(mode)` on the StepwiseUiDriver. The default is false;
+only exact True declares support. Core rejects unsupported scoped Scenarios
+before opening a context or performing a business action in that projection.
+The existing perform_step signature does not change.
+
+Map the logical control to an `ObjectTarget`, not a selector interpolated from
+the requested ID:
+
+```python
+from refracto_browser import ObjectTarget
+
+edit_target = ObjectTarget(
+    rows=".record",
+    control="button.edit",
+    read_id="row => row.querySelector('a.details').getAttribute('href').split('/').at(-1)",
+)
+# In perform_step, after checking the logical target:
+evidence = browser.perform(context, permit, object_target=edit_target)
+```
+
+This illustrative reader extracts a string ID from the target's ordinary detail
+link; it is appropriate only for a product whose link contract has that form.
+The executable [two-consumer example](../examples/ui_object_targets/README.md)
+has tested mappings for ordinary detail links and form actions. Identity parsing
+belongs to that reviewed product mapping, not to a universal URL heuristic.
+
+The frozen mapping contains native CSS row/relative-control selectors and a
+read-only JavaScript reader. The reader receives one actual row, not the requested
+ID or expectations. It must observe the product, not create identity metadata or
+guess from names/order. This is adapter code, not a Scenario expression language
+or a sandbox. Missing or malformed visible-row identities are errors, not ignored
+rows. Numeric identities outside JavaScript's safe integer range are rejected;
+use an actually observed string identity where the product supplies one.
+
+The helper requires one matching visible object and one visible control, waits
+only within the existing action deadline for missing readiness, and rejects
+ambiguity. It pins the selected elements and checks identity and uniqueness again
+before application click handlers. Replaced elements, changed identities or new
+duplicates cannot redirect a click silently. No synthetic/forced click, extra
+navigation, pagination, API fallback or DOM identity injection is performed.
+The guard cannot undo earlier pointer/hover effects and is not an atomic
+transaction against hostile page code. Legitimate row removal by the accepted
+click handler is allowed.
+
+This slice observes selection and completion in the current document. A scoped
+click that replaces/navigates the entire document is not supported: loss of the
+selection receipt is an execution error, never a pass. The supplied consumers
+open an in-page editor. Full-document selection receipt transport needs separate
+validation; do not infer support from these examples.
+
+`UiActionEvidence.object_selection` holds a `UiObjectSelection` with the actual
+object_id and exact integer object_matches/control_matches, both 1. Core checks
+it against the signed permit and retains an owned copy on StepResult. It is
+required even without a request; unscoped actions must not return it. IDs and
+receipts are hidden from default repr, but generic serialization is not safe.
+This receipt provides local consistency, not independent proof that an arbitrary
+adapter is truthful. Actual request association and request/response checks still
+apply, including when the target sends a request for the wrong object.
 
 The helper extracts query keys and values from each actual request URL before
 logical-path mapping, routing, and recording. `logical_path` receives only the

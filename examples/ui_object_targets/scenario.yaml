@@ -1,0 +1,69 @@
+schema_version: 1
+scenario: records.create_edit_read
+description: Create a record, edit that record in the list, and read its changed content.
+users: [editor]
+parameters:
+  record_code: {from_run: unique}
+  original_name: Example record
+  updated_name: Updated record
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          code: {from_parameter: record_code}
+          name: {from_parameter: original_name}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: id}
+  - id: open_list
+    do: open
+    target: records.page
+  - id: open_editor
+    on_failure: stop
+    do: click
+    target: records.edit_button
+    object_id: {from_step: create, response_field: id}
+    expect:
+      request:
+        method: GET
+        path: [records, {from_step: create, response_field: id}]
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: id, value: {from_step: create, response_field: id}}
+        - {check: field_equals, field: name, value: {from_parameter: original_name}}
+      ui:
+        - {check: visible, anchor: records.editor}
+  - id: fill_name
+    do: fill
+    target: records.name_input
+    value: {from_parameter: updated_name}
+  - id: save
+    on_failure: stop
+    do: click
+    target: records.save_button
+    expect:
+      request:
+        method: PATCH
+        path: [records, {from_step: create, response_field: id}]
+        body:
+          name: {from_parameter: updated_name}
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: id, value: {from_step: create, response_field: id}}
+        - {check: field_equals, field: name, value: {from_parameter: updated_name}}
+  - id: read_again
+    do:
+      request:
+        method: GET
+        path: [records, {from_step: create, response_field: id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: id, value: {from_step: create, response_field: id}}
+        - {check: field_equals, field: name, value: {from_parameter: updated_name}}

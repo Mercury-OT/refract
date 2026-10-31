@@ -36,6 +36,13 @@ For an existing integration, the [selected compatibility notes](../CHANGELOG.md)
 provide dated commits, old/new signatures and the low-level binding-helper
 migration separately from adapter ports.
 
+Object-specific UI clicks additionally require an explicit
+`supports_object_targeting(mode)` opt-in and a checked actual-selection receipt.
+Ordinary clicks need no migration; an old driver cannot ignore a new `object_id`
+silently. The [browser mapping guide](browser-support.md#object-specific-clicks)
+and [two synthetic consumers](../examples/ui_object_targets/README.md) show how
+existing links/form actions supply identities without changing the target product.
+
 The minimal wiring is copied directly from
 [`examples/minimal/adapters.py`](../examples/minimal/adapters.py):
 
