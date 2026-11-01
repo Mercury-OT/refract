@@ -52,12 +52,40 @@ Missing or ambiguous associated request evidence produces ERROR; a reliably
 associated wrong query or response produces ordinary FAILED. A mock must be an
 explicit fixture; no missing fixture is replaced by a live request.
 
-The first slice excludes modifiers, repeated/other keys, sequences, IME,
-textarea/contenteditable, frames, native activation/form submission, document
+The helper excludes modifiers, repeated/other keys, sequences, IME,
+textarea/contenteditable, frames, native form-navigation requests, document
 navigation and downloads. The scoped-click navigation feature does not extend
 to Enter. See the [frozen synthetic search consumer](../examples/ui_enter_search/README.md)
 and [task contract](tasks/ui-enter-press.md). Its UI checks cover known rows, not
 all possible filtering, pagination or accessibility behavior.
+
+### Same-page form submission after Enter
+
+The unchanged press expression also supports the browser's default Enter
+activation of the input's owning form. The helper pins the actual form and its
+first native submitter (button type=submit or input type=submit, including an
+external form-associated control). It checks the real key, native click and
+submit chain against those objects. Native submission without a default submitter,
+or through an image submitter, is unsupported; the helper never selects a fallback or calls submit,
+requestSubmit or click to complete the action.
+
+The product's submit handler must cancel navigation, including through normal
+onsubmit return-false behavior. Its fetch/XHR may then supply associated traffic
+using the existing bounded synchronous, Promise and native-await paths. The
+implicit click is transition evidence only; requests from its click handlers
+remain diagnostic. Programmatic submissions, including requestSubmit called
+inside a real key/click/submit callback, cannot borrow submit origin. A trusted
+event flag alone is not sufficient proof.
+
+Normal validation or cancellation can leave a valid Enter receipt but no submit
+request. If a request was declared, existing missing-evidence handling produces
+ERROR. The helper does not bypass validation or supply cancellation on behalf of
+the application. Disabling the submit button after the verified submit need not
+invalidate its history; the existing input identity/focus checks remain strict.
+Native navigation, unsupported transitions and background traffic keep their
+existing boundaries. See the [specification](tasks/enter-form-submission.md) and
+[new form consumer](../examples/ui_enter_form/README.md), which reuses the old
+Scenario and adapter without changing their bytes.
 
 ## Connect an adapter
 

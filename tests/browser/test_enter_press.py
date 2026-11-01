@@ -369,13 +369,15 @@ def test_unsupported_transitions_fail(lab, script):
     assert context.closed
 
 
-def test_native_form_activation_cannot_be_enter_evidence(lab):
+def test_native_form_click_handler_is_not_submit_evidence(lab):
     markup = '<form onsubmit="event.preventDefault()"><input id="entry"><button id="go">go</button></form>'
-    support, context, _, api = lab("go.onclick=()=>send('activation')", markup=markup)
+    support, context, _, api = lab("go.onclick=()=>send('activation').then(()=>window.done=true)", markup=markup)
     focus(context)
-    with pytest.raises(RuntimeError, match='browser action'):
-        press(support, context)
-    assert api.requests == []
+    evidence = press(support, context)
+    assert evidence.traffic == []
+    context.page.wait_for_function('window.done === true')
+    assert context.traffic == []
+    assert len(api.requests) == 1
 
 
 def test_post_press_idle_navigation_rejected_before_next_action(lab):

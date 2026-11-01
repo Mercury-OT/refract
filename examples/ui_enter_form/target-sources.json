@@ -1,0 +1,12 @@
+{
+  "manifest_version": 1,
+  "sha256": {
+    "app.py": "4536ec5f4c9b6182c8b367c8312360f6400373a284eb52fe8a23b231da7d3f0e",
+    "listener.js": "f344cb6712701fd6cdaf26cff430cff37a69bb002e6ae5da79974a0801de6fc3",
+    "property.js": "7c5ee558c17df5f29766ec35bb6d692d17662e4c305b64ca1a4fa136472d4e73"
+  },
+  "shared_sha256": {
+    "../ui_enter_search/app.py": "d87a951d8702a998aa3b9d6d1da0e3dc1397ec465855a43b99ae5d3d066f2d5c"
+  },
+  "source_note": "Normal form sources frozen before consumer wrapper and tests. The service and dataset are shared with the existing Enter search example."
+}
