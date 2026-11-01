@@ -9,7 +9,30 @@ import argparse
 import json
 import sys
 
-from refracto.declaration.loader import DeclarationError, load_scenario
+from refracto.declaration.loader import DeclarationError, load_flow, load_scenario
+
+
+def _validate_flow(path: str, *, expand=False) -> int:
+    try:
+        flow = load_flow(path)
+        if expand:
+            from refracto.declaration.expansion import flow_expansion_view
+            rendered = json.dumps(flow_expansion_view(flow), ensure_ascii=False, indent=2, allow_nan=False)
+        else:
+            rendered = (f"OK Flow {flow.id}  scenarios={len(flow.nodes)} "
+                        f"steps={len(flow.scenario.steps)} on_failure={flow.on_failure}")
+    except FileNotFoundError:
+        print(f"INVALID {path}: file not found", file=sys.stderr)
+        return 2
+    except DeclarationError as error:
+        print(f"INVALID {path}: {error}", file=sys.stderr)
+        return 2
+    except Exception:
+        # Parsing errors must not expose source excerpts or initial data.
+        print(f"INVALID {path}: invalid or inaccessible Flow declaration", file=sys.stderr)
+        return 2
+    print(rendered)
+    return 0
 
 
 def _validate(path: str, *, expand=False) -> int:
@@ -47,6 +70,11 @@ def main(argv=None) -> int:
     v.add_argument("--expand", action="store_true", help=(
         "print the complete symbolic review plan; reveals declaration literals/defaults "
         "at source confidentiality level, never actual runtime bindings; do not publish by default"))
+    flow = sub.add_parser("validate-flow", help="validate a pinned Flow YAML and its complete Scenario plan")
+    flow.add_argument("path", help="path to a Flow YAML file")
+    flow.add_argument("--expand", action="store_true", help=(
+        "print symbolic Flow boundaries and values at source confidentiality level, "
+        "never actual runtime bindings; do not publish by default"))
     impact = sub.add_parser("impact", help="inspect shared Scenario changes and current callers, without execution or approval")
     impact.add_argument("--before", required=True, help="explicit old leaf Scenario snapshot")
     impact.add_argument("--after", required=True, help="current child file within --parents")
@@ -58,6 +86,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "validate":
         return _validate(args.path, expand=args.expand)
+    if args.cmd == "validate-flow":
+        return _validate_flow(args.path, expand=args.expand)
     if args.cmd == "impact":
         from refracto.declaration.impact import exit_code, inspect_impact, render_text
         report = inspect_impact(args.before, args.after, args.parents, show_values=args.show_values)

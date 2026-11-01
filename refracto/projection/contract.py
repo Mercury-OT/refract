@@ -18,7 +18,7 @@ from refracto.report import (CheckResult, DomainResult, StepResult, PASSED, FAIL
                             ERROR, BLOCKED, NOT_APPLICABLE, SKIPPED, COMPLETED)
 
 
-def _execution_provenance(scenario, recordings, execution_steps):
+def _execution_provenance(scenario, recordings, execution_steps, flow_blocks=None):
     """Validate core execution metadata before trusting an unexecuted outcome."""
     if execution_steps is None:
         if any(step.session == "new" for step in scenario.steps):
@@ -61,6 +61,13 @@ def _execution_provenance(scenario, recordings, execution_steps):
         raise ValueError("missing backend execution provenance")
     for step_id in unexecuted:
         causes = outcomes[step_id].blocked_by
+        # run_flow supplies only blocks already established by its own frozen
+        # entry snapshot or Scenario boundary. Ordinary standalone provenance
+        # retains its existing same-Scenario dependency/continuation checks.
+        if flow_blocks is not None and step_id in flow_blocks:
+            if tuple(causes) != tuple(flow_blocks[step_id]) or not causes:
+                raise ValueError("Flow blocked provenance differs from its execution snapshot")
+            continue
         if (type(causes) is not list or not causes
                 or any(type(cause) is not str or cause not in declarations
                        or positions[cause] >= positions[step_id] for cause in causes)):
@@ -75,7 +82,8 @@ def _execution_provenance(scenario, recordings, execution_steps):
     return generations, unexecuted
 
 
-def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> DomainResult:
+def run(scenario, provider_recordings, normalizer, *, execution_steps=None,
+        flow_blocks=None) -> DomainResult:
     not_checked = [f"{step.id}: object_field_equals is outside contract scope"
                    for step in scenario.steps
                    if any(a.check == "object_field_equals" for a in step.expect.backend_state)]
@@ -92,7 +100,7 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None) -> D
     if not consumer.entries or not any(step.request and step.expect.response for step in scenario.steps):
         return DomainResult(projection="contract", steps=[], not_checked=not_checked)
     try:
-        generations, unexecuted = _execution_provenance(scenario, provider_recordings, execution_steps)
+        generations, unexecuted = _execution_provenance(scenario, provider_recordings, execution_steps, flow_blocks)
         provider = store.provider_contract(provider_recordings, normalizer,
             required_status_keys=frozenset(key for key, shape in consumer.entries.items()
                                            if shape.allowed_http_statuses is not None),

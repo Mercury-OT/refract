@@ -1,0 +1,21 @@
+schema_version: 1
+scenario: documents.flow_update
+description: Update the observed document and publish the approved intended content.
+users: [operator]
+steps:
+  - id: submit
+    do:
+      request:
+        method: PATCH
+        path: [documents, {from_flow: document_id}]
+        body:
+          content: {from_flow: updated_content}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: document_id, value: {from_flow: document_id}}
+        - {check: field_equals, field: content, value: {from_flow: updated_content}}
+# Publish the declared intended value only after its check passes, not an oracle
+# inferred from the response that the later read is supposed to verify.
+write_flow:
+  content: {from_flow: updated_content}

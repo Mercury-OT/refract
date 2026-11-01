@@ -1,0 +1,22 @@
+schema_version: 1
+flow: documents.lifecycle
+description: Create a document, update its content, and read the same document.
+users: [editor]
+on_failure: stop
+parameters:
+  document_id: {}
+  title: {initial: Flow document}
+  content:
+    initial: {text: Initial content}
+  updated_content:
+    initial: {text: Updated content}
+scenarios:
+  - id: create
+    scenario: documents.flow_create
+    with_users: {operator: editor}
+  - id: update
+    scenario: documents.flow_update
+    with_users: {operator: editor}
+  - id: read
+    scenario: documents.flow_read
+    with_users: {operator: editor}
