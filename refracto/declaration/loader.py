@@ -584,7 +584,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                     raise DeclarationError("composition exceeds 1000 expanded leaves")
                 continue
         user = _step_user(item, users)
-        _mapping(item, {"id", "do", "target", "object_id", "value", "duration", "expect", "poll", "on_failure", "user", "session"}, "step")
+        _mapping(item, {"id", "do", "target", "key", "object_id", "value", "duration", "expect", "poll", "on_failure", "user", "session"}, "step")
         if "session" in item and (type(item["session"]) is not str or item["session"] != "new"):
             raise DeclarationError("session must be the literal string new; omit it to reuse")
         if "on_failure" in item and (type(item["on_failure"]) is not str or item["on_failure"] != "stop"):
@@ -601,12 +601,18 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
                 raise DeclarationError("do mapping must contain only request")
             request = _request(action["request"], declared_parameters, prior, bindings, "do.request")
             action = "request"
-        elif action not in ("open", "click", "fill", "wait"):
-            raise DeclarationError("do must be open/click/fill/wait or a request mapping")
-        allowed = {"target"} if action in ("open", "click") else {"target", "value"} if action == "fill" else {"duration"} if action == "wait" else set()
-        if ((set(item) & {"target", "value", "duration"}) - allowed) or not allowed <= set(item):
+        elif action not in ("open", "click", "fill", "press", "wait"):
+            raise DeclarationError("do must be open/click/fill/press/wait or a request mapping")
+        allowed = ({"target"} if action in ("open", "click") else
+                   {"target", "value"} if action == "fill" else
+                   {"target", "key"} if action == "press" else
+                   {"duration"} if action == "wait" else set())
+        if ((set(item) & {"target", "key", "value", "duration"}) - allowed) or not allowed <= set(item):
             raise DeclarationError(f"{action}: wrong action fields; required {sorted(allowed)}")
         target = _string(item["target"], "target") if "target" in item else None
+        key = item.get("key")
+        if action == "press" and (type(key) is not str or key != "Enter"):
+            raise DeclarationError("press key must be the literal string Enter")
         object_id = None
         if "object_id" in item:
             if action != "click":
@@ -647,7 +653,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
             poll = PollPolicy(policy)
         step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted,
                     on_failure=item.get("on_failure", "continue"), user=user, session=item.get("session"),
-                    object_id=object_id)
+                    object_id=object_id, key=key)
         steps.append(step)
         reference_bindings.update({binding.placeholder: binding for binding in bindings})
         execution_ids.add(sid)

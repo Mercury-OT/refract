@@ -135,6 +135,7 @@ execution, not a multi-action adapter primitive.
 | Open | `do: open`, `target` | open one logical page |
 | Click | `do: click`, `target`, optional `object_id` | activate one logical control, optionally for one observed business object |
 | Fill | `do: fill`, `target`, `value` | fill one logical input |
+| Press | `do: press`, `target`, `key: Enter` | press and release Enter once on the unique, already focused logical input |
 | Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
 | API request | `do: {request: {method, path, query?, headers?, body?}}` | send the declared request |
 
@@ -143,6 +144,42 @@ secretly perform an adapter's sequence of navigation, filling and submission.
 The product may naturally navigate in response to that one actual click; the
 browser helper's documented evidence limits still apply. Wait does not trigger
 a scheduled job, change the host clock, or assert success.
+
+Press accepts only literal `Enter`; it has no value, object_id, repeat, modifier,
+sequence, polling or implicit focus action. `key` is invalid on other actions.
+An unsupported driver fails before creating a UI context. The first browser
+helper supports ordinary editable text/search inputs in the main document;
+textarea, contenteditable, native form submission and navigation are not added.
+No match, ambiguity or wrong focus is ERROR without sending the key. Focus
+displacement during delivery/collection remains an error even if later restored.
+The helper observes the trusted down/up pair; it cannot undo product effects
+already triggered before a late error. Missing or ambiguous associated traffic
+is ERROR, while a uniquely associated request with wrong query or observed wrong
+results is FAILED. Background traffic cannot repair missing keyboard evidence.
+
+```yaml
+- id: submit_search
+  do: press
+  target: records.search_input
+  key: Enter
+  expect:
+    request:
+      method: GET
+      path: [records]
+      query:
+        q: {from_parameter: search_text}
+    response:
+      - check: status_equals
+        value: 200
+```
+
+This fragment follows an explicit fill of the declared search_text parameter.
+The complete [Enter search example](examples/ui_enter_search/scenario.yaml)
+also checks actual response contents and known matching/nonmatching UI rows.
+Run live e2e to verify the keyboard obligation. Backend direct requests and
+contract recordings do not verify Enter; frontend mocks are not live evidence.
+The [browser guide](docs/browser-support.md#enter-on-an-already-focused-input)
+describes the capability and receipt required from custom adapters.
 
 An API action stores its request under `do.request`, never under `expect`.
 A UI action may declare `expect.request` to constrain the traffic it causes.

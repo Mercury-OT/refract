@@ -151,6 +151,7 @@ class UiActionPermit:
     session_generation: int = 0
     context_id: str = ""
     object_id: object = field(default=None, repr=False, metadata={"sensitive": True})
+    key: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -204,6 +205,17 @@ class UiObjectSelection:
 
 
 @dataclass(frozen=True, kw_only=True)
+class UiKeyPress:
+    """Observed key delivery; a checked adapter claim, not attestation."""
+
+    key: str = field(repr=False)
+    target_matches: int
+    focused: bool
+    keydown_count: int
+    keyup_count: int
+
+
+@dataclass(frozen=True, kw_only=True)
 class UiActionEvidence:
     """Adapter evidence returned for one permitted semantic UI action."""
 
@@ -238,6 +250,7 @@ class UiActionEvidence:
     context_id: str = ""
     diagnostic_notes: list[str] = field(default_factory=list, kw_only=True, repr=False)
     object_selection: UiObjectSelection | None = field(default=None, repr=False, metadata={"sensitive": True})
+    key_press: UiKeyPress | None = field(default=None, repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -309,6 +322,10 @@ class StepwiseUiDriver(ABC):
 
     def supports_object_targeting(self, mode: str) -> bool:
         """Opt in only when scoped clicks provide a validated selection receipt."""
+        return False
+
+    def supports_key_press(self, mode: str, key: str) -> bool:
+        """Opt in only when key delivery provides a validated focused receipt."""
         return False
 
     @abstractmethod

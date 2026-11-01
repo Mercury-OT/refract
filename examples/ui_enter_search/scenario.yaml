@@ -1,0 +1,56 @@
+schema_version: 1
+scenario: records.search_with_enter
+description: Search records by pressing Enter in the already focused search input.
+users: [reader]
+parameters:
+  search_text: report
+  expected_name: Quarterly report
+  excluded_name: Invoice
+steps:
+  - id: open_search
+    do: open
+    target: records.search_page
+  - id: fill_search
+    on_failure: stop
+    do: fill
+    target: records.search_input
+    value: {from_parameter: search_text}
+    # Observe the input's actual value before permitting the Enter step to run.
+    expect:
+      ui:
+        - check: objects_matching_count
+          anchor: records.search_input
+          field: value
+          value: {from_parameter: search_text}
+          count: 1
+  - id: submit_search
+    do: press
+    target: records.search_input
+    key: Enter
+    expect:
+      request:
+        method: GET
+        path: [records]
+        query:
+          q: {from_parameter: search_text}
+      response:
+        - {check: status_equals, value: 200}
+        - {check: collection_length, field: records, op: "==", value: 1}
+        - check: collection_matching_count
+          field: records
+          matching:
+            name: {from_parameter: expected_name}
+          count: 1
+      # These counts check the expected name and one known nonmatching name.
+      # They do not assert the absence of every possible unexpected row.
+      ui:
+        - check: objects_matching_count
+          anchor: records.result_rows
+          field: name
+          value: {from_parameter: expected_name}
+          count: 1
+        - check: objects_matching_count
+          anchor: records.result_rows
+          field: name
+          value: {from_parameter: excluded_name}
+          count: 0

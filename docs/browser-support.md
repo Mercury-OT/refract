@@ -19,6 +19,46 @@ playwright install chromium
 The `demo` extra continues to include Playwright. Installing only the core or
 `dev` extra does not install it; core imports and offline tests need no browser.
 
+## Enter on an already focused input
+
+`do: press`, `target`, `key: Enter` performs one real key down/up pair, without
+focusing or clicking the target. An adapter opts in with
+`supports_key_press(mode, key)`, returning exact True only for modes/keys it
+implements; the base driver returns false. Existing drivers retain their
+ordinary actions but reject a press Scenario before opening a context.
+
+Map the logical target to one native CSS selector and pass the original permit
+to `BrowserSupport.perform(context, permit, selector=...)`. Do not call focus,
+locator.press, dispatchEvent or a direct API to implement the primitive. The
+helper permits a unique visible, enabled, editable text/search input in the main
+document. It pins the element, requires it already be active, and rechecks at
+trusted key dispatch. Hidden duplicates do not count as visible targets. A focus
+change during the active press invalidates it even if focus returns. Collection
+does not repair state, and errors cannot roll back effects already produced.
+
+Completed evidence has `UiKeyPress(key, target_matches, focused, keydown_count,
+keyup_count)` in `UiActionEvidence.key_press`. The key is Enter, all three counts
+are strict integer 1, and focused is exactly True. Core validates identity and
+copies the receipt into `StepResult.key_press`, including when a subsequent
+request/check fails. Other actions must omit this receipt. Custom adapters must
+observe the facts rather than echo a permit. This is local consistency under the
+[threat model](threat-model.md), not attestation against hostile adapter/page code.
+
+Keyboard listener/property callbacks reuse bounded request-origin capture.
+Synthetic nested events and background/timer traffic cannot borrow a trusted
+Enter callback's origin. Native-await evidence retains the native transport's
+existing bounded ancestry rules; it is not a general asynchronous-work promise.
+Missing or ambiguous associated request evidence produces ERROR; a reliably
+associated wrong query or response produces ordinary FAILED. A mock must be an
+explicit fixture; no missing fixture is replaced by a live request.
+
+The first slice excludes modifiers, repeated/other keys, sequences, IME,
+textarea/contenteditable, frames, native activation/form submission, document
+navigation and downloads. The scoped-click navigation feature does not extend
+to Enter. See the [frozen synthetic search consumer](../examples/ui_enter_search/README.md)
+and [task contract](tasks/ui-enter-press.md). Its UI checks cover known rows, not
+all possible filtering, pagination or accessibility behavior.
+
 ## Connect an adapter
 
 The adapter supplies logical target mappings, authentication options, a read-only

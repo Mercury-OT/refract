@@ -1,0 +1,9 @@
+{
+  "boundary": "Normal application sources frozen before adapter and consumer test authoring. Both handler forms share this new service and its built-in static sample data.",
+  "sha256": {
+    "app.py": "d87a951d8702a998aa3b9d6d1da0e3dc1397ec465855a43b99ae5d3d066f2d5c",
+    "listener.js": "ddec7ae601c51e32f8771a36f58884f31ede93675565722d84fe991e70362519",
+    "property.js": "6dceefa3ce20009870a74da772c7c75636996b47bdcc9560cd5f50006925c197"
+  },
+  "version": 1
+}

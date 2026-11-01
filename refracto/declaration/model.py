@@ -96,6 +96,7 @@ class Step:
     value: object = None
     duration: int | None = None
     request_asserted: bool = False
+    key: str | None = field(default=None, kw_only=True)
     object_id: object = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
     on_failure: str = field(default="continue", kw_only=True)
     user: str | None = field(default=None, kw_only=True)

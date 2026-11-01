@@ -20,6 +20,7 @@ from ._native import NativeCollector
 from ._navigation import NavigationCollector
 from ._request_body import is_form_content_type, parse_form_body
 from ._object_target import ObjectTarget, PinnedObjectTarget, require_browser_id
+from ._key_press import KeyPressBoundary, PinnedKeyPress
 
 
 _runtime = threading.local()
@@ -87,6 +88,7 @@ class _Context:
     mock_cursor: int = 0
     native: object = None
     navigation: object = None
+    key_boundary: object = None
 
     def __repr__(self):
         return "<BrowserSupport context>"
@@ -247,7 +249,7 @@ class BrowserSupport:
     def _authorize(self, context, permit, url, selector, object_target=None):
         if not isinstance(permit, ports.UiActionPermit):
             raise ValueError("browser action requires an action permit")
-        if permit.mode != context.mode or permit.action not in {"open", "click", "fill"}:
+        if permit.mode != context.mode or permit.action not in {"open", "click", "fill", "press"}:
             raise ValueError("browser action permit is incompatible with context")
         for name in ("user", "session_generation", "context_id"):
             actual, expected = getattr(permit, name), getattr(context, name)
@@ -272,6 +274,9 @@ class BrowserSupport:
             raise ValueError("browser fill requires a string value")
         if permit.action != "fill" and permit.value is not None:
             raise ValueError("browser action does not accept a bound value")
+        if (permit.action == "press" and (type(permit.key) is not str or permit.key != "Enter")
+                or permit.action != "press" and permit.key is not None):
+            raise ValueError("browser action key is invalid")
         if context.execution_id not in {None, permit.execution_id}:
             raise ValueError("browser permit belongs to another execution")
         execution_key = (permit.execution_id, permit.context_id)
@@ -290,23 +295,36 @@ class BrowserSupport:
         context.permits[permit.action_id] = permit
 
     def perform(self, context, permit, *, url=None, selector=None, object_target=None):
-        """Perform exactly one open, click, or fill, then collect bounded evidence."""
+        """Perform one authorized primitive, then collect bounded evidence."""
         context = self._context(context)
         self._authorize(context, permit, url, selector, object_target)
         if context.navigation is not None:
             context.navigation.opening = object_target is None
         context.deadline = time.monotonic() + self._timeout_ms / 1000
         start, diagnostic_start, mock_start = context.traffic_cursor, context.diagnostic_cursor, context.mock_cursor
+        pressed = None
         try:
             self._check(context)
+            if context.key_boundary is not None:
+                context.key_boundary.check()
+            if context.key_boundary is not None and permit.action != "press":
+                # Only after checking the protected idle gap may the next
+                # explicitly authorized action resume its existing semantics.
+                context.key_boundary.protected = False
             selection = None
+            key_press = None
             if permit.action == "open":
                 if context.navigation is not None:
                     context.navigation.opening = True
                 context.page.goto(url, wait_until="domcontentloaded", timeout=self._remaining(context))
             else:
                 pinned = None
-                if object_target is not None:
+                if permit.action == "press":
+                    if context.key_boundary is None:
+                        context.key_boundary = KeyPressBoundary(context)
+                    context.key_boundary.begin()
+                    pressed = PinnedKeyPress(context.page, selector, permit.action_id)
+                elif object_target is not None:
                     if context.navigation is None:
                         context.navigation = NavigationCollector(self, context)
                     context.navigation.begin(permit)
@@ -332,7 +350,12 @@ class BrowserSupport:
                     }""", {"action_id": permit.action_id, "selector": selector,
                         "type": "click" if permit.action == "click" else "input"})
                 try:
-                    if permit.action == "click":
+                    if permit.action == "press":
+                        # page.keyboard has no locator focus or click behavior.
+                        # The capture guard revalidates each actual trusted event.
+                        context.page.keyboard.down("Enter")
+                        context.page.keyboard.up("Enter")
+                    elif permit.action == "click":
                         locator.click(timeout=self._remaining(context))
                     else:
                         locator.fill(permit.value, timeout=self._remaining(context))
@@ -343,11 +366,12 @@ class BrowserSupport:
                         selection = context.navigation.selection()
                 finally:
                     try:
-                        context.page.evaluate("""() => {
-                        window.__refractBrowser.armed = null;
-                        window.__refractBrowser.event = null;
-                        window.__refractBrowser.origin = null;
-                        }""")
+                        if pressed is None:
+                            context.page.evaluate("""() => {
+                            window.__refractBrowser.armed = null;
+                            window.__refractBrowser.event = null;
+                            window.__refractBrowser.origin = null;
+                            }""")
                     finally:
                         if pinned is not None:
                             pinned.close()
@@ -368,6 +392,14 @@ class BrowserSupport:
                 self._collect_mock_headers(context, mock_recordings)
             self._check(context)
             self._remaining(context)
+            if pressed is not None:
+                # Snapshot/header reads can dispatch focus and navigation work.
+                # Keep the guard armed until this final observed receipt boundary.
+                key_press = pressed.receipt()
+                pressed.close()
+                pressed = None
+                context.key_boundary.check()
+                self._remaining(context)
             current, diagnostics = [], list(context.diagnostics[diagnostic_start:diagnostic_end])
             for traffic in context.traffic[start:traffic_end]:
                 if traffic.action_id == permit.action_id:
@@ -384,6 +416,7 @@ class BrowserSupport:
                 mock_recordings=mock_recordings,
                 diagnostic_notes=list(context.native.notes) if context.native is not None else [],
                 object_selection=selection,
+                key_press=key_press,
             ))
             if context.navigation is not None:
                 context.navigation.end()
@@ -394,6 +427,11 @@ class BrowserSupport:
         except Exception:
             self._fail(context, "browser action or evidence collection failed")
         finally:
+            if pressed is not None:
+                try:
+                    pressed.close()
+                except Exception:
+                    pass
             if context.navigation is not None:
                 context.navigation.opening = False
             context.deadline = None

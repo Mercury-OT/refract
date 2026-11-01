@@ -5,6 +5,21 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-01: explicit Enter input operation
+
+The [bounded Enter task](docs/tasks/ui-enter-press.md) adds `do: press`, target
+and literal `key: Enter` without changing schema_version: 1 or include depth.
+Existing YAML is unchanged. Step.key is optional and keyword-only;
+UiActionPermit.key is optional and covered by permit integrity checks.
+
+Custom UI drivers explicitly opt in through supports_key_press(mode, key), whose
+default is false. Completed press evidence requires UiKeyPress in key_press;
+core checks strict counts/focus/key and retains an owned report copy. Ordinary
+actions omit it. perform_step signatures do not change and receive no assertions.
+BrowserSupport owns unique focused-input delivery and capture; it never focuses
+the input on behalf of a press. See the
+[browser contract](docs/browser-support.md#enter-on-an-already-focused-input).
+
 ## 2026-10-31: bounded same-tab object navigation
 
 BrowserSupport can retain an actual scoped-click selection across a supported

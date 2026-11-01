@@ -4,6 +4,7 @@ _TEMPLATE = r"""(() => {
   const nativeTransport = __NATIVE_TRANSPORT__;
   const add = EventTarget.prototype.addEventListener;
   const remove = EventTarget.prototype.removeEventListener;
+  const dispatch = EventTarget.prototype.dispatchEvent;
   const then = Promise.prototype.then;
   const fetch = window.fetch;
   const xhrOpen = XMLHttpRequest.prototype.open;
@@ -25,6 +26,11 @@ _TEMPLATE = r"""(() => {
     pending: state.pending[state.armed.action_id] || 0, errors: state.errors.length > 0});
   if (window.navigation) add.call(window.navigation, 'navigate', event => {
     const arm = state.armed;
+    if (arm?.type === 'press') {
+      state.errors.push('keyboard navigation is unsupported');
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
     if (!arm?.selection || event.destination.sameDocument) return;
     let form = 'unsupported';
     if (event.isTrusted && !event.formData && event.downloadRequest === null &&
@@ -78,9 +84,28 @@ _TEMPLATE = r"""(() => {
       reportError('event completion failed'); end(origin);
     });
   };
+  // A nested synthetic event is a distinct, unassociated invocation even if a
+  // parsed property handler bypassed our JavaScript property setters.
+  EventTarget.prototype.dispatchEvent = function(event) {
+    return call(null, dispatch, this, [event]);
+  };
   const capture = options => typeof options === 'boolean' ? options : !!options?.capture;
   const eventOrigin = event => {
     const arm = state.armed;
+    if (arm?.type === 'press') {
+      if (event.isTrusted && ['keydown', 'keypress', 'keyup'].includes(event.type)) {
+        let allowed = false;
+        try { allowed = arm.guard(event) === true; } catch (_) {}
+        if (!allowed) {
+          reportError('keyboard target or delivery changed');
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return null;
+        }
+        state.event = event;
+      }
+      return event.isTrusted && state.event === event ? arm.action_id : null;
+    }
     if (arm && !state.event && event.isTrusted && arm.type === event.type) {
       if (typeof arm.guard === 'function') {
         let allowed = false;
@@ -143,7 +168,7 @@ _TEMPLATE = r"""(() => {
     return propertyWrappers.get(listener);
   };
   for (const prototype of [Window.prototype, Document.prototype, HTMLElement.prototype, SVGElement.prototype]) {
-    for (const property of ['onclick', 'oninput']) {
+    for (const property of ['onclick', 'oninput', 'onkeydown', 'onkeypress', 'onkeyup']) {
       const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
       if (!descriptor?.get || !descriptor?.set || !descriptor.configurable) continue;
       Object.defineProperty(prototype, property, {...descriptor,
@@ -155,11 +180,25 @@ _TEMPLATE = r"""(() => {
       });
     }
   }
-  for (const type of ['click', 'input']) add.call(window, type, event => {
-    if (!eventOrigin(event)) return;
+  for (const type of ['click', 'input', 'keydown', 'keypress', 'keyup']) add.call(window, type, event => {
+    // Null-origin events need property wrappers too: otherwise a nested inline
+    // handler's native await could inherit an outer trusted invocation.
+    eventOrigin(event);
     for (const target of event.composedPath()) {
       const property = 'on' + type;
       if (typeof target[property] === 'function') target[property] = wrapProperty(target[property]);
+    }
+  }, true);
+  for (const type of ['blur', 'focusout']) add.call(window, type, event => {
+    if (state.armed?.type === 'press' && event.isTrusted &&
+        event.target === state.armed.control)
+      reportError('keyboard focus changed');
+  }, true);
+  for (const type of ['click', 'submit']) add.call(window, type, event => {
+    if (state.armed?.type === 'press' && event.isTrusted) {
+      reportError('keyboard activation is unsupported');
+      event.preventDefault();
+      event.stopImmediatePropagation();
     }
   }, true);
   Promise.prototype.then = function(onFulfilled, onRejected) {
