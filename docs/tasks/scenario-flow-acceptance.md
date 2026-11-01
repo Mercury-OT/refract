@@ -114,6 +114,32 @@ non-allowlisted documentation host. It was replaced with the allowed example.com
 host without changing the rejection test's meaning or any production code. The
 80-test declaration suite and tracked-file hygiene passed again before push.
 
+## Hosted-CI cleanup correction
+
+The first PR full-suite job hit the test guard's 300-second phase limit in an
+existing secondary-browser-target rejection test. The same commit's push full
+suite completed all 5603 tests in 1234.13 seconds with no diagnostic requests,
+so the failure was not treated as a deterministic Flow regression or hidden by
+the successful run.
+
+Independent protocol diagnostics reproduced an existing cleanup defect using
+Playwright 1.64.1 and full Chromium 156 in headless mode (not the hosted CI
+headless-shell executable). After the target guard rejected and closed a popup,
+the opener could stop responding. A final renderer reset then prevented owned
+browser cleanup. The sole production correction skips that reset after a recorded
+browser policy error; the existing failure and resource-close path still runs.
+Target interception, request permissions and evidence requirements are unchanged.
+
+The deterministic offline regression failed before the correction and passed
+after it; its paired control retains renderer reset when no policy error exists.
+The lifecycle selection passed 10 tests. Independent review passed 116 lifecycle,
+request-identity and user-binding checks without a remaining finding. The broader
+multi-origin browser, Flow-browser and lifecycle regression passed 66 tests in
+56.2 seconds with exit 0 and complete cleanup. The four unchanged popup controls passed
+with both the locked browser and the independent Chromium diagnostic: zero target
+requests, no action evidence, visible failure and complete context cleanup.
+The final corrected branch must pass the complete hosted suites before merge.
+
 ## Limits and delivery boundary
 
 Only linear ordering is implemented. All non-PASSED results remain non-PASSED;
