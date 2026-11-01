@@ -189,7 +189,7 @@ def test_literal_reference_looking_parameter_never_becomes_flow_read(tmp_path):
     lambda manifest: manifest["scenarios"]["records.create"].update(sha256="0" * 64),
     lambda manifest: manifest["scenarios"]["records.create"].update(sha256="ABC"),
     lambda manifest: manifest["scenarios"]["records.create"].update(path="../outside.yaml"),
-    lambda manifest: manifest["scenarios"]["records.create"].update(path="https://example.invalid/a"),
+    lambda manifest: manifest["scenarios"]["records.create"].update(path="https://example.com/a"),
     lambda manifest: manifest["scenarios"]["records.create"].update(includes_sha256="0" * 64),
 ])
 def test_manifest_identity_and_local_boundary_are_strict(tmp_path, mutation):
