@@ -129,7 +129,7 @@ def _native_trace(request, response):
 
 def _signature_payload(data):
     return json.dumps(
-        [data[k] for k in ("execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id",
+        [data[k] for k in ("execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id", "key",
                            "user", "session_generation", "context_id")],
         ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True,
     ).encode()
@@ -138,7 +138,7 @@ def _signature_payload(data):
 def _issue_permit(secret, execution_id, step, mode, lease, context_id):
     data = dict(execution_id=execution_id, action_id=secrets.token_hex(16),
                 step_id=step.id, mode=mode, action=step.action,
-                target=step.target, value=copy.deepcopy(step.value), object_id=copy.deepcopy(step.object_id),
+                target=step.target, value=copy.deepcopy(step.value), object_id=copy.deepcopy(step.object_id), key=step.key,
                 user=lease.user,
                 session_generation=lease.generation, context_id=context_id)
     return ports.UiActionPermit(
@@ -235,12 +235,14 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     if type(result) is not ports.UiActionResult:
         raise TypeError("perform_step must return UiActionResult")
     data = {k: getattr(permit, k) for k in (
-        "execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id",
+        "execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id", "key",
         "user", "session_generation", "context_id")}
     signed = hmac.new(secret, _signature_payload(data), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(permit.token, signed):
         raise ValueError("action permit was modified")
     if result.evidence is None:
+        if permit.action == "press":
+            raise ValueError("UI press requires key delivery evidence")
         if permit.object_id is not None:
             raise ValueError("scoped UI action requires object selection evidence")
         return None
@@ -252,6 +254,19 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     if evidence.permit_token in accepted_tokens:
         raise ValueError("replayed action evidence")
     _require_equal("permit token", evidence.permit_token, permit.token)
+    key_press = evidence.key_press
+    if permit.action != "press":
+        if key_press is not None:
+            raise ValueError("non-press UI action must not claim key delivery")
+    else:
+        if type(key_press) is not ports.UiKeyPress:
+            raise TypeError("UI press requires UiKeyPress")
+        if type(key_press.key) is not str or key_press.key != "Enter":
+            raise ValueError("UI key delivery must be Enter")
+        _require_equal("pressed key", key_press.key, permit.key)
+        if (key_press.focused is not True or any(type(count) is not int or count != 1
+                for count in (key_press.target_matches, key_press.keydown_count, key_press.keyup_count))):
+            raise ValueError("UI press requires one focused target and one key down/up pair")
     selection = evidence.object_selection
     if permit.object_id is None:
         if selection is not None:
@@ -497,15 +512,28 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         recorder=None, api=None, resolve_request=None, poll_config=None,
         mock_plan=None, now=None, sleep=None, object_state=None):
     """No legacy path: every Scenario uses this one action/expectation loop."""
-    needs_ui = any(s.action in {"open", "click", "fill"} or s.expect.frontend
+    needs_ui = any(s.action in {"open", "click", "fill", "press"} or s.expect.frontend
                    for s in scenario.steps)
     try:
         ensure_bound_run_values(scenario)
+        for step in scenario.steps:
+            if step.action == "press":
+                if (type(step.key) is not str or step.key != "Enter"
+                        or type(step.target) is not str or not step.target.strip()
+                        or step.value is not None or step.duration is not None
+                        or step.object_id is not None or step.poll is not None):
+                    raise ValueError("UI press requires a literal target and Enter key only")
+            elif step.key is not None:
+                raise ValueError("key is only supported on press steps")
         sessions = SessionManager(scenario, auth)
         sessions.preflight()
         if needs_ui and (not isinstance(ui, ports.StepwiseUiDriver)
                          or ui.supports_stepwise_mode(mode) is not True):
             raise ValueError("primitive UI capability not supported")
+        if any(step.action == "press" for step in scenario.steps):
+            if (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
+                    "UI key press", ui.supports_key_press, mode, "Enter") is not True):
+                raise ValueError("UI key press capability not supported")
         if any(step.object_id is not None for step in scenario.steps):
             if (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
                     "UI object targeting", ui.supports_object_targeting, mode) is not True):
@@ -566,7 +594,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 blocked.user = user
                 results.append(blocked)
                 continue
-            resolved, norm, object_selection = {}, None, None
+            resolved, norm, object_selection, key_press = {}, None, None, None
             lease = None
             prepared_ok = False
             try:
@@ -611,6 +639,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         evidence = _validate_evidence(outcome, permit, secret, accepted_tokens,
                                                       seen_requests, seen_traces, retained_plan, consumed)
                         object_selection = copy.deepcopy(evidence.object_selection) if evidence is not None else None
+                        key_press = copy.deepcopy(evidence.key_press) if evidence is not None else None
                         if evidence is None:
                             sr = StepResult(step.id, SKIPPED, skipped=[outcome.skip_reason])
                             sr.resolved_bindings = resolved
@@ -678,6 +707,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 sr = StepResult(declared.id, ERROR, detail=str(exc))
                 norm = None
             sr.object_selection = object_selection
+            sr.key_press = key_press
             sr.resolved_bindings = resolved
             sr.user = user
             sr.session_generation = lease.generation if lease is not None else None

@@ -29,6 +29,7 @@ DOCUMENT = ROOT / "SCENARIO.md"
 # Each signature identifies a context, never a copied declaration. Unknown,
 # duplicate and missing fences require an explicit inventory decision.
 CONTEXTS = {
+    "enter_press": "- id: submit_search\n",
     "object_selection": "- id: open_editor\n",
     "query": "- id: next_page\n",
     "headers": "- id: submit\n",
@@ -101,6 +102,7 @@ def render_context(name, body):
         return body
     metadata = {"schema_version": 1, "scenario": "demo.documented_context", "users": ["owner"]}
     parameters = {
+        "enter_press": {"search_text": "report"},
         "query": {"category": "guide"},
         "headers": {"idempotency_key": "fixed-example-key", "record_name": "Example record"},
         "comparison": {"attempted_content": {"title": "Changed"}},
@@ -262,6 +264,7 @@ class Consumer:
 
 
 EXAMPLES = {
+    "examples/ui_enter_search/scenario.yaml": Consumer("tests/browser/test_enter_search_consumers.py::test_enter_search_live", "live UI e2e; frozen synthetic search handlers and real HTTP"),
     "examples/ui_object_navigation/scenario.yaml": Consumer("tests/browser/test_object_navigation_consumers.py::test_same_scenario_navigates_edits_and_reads_the_selected_object", "live UI e2e; two full-document Chromium consumers and real HTTP"),
     "examples/ui_object_targets/scenario.yaml": Consumer("tests/browser/test_ui_object_target_consumers.py::test_same_scenario_selects_nonfirst_record_and_edits_only_its_object", "live UI e2e; two synthetic Chromium consumers and real HTTP"),
     "examples/sqlite_records/scenarios/create_and_verify_storage.yaml": Consumer("tests/test_object_state_sqlite.py::test_sqlite_committed_record_matches_observed_state", "backend, API e2e; real local SQLite storage"),
@@ -313,7 +316,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 27
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 28
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps

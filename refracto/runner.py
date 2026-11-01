@@ -68,7 +68,7 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
         raise ValueError(f"unknown projection(s): {sorted(unknown)}; valid: {sorted(_VALID_PROJECTIONS)}")
     if adapters.normalizer is None:
         raise ValueError("adapters.normalizer is required (a ResponseNormalizer)")
-    needs_ui = any(step.action in ("open", "click", "fill") or step.expect.frontend
+    needs_ui = any(step.action in ("open", "click", "fill", "press") or step.expect.frontend
                    for step in scenario.steps)
     if adapters.ui is None and ("frontend" in projections or ("e2e" in projections and needs_ui)):
         raise ValueError(
