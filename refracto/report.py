@@ -88,6 +88,9 @@ class DomainResult:
     skipped: list = field(default_factory=list)
     not_checked: list[str] = field(default_factory=list, kw_only=True)
     mock_consumption: list[dict[str, str]] = field(default_factory=list, kw_only=True)
+    flow_reads: dict = field(default_factory=dict, kw_only=True)
+    flow_writes: dict = field(default_factory=dict, kw_only=True)
+    flow_after_failures: list[str] = field(default_factory=list, kw_only=True)
     provider_recordings: list = field(
         default_factory=list,
         repr=False,
@@ -180,3 +183,88 @@ class RunReport:
                 if not c.ok:
                     out.append((d.projection, c.step, c.point, c.check, c.detail))
         return out
+
+
+@dataclass(frozen=True)
+class FlowValueProvenance:
+    """An available or invalidated shared version, without its actual value."""
+    version: int
+    available: bool
+    writer_node: str | None = None
+    source: str = "initial"
+    source_name: str | None = None
+    response_field: str | None = None
+    response_origin: ResponseOrigin | None = None
+    source_version: int | None = None
+
+
+@dataclass(frozen=True)
+class FlowValueSnapshot:
+    """Diagnostic history only; unavailable versions never supply a read."""
+    provenance: FlowValueProvenance
+    value: object = field(default=None, repr=False, metadata={"sensitive": True})
+
+
+@dataclass
+class FlowScenarioReport(RunReport):
+    node_id: str = field(default="", kw_only=True)
+
+
+@dataclass
+class FlowReport:
+    """One logical Flow run, retaining Scenario/domain/step boundaries."""
+    flow_id: str
+    run_id: str
+    scenarios: list[FlowScenarioReport] = field(default_factory=list)
+    source_lookup: dict = field(default_factory=dict, kw_only=True, repr=False)
+    source_pins: dict = field(default_factory=dict, kw_only=True)
+    parameter_history: dict = field(default_factory=dict, kw_only=True, repr=False,
+                                    metadata={"sensitive": True})
+    run_unique_values: dict = field(default_factory=dict, kw_only=True, repr=False,
+                                     metadata={"sensitive": True})
+    run_time: str | None = field(default=None, kw_only=True, repr=False,
+                                 metadata={"sensitive": True})
+    run_time_source: str | None = field(default=None, kw_only=True)
+    run_time_values: dict = field(default_factory=dict, kw_only=True, repr=False,
+                                   metadata={"sensitive": True})
+
+    @property
+    def status(self):
+        statuses = [scenario.status for scenario in self.scenarios]
+        if FAILED in statuses:
+            return FAILED
+        if not statuses or all(status == EMPTY for status in statuses):
+            return EMPTY
+        if any(status != PASSED for status in statuses):
+            return DEGRADED
+        return PASSED
+
+    @property
+    def passed(self):
+        return self.status in (PASSED, DEGRADED)
+
+    @property
+    def domains(self):
+        """Convenience aggregate; ``scenarios`` retains the execution hierarchy."""
+        names = dict.fromkeys(domain.projection for scenario in self.scenarios
+                              for domain in scenario.domains)
+        return [DomainResult(name,
+            steps=[step for scenario in self.scenarios for domain in scenario.domains
+                   if domain.projection == name for step in domain.steps],
+            skipped=[reason for scenario in self.scenarios for domain in scenario.domains
+                     if domain.projection == name for reason in domain.skipped],
+            not_checked=[reason for scenario in self.scenarios for domain in scenario.domains
+                         if domain.projection == name for reason in domain.not_checked],
+            mock_consumption=[item for scenario in self.scenarios for domain in scenario.domains
+                              if domain.projection == name for item in domain.mock_consumption],
+            provider_recordings=[record for scenario in self.scenarios for domain in scenario.domains
+                                 if domain.projection == name for record in domain.provider_recordings])
+                for name in names]
+
+    def degradations(self):
+        return [(scenario.node_id, *item) for scenario in self.scenarios
+                for item in scenario.degradations()]
+
+    def localize(self):
+        return [(scenario.node_id, *item) for scenario in self.scenarios
+                for item in scenario.localize()]

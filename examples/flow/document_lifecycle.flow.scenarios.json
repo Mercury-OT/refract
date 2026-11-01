@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "scenarios": {
+    "documents.flow_create": {
+      "path": "create_document.yaml",
+      "sha256": "4275ad74cf719758e1d630b4842c6dc997149048c3957ebe93e2470b089bc57d"
+    },
+    "documents.flow_update": {
+      "path": "update_document.yaml",
+      "sha256": "ea3c724c2413b229a015011a3b8f58b0e24f1e4e4918c51188f459c7fdc3472a"
+    },
+    "documents.flow_read": {
+      "path": "read_document.yaml",
+      "sha256": "4611d56f2fce32067429c31f90d19193c436d5a82e891b2a5faebfb22ba4b1cb"
+    }
+  }
+}

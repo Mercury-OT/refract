@@ -108,9 +108,10 @@ def _eval_request_shape(request, outgoing, *, request_header_items=None):
                        "" if ok else "associated UI request violates its declaration")
 
 
-def run(scenario, *, ui, normalizer, auth=None, mock_plan=None, now=None, sleep=None):
+def run(scenario, *, ui, normalizer, auth=None, mock_plan=None, now=None, sleep=None,
+        flow_execution=None):
     return ui_stepwise.run(
         scenario, ui=ui, normalizer=normalizer, auth=auth,
         eval_frontend=_eval_frontend, eval_request_shape=_eval_request_shape,
-        mock_plan=mock_plan, now=now, sleep=sleep,
+        mock_plan=mock_plan, now=now, sleep=sleep, flow_execution=flow_execution,
     )

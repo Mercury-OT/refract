@@ -22,6 +22,7 @@ class SessionManager:
         self._principals = {}
         self._current = {}
         self._authentication_ids = set()
+        self._unavailable = set()
         self._ready = False
 
     def preflight(self):
@@ -69,9 +70,14 @@ class SessionManager:
             return SessionLease(None, 0, None)
         if user not in self._principals:
             raise SessionError("undeclared user")
+        if user in self._unavailable and not new:
+            raise SessionError("the user's authentication is unavailable; explicit session replacement is required")
         previous = self._current.get(user)
         if previous is not None and not new:
             return previous
+        # Failed acquisition or replacement must not silently retry or fall back
+        # to an earlier session when a later Scenario explicitly continues.
+        self._unavailable.add(user)
         try:
             acquired = self.auth.session(user)
         except Exception:
@@ -90,4 +96,5 @@ class SessionManager:
         lease = SessionLease(user, 1 if previous is None else previous.generation + 1,
                              acquired.credentials)
         self._current[user] = lease
+        self._unavailable.remove(user)
         return lease

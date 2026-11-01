@@ -40,6 +40,13 @@ class _ReferenceScope(dict):
         self.include_results = {}
 
 
+class _Parameters(dict):
+    """Carry Flow declaration scope without adding authored Scenario inputs."""
+    def __init__(self, values=(), *, flow_keys=None):
+        super().__init__(values)
+        self.flow_keys = flow_keys
+
+
 class _Loader(yaml.SafeLoader):
     def resolve(self, kind, value, implicit):
         tag = super().resolve(kind, value, implicit)
@@ -135,8 +142,17 @@ def _reference(value, parameters, prior, bindings, where, *, selectors=True):
     if not isinstance(value, dict):
         return None
     if any(type(key) is str and key.startswith("from_")
-           and key not in {"from_parameter", "from_step", "from_bind", "from_input"} for key in value):
+           and key not in {"from_parameter", "from_step", "from_bind", "from_input", "from_flow"} for key in value):
         raise DeclarationError("unknown reference key in a declaration value")
+    if "from_flow" in value:
+        _mapping(value, {"from_flow"}, where)
+        keys = getattr(parameters, "flow_keys", None)
+        if keys is None:
+            raise DeclarationError("from_flow requires a scheduled Flow context")
+        key = _string(value["from_flow"], "from_flow key")
+        if key not in keys:
+            raise DeclarationError("from_flow must name a declared Flow parameter")
+        return ValueRef("flow", key)
     if "from_parameter" in value:
         _mapping(value, {"from_parameter"}, where)
         key = _string(value["from_parameter"], where)
@@ -476,6 +492,12 @@ def load_scenario(path: str) -> Scenario:
                           source_hash=hashlib.sha256(data).hexdigest())
 
 
+def load_flow(path: str):
+    """Preflight a pinned local Flow and compile its namespaced execution plan."""
+    from refracto.declaration.flows import load_flow as load
+    return load(path)
+
+
 def _parameter_data(value):
     """Reject ambiguous authored data; a whole-parameter literal bypasses this."""
     if isinstance(value, dict):
@@ -489,19 +511,21 @@ def _parameter_data(value):
             _parameter_data(item)
 
 
-def _parse_parameters(parameters):
+def _parse_parameters(parameters, *, flow_keys=None):
     """Parse reserved whole-parameter forms without interpreting literal data."""
     if not isinstance(parameters, dict):
         raise DeclarationError("parameters must be a unique-key mapping")
     for key, value in parameters.items():
         _string(key, "parameter key")
         _json(value, "parameter")
-    parameters = dict(parameters)
+    parameters = _Parameters(parameters, flow_keys=flow_keys)
     for key, value in parameters.items():
         if type(value) is dict and "literal" in value:
             if set(value) != {"literal"}:
                 raise DeclarationError("literal parameter wrapper must contain only literal")
             parameters[key] = copy.deepcopy(value["literal"])
+        elif type(value) is dict and "from_flow" in value:
+            parameters[key] = _reference(value, parameters, {}, [], "parameter from_flow")
         elif type(value) is dict and "from_run" in value:
             if set(value) == {"from_run"} and value["from_run"] == "unique":
                 parameters[key] = RunUnique()
@@ -533,8 +557,14 @@ def _parse_parameters(parameters):
     return parameters
 
 
-def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
-    _mapping(raw, {"schema_version", "scenario", "description", "users", "parameters", "grid", "steps", "results"}, "top-level")
+def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
+                   allow_write_flow=False) -> Scenario:
+    allowed = {"schema_version", "scenario", "description", "users", "parameters", "grid", "steps", "results"}
+    if flow_keys is not None and allow_write_flow:
+        allowed.add("write_flow")
+    if isinstance(raw, dict) and "write_flow" in raw and "write_flow" not in allowed:
+        raise DeclarationError("write_flow requires a directly scheduled Flow Scenario")
+    _mapping(raw, allowed, "top-level")
     if type(raw.get("schema_version")) is not int or raw["schema_version"] != 1:
         raise DeclarationError("schema_version must be integer 1; old declarations are unsupported")
     scenario_id = _string(raw.get("scenario"), "scenario")
@@ -545,8 +575,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
     description = raw.get("description", "")
     if not isinstance(description, str):
         raise DeclarationError("description must be a string")
-    parameters = _parse_parameters(raw.get("parameters", {}))
-    declared_parameters = dict(parameters)
+    parameters = _parse_parameters(raw.get("parameters", {}), flow_keys=flow_keys)
+    declared_parameters = _Parameters(parameters, flow_keys=flow_keys)
     grid = None
     if "grid" in raw:
         g = _mapping(raw["grid"], {"level", "module"}, "grid")
@@ -557,7 +587,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
     execution_ids = set()
     source_lookup, source_ids, include_user_mappings, reference_bindings = {}, set(), {}, {}
     for item in raw["steps"]:
-        if dependencies is not None:
+        if dependencies is not None or flow_keys is not None:
             from refracto.declaration.includes import instantiate, is_include, participant_mapping
             sid = _string(item.get("id"), "step.id") if isinstance(item, dict) else None
             if sid is None or "/" in sid or sid in source_ids:
@@ -677,12 +707,40 @@ def _load_document(raw, *, dependencies=None, source_hash=None) -> Scenario:
         if source not in prior or prior[source].request is None:
             raise DeclarationError("result source must be an authored local request-bearing step")
         aliases[name] = ResultSource(source, field)
+    writes = {}
+    if "write_flow" in raw:
+        declared_writes = raw["write_flow"]
+        if type(declared_writes) is not dict or not declared_writes:
+            raise DeclarationError("write_flow must be a nonempty mapping")
+        for key, source in declared_writes.items():
+            if key not in flow_keys:
+                raise DeclarationError("write_flow target must name a declared Flow parameter")
+            if type(source) is not dict:
+                raise DeclarationError("write_flow source must be a supported reference")
+            if set(source) in ({"from_flow"}, {"from_parameter"}):
+                writes[key] = _reference(source, declared_parameters, prior, [], "write_flow source")
+            elif set(source) == {"from_step", "response_field"}:
+                sid = _string(source["from_step"], "write_flow source step")
+                field = _string(source["response_field"], "write_flow response field")
+                if sid not in prior or prior[sid].request is None:
+                    raise DeclarationError("write_flow response source must name an authored local request-bearing step")
+                writes[key] = ResultSource(sid, field)
+            elif set(source) == {"from_step", "result"}:
+                sid = _string(source["from_step"], "write_flow include step")
+                name = _string(source["result"], "write_flow result")
+                exported = prior.include_results.get(sid, {})
+                if name not in exported:
+                    raise DeclarationError("write_flow result source must name an included Scenario's declared result")
+                writes[key] = exported[name]
+            else:
+                raise DeclarationError("write_flow source must be a supported reference")
     result = Scenario(scenario_id, grid, "", [], [Input(k, v) for k, v in parameters.items()], description, steps,
                       source_lookup=source_lookup,
                       include_dependencies={key: {"path": value[2], "sha256": value[1]}
                                             for key, value in (dependencies or {}).items()},
                       results=aliases, included_results=prior.include_results, users=list(users),
-                      include_user_mappings=include_user_mappings, reference_bindings=reference_bindings)
+                      include_user_mappings=include_user_mappings, reference_bindings=reference_bindings,
+                      write_flow=writes)
     if dependencies is not None:
         from refracto.declaration.includes import validate_instantiated
         if len(steps) > 1000:

@@ -521,7 +521,7 @@ def apply_object_observation(result, step, probe, *, projection, user,
 
 
 def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
-        poll_config=None, now=None, sleep=None, object_state=None):
+        poll_config=None, now=None, sleep=None, object_state=None, flow_execution=None):
 
     recorder = ProtectedRecorder(recorder)
     step_results = []
@@ -543,6 +543,16 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
             unsupported = str(exc)
     for step in scenario.steps:
         user = scenario.effective_user(step)
+        flow_blocked = None
+        if flow_execution is not None:
+            flow_blocked = flow_execution.before(step, scenario, step_results, prior_norms)
+            if flow_execution.changed:
+                prior_failures = flow.failures
+                flow = FlowState()
+                flow.failures = list(prior_failures)
+        if flow_blocked is not None:
+            step_results.append(flow_blocked)
+            continue
         blocked = flow.blocked(step)
         if blocked is not None:
             blocked.user = user
@@ -608,5 +618,7 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
     except Exception as exc:
         step_results.append(StepResult("_recorder", ERROR, detail=str(exc)))
         recordings = []
+    if flow_execution is not None:
+        flow_execution.finish(step_results, prior_norms)
     return DomainResult(projection="backend", steps=step_results,
                         provider_recordings=recordings)

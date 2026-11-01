@@ -127,6 +127,9 @@ class Scenario:
                                         repr=False, metadata={"sensitive": True})
     run_time_values: dict[str, str] = field(default_factory=dict, kw_only=True, compare=False,
                                            repr=False, metadata={"sensitive": True})
+    write_flow: dict = field(default_factory=dict, kw_only=True, compare=False, repr=False)
+    flow_input_sources: dict[str, str] = field(default_factory=dict, kw_only=True,
+                                                compare=False, repr=False)
 
     def __post_init__(self):
         # Bounded Python-constructor migration only. The YAML loader never
@@ -151,3 +154,33 @@ class Scenario:
     @property
     def description(self):
         return self.intent
+
+
+@dataclass(frozen=True)
+class FlowParameter:
+    """A declared Flow key distinguishes an unset value from initialized null."""
+    initialized: bool = False
+    initial: object = field(default=None, repr=False, metadata={"sensitive": True})
+
+
+@dataclass(frozen=True)
+class FlowNode:
+    id: str
+    scenario_id: str
+    step_ids: tuple[str, ...]
+    read_inputs: dict[str, str] = field(repr=False)
+    write_flow: dict = field(repr=False)
+    with_users: dict[str, str]
+
+
+@dataclass(frozen=True)
+class Flow:
+    id: str
+    description: str
+    users: list[str]
+    parameters: dict[str, FlowParameter] = field(repr=False)
+    nodes: list[FlowNode]
+    scenario: Scenario = field(repr=False)
+    dependencies: dict = field(repr=False)
+    on_failure: str = "stop"
+    source_pins: dict = field(default_factory=dict, kw_only=True, repr=False)

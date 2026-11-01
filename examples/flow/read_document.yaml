@@ -1,0 +1,16 @@
+schema_version: 1
+scenario: documents.flow_read
+description: Read the same document and verify its committed intended content.
+users: [operator]
+steps:
+  - id: fetch
+    do:
+      request:
+        method: GET
+        path: [documents, {from_flow: document_id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: document_id, value: {from_flow: document_id}}
+        - {check: field_equals, field: title, value: {from_flow: title}}
+        - {check: field_equals, field: content, value: {from_flow: content}}

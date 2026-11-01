@@ -61,6 +61,9 @@ def resolve(value, *, bound_values=None, inputs=None, _active=None, _memo=None):
         finally:
             active.remove(value.key)
 
+    if value.source == "flow":
+        return None, "Flow parameter is unavailable in the current Scenario snapshot"
+
     return None, f"unsupported value reference source {value.source!r}"
 
 

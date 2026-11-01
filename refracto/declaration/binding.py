@@ -54,20 +54,24 @@ def _require_data(value):
         raise ValueError("resolved action value requires finite JSON-like data") from None
 
 
-def _sources(node, inputs, by_key, active=None, _memo=None):
+def _sources(node, inputs, by_key, active=None, _memo=None, flow_sources=None):
     """Follow typed dependencies only, preserving source steps through concat."""
     active = set() if active is None else active
     memo = {} if _memo is None else _memo
     if isinstance(node, ValueRef):
         if node.source == "bind":
             return [by_key[node.key]] if node.key in by_key else []
+        if node.source == "flow":
+            return ["flow:" + node.key]
+        if node.source == "input" and node.key in (flow_sources or {}):
+            return ["flow:" + flow_sources[node.key]]
         if node.key in memo:
             return memo[node.key]
         if node.key in active or node.key not in inputs:
             return []
         active.add(node.key)
         try:
-            memo[node.key] = _sources(inputs[node.key], inputs, by_key, active, memo)
+            memo[node.key] = _sources(inputs[node.key], inputs, by_key, active, memo, flow_sources)
             return memo[node.key]
         finally:
             active.remove(node.key)
@@ -77,10 +81,11 @@ def _sources(node, inputs, by_key, active=None, _memo=None):
         items = node.values() if isinstance(node, dict) else node
     else:
         return []
-    return list(dict.fromkeys(source for item in items for source in _sources(item, inputs, by_key, active, memo)))
+    return list(dict.fromkeys(source for item in items
+                             for source in _sources(item, inputs, by_key, active, memo, flow_sources)))
 
 
-def resolve_bindings(step, prior_norms, *, inputs=None):
+def resolve_bindings(step, prior_norms, *, inputs=None, flow_sources=None):
     """Return `{placeholder: value}` for every declared binding.
 
     Raises if a referenced prior step is missing, if the bound field is not
@@ -118,10 +123,10 @@ def resolve_bindings(step, prior_norms, *, inputs=None):
                 raise InvalidDependency("response collection selection requires a list of string-keyed dictionaries", [binding.from_step])
             predicates = {}
             for key, declared in binding.matching.items():
-                predicate_sources = _sources(declared, input_values, source_by_key)
+                predicate_sources = _sources(declared, input_values, source_by_key, flow_sources=flow_sources)
                 expected, error = value_ops.resolve(declared, bound_values=values, inputs=inputs)
                 if isinstance(error, value_ops.ConcatOperandError):
-                    predicate_sources = _sources(error.operand, input_values, source_by_key)
+                    predicate_sources = _sources(error.operand, input_values, source_by_key, flow_sources=flow_sources)
                 if error is not None or not is_scalar(expected):
                     raise InvalidDependency("response collection predicate is unavailable or not a finite scalar",
                                             predicate_sources or [binding.from_step])
@@ -196,12 +201,13 @@ def prepare_step(step, scenario, prior_norms):
     the existing shallow-copy semantics. No declaration assertion is invented.
     """
     ensure_bound_run_values(scenario)
-    bound = resolve_bindings(step, prior_norms, inputs=scenario.inputs)
+    flow_options = {"flow_sources": scenario.flow_input_sources} if scenario.flow_input_sources else {}
+    bound = resolve_bindings(step, prior_norms, inputs=scenario.inputs, **flow_options)
     by_key = {item.placeholder: item.from_step for item in step.bind}
     inputs = scenario.parameters
 
     def invalid(node, message):
-        dependencies = _sources(node, inputs, by_key)
+        dependencies = _sources(node, inputs, by_key, flow_sources=scenario.flow_input_sources)
         if dependencies:
             raise InvalidDependency(message, dependencies)
         raise ValueError(message)

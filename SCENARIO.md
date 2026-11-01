@@ -6,6 +6,14 @@ business truth or a script. Product preparation belongs in visible steps, not an
 adapter's hidden workflow. Selectors, transport routing, session handling, and
 truthful evidence normalization remain adapter responsibilities.
 
+An ordered [Flow](FLOW.md) can execute several Scenarios with explicit shared
+parameters and retained mapped-user sessions. In that context, `from_flow` reads
+a Scenario-entry snapshot and top-level `write_flow` publishes copied values only
+after successful completion. These declarations require Flow context; standalone
+validation rejects them before actions. Ordinary Scenario declarations and
+one-level include remain supported. See FLOW.md for the distinct Flow parameter
+declaration shape, atomic writes, invalidation, source pins and reporting rules.
+
 ## Format and metadata
 
 The executable format is `schema_version: 1`. This identifies the declaration

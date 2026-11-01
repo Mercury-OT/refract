@@ -75,6 +75,18 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved the [ordered Scenario Flow specification](tasks/scenario-flow.md)
+and its create/update/read expression on 2026-11-01. The authorized slice is a
+linear Flow with shared parameter snapshots, atomic successful writes, failed-write
+invalidation, mapped multi-user session continuity and hierarchical reporting.
+It preserves format 1 and one-level include. Development, two independent audits
+and architect acceptance passed: 5603 full-suite tests and 4552 dev-only tests on
+each supported Python version. See the [verification record](tasks/scenario-flow-acceptance.md).
+Submission and green-CI merge are explicitly authorized after these gates.
+No branches, editor, automatic cleanup, object absence or private workspace access
+are included. [FLOW.md](../FLOW.md) is the execution contract for this slice;
+delivery evidence is recorded separately after verification.
+
 The maintainer authorized [bounded test execution and stall diagnostics](tasks/test-execution-guard.md)
 on 2026-11-01. This is a finite test-infrastructure task: identify the active
 test/phase, retain diagnostics and enforce an external execution ceiling without
@@ -87,8 +99,9 @@ delivery is evidenced separately by the task PR, exact main CI and branch cleanu
 The first main CI attempt after PR #45 stopped reporting progress and was
 cancelled; the exact commit passed on retry. Its root cause remains unproven.
 This task does not claim to repair that unknown cause or start another general
-stabilization campaign. After delivery, return to the bounded, text-only Flow
-design assessment below; no Flow implementation is authorized. Object absence
+stabilization campaign. That task was delivered through PR #46 in main `5015e45`,
+with required PR and main checks passing. Its subsequent text-only Flow assessment
+was superseded by the explicit ordered-Flow authorization above. Object absence
 stays paused and private workspaces remain outside scope.
 
 The maintainer approved [Enter-triggered same-page form submission](tasks/enter-form-submission.md)
@@ -194,7 +207,8 @@ Scenario YAML or authorize Flow, broader transports or target changes.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Implemented and accepted | [Bounded test execution and stall diagnostics](tasks/test-execution-guard.md) | Test-only supervision, phase diagnostics and bounded failure; 5457 full-suite tests, 4408 dev-only tests per Python version and 51 independent guard controls passed. [Verification and limits](tasks/test-execution-guard-acceptance.md). No production, Scenario, dependency or assertion change. | Authorized hosted delivery is recorded by the associated PR, exact main CI and branch cleanup. Return to Flow design assessment afterward, not implementation. |
+| Implemented and accepted | [Ordered Scenario Flow](tasks/scenario-flow.md) | Shared snapshots, atomic writes/invalidation, mapped multi-user continuity and hierarchical reports. [Verification](tasks/scenario-flow-acceptance.md): 5603 full-suite tests, 4552 dev-only tests per Python version and two independent audits passed. | Authorized task branch, PR, passing checks, merge and main CI; no branching/editor/object-absence expansion. |
+| Delivered | [Bounded test execution and stall diagnostics](tasks/test-execution-guard.md) | Test-only supervision, phase diagnostics and bounded failure; 5457 full-suite tests, 4408 dev-only tests per Python version and 51 independent guard controls passed. [Verification and limits](tasks/test-execution-guard-acceptance.md). No production, Scenario, dependency or assertion change. | Delivered through PR #46 in main `5015e45`; PR and main CI passed, branches cleaned. The later Flow authorization is separate. |
 | Delivered | [Same-page Enter form submission](tasks/enter-form-submission.md) | Native default submitter and owning-form association; exact Scenario/adapter reuse. Both independent audits and 5400 full-suite tests passed. [Checks and limits](tasks/enter-form-submission-acceptance.md). No core or YAML change. | Delivered through PR #45 in main `101585b`; eight branch/PR checks passed and four main jobs were green after the full-suite retry; branches removed. First main attempt was cancelled after an unexplained stall. No focus repair, native document submit, object absence or Flow. |
 | Delivered | [Focused Enter operation](tasks/ui-enter-press.md) | Literal Enter, explicit driver capability, owned delivery receipt and reliable bounded request association. No focus repair. [Checks and limits](tasks/ui-enter-press-acceptance.md). | Delivered through PR #44 in main `b6107be`; eight branch/PR checks and four main jobs passed, branches removed. The separate form task extends only the documented same-page submission boundary. |
 | Implemented and accepted | [Object-specific UI selection](tasks/ui-object-target-selection.md) | Optional click object_id with strict unique selection and receipt; format 1 and one-level includes unchanged. Two independent audits passed; 5032 full-suite tests and 4241 dev-only tests per Python version passed. [Results](tasks/ui-object-target-selection-acceptance.md) distinguish the two new synthetic consumers from adoption evidence. | Hosted delivery is recorded by the authorized task PR and main CI. Retain the current-document, strict-identity and unchanged-product boundaries. Object absence remains paused. |
@@ -522,12 +536,12 @@ changes were submitted through PR #18 and merged in
 post-merge main jobs passed. Historical local acceptance retains its original
 pre-submission statements.
 
-## Scenario-path composition candidate
+## Scenario composition and ordered Flow
 
 The maintainer confirmed the [bounded two-path specification and deletion parent](tasks/scenario-path-reuse-verification.md)
 and authorized local development and review. Existing create/read,
 create/update/read and change-impact tooling are reused, not rebuilt or counted
-as new capabilities. This is not implementation authorization for Flow.
+as new capabilities. That historical task did not authorize Flow implementation.
 
 The [two-path local acceptance](tasks/scenario-path-reuse-acceptance.md) now
 verifies the existing composition on actual Demo HTTP, including retained objects,
@@ -535,49 +549,29 @@ separate creation evidence and caller-impact inspection. These two paths require
 no new Flow language. Human review time and quality remain unmeasured; a further
 composition proposal needs a concrete gap rather than this example's green tests.
 
-The planning candidate is a finite tree of Scenario invocations: every selected
-root-to-leaf path is planned, not chosen by a runtime condition. Grouping folders
-must remain distinct from executable prefixes. Review savings are a hypothesis,
-not an established result. Prioritize a bounded assessment before graphical
-authoring, deeper inclusion or a general orchestration platform; do not delay a
-confirmed single-Scenario adoption blocker for it.
+The 2026-11-01 assessment clarified a different requirement: a complete business
+execution must preserve sessions and application context across distinct named
+Scenarios, with shared Flow parameters and three-level localization. Independent
+parent runs do not provide that continuity. The maintainer approved the bounded
+[linear Flow](tasks/scenario-flow.md), not the earlier prospective tree design.
 
-Start with the existing multiple-parent/shared-child pattern as the comparison.
-Prefer studying a fresh execution of each path, with ordered nodes and explicit
-parameter/user mappings. Each path would own its run token and projection-local
-sessions; another path would execute its prefix again. This does not reset target
-state or guarantee isolation. Shared-prefix-once execution changes semantics and
-is deferred, not an equivalent optimization. No parallel scheduling, joins,
-conditional nodes, recursive flows or implicit globals are proposed.
+Each directly scheduled Scenario may still contain one ordinary include. There
+is no nested Flow or additional include depth. Public child results remain the
+include interface; shared writes belong to the scheduled Scenario boundary.
+Source pinning includes transitive sidecar identity. Review reuse covers unchanged,
+applicable internals, not caller mappings, shared writes or the overall obligation.
+No measured review savings or automatic approval propagation is claimed.
 
-Current code supports same-projection session reuse, one-level inclusion, named
-results, fingerprints and read-only expansion/impact inspection. Separate runner
-calls do not share contexts or results. Nodes that already include children also
-raise a result-re-export and additional-composition-boundary question; calling
-the outer layer Flow does not settle it. The run-value slice was delivered through
-PR #32 in main `50996af`, and is not a remaining missing feature. Automatic session renewal is not an
-approved workaround for explicit session semantics.
-
-The next design assessment should compare a small neutral create/read/update/
-delete set and check sibling-state interference, changed user/parameter wiring,
-failure propagation, transitive pins and per-path evidence identity. All branches
-being planned cannot promise execution after an unusable dependency or session.
-Review reuse covers unchanged, applicable child internals, not caller wiring or
-the overall obligation; fingerprints do not prove approval. Record reviewer
-confusion and missed seeded wiring errors, with timing only if actually measured.
-If existing parents/includes suffice or a graph obscures dependencies, retain
-the current model instead of introducing a new file format.
-
-The prospective Flow direction remains planning-only, distinct from the approved
-two-path verification using existing capabilities. Any new expression or execution
-scope must be shown to the maintainer before implementation. The neutral public wording
-also requires scoped maintainer review before publication. No source discussion,
-private examples or measurements are included here.
+Tree branching, execution of a shared prefix once versus once per path, joins and
+parallel scheduling remain unapproved. They must not be inferred from linear Flow.
+Automatic session renewal and target-state reset are not hidden accommodations.
+Existing run-unique and fixed-UTC time semantics remain bounded: unique sources
+are per invocation and live projection, while the Flow owns a shared UTC base.
 
 Graphical Scenario authoring, deeper or dynamic Scenario composition, intent hierarchies,
 cryptographic approval infrastructure, automatic approval propagation, and
 general-purpose temporal or schema engines
-remain deferred ideas, not queued implementation tasks. The bounded assessment
+remain deferred ideas, not queued implementation tasks. The linear Flow slice
 above does not authorize them. Reconsider only when a specific use case and
 evidence justify the added scope.
 

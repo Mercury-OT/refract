@@ -36,6 +36,11 @@ a reusable child's participants explicitly to the parent's participants.
 See the [user/session contract](SCENARIO.md#users-and-current-sessions)
 for account, context, evidence, and reuse limits.
 
+An ordered [Flow](FLOW.md) connects multiple Scenarios while retaining each user's
+current session and explicit shared parameters. Results remain visible at Flow,
+Scenario and step levels. The [runnable example](examples/flow/README.md) creates,
+updates and reads one document through the existing synthetic Documents adapter.
+
 ## Current Scope
 
 Refract currently targets a Web/API reference profile:

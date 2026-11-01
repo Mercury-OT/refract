@@ -63,7 +63,7 @@ def _safe_file(base, declared):
     return path
 
 
-def load_dependencies(parent, raw, decode, parse):
+def load_dependencies(parent, raw, decode, parse, *, expected_sidecar_hash=None):
     if not isinstance(raw, dict) or not isinstance(raw.get("steps"), list):
         return None
     calls = [item for item in raw["steps"] if is_include(item)]
@@ -84,7 +84,10 @@ def load_dependencies(parent, raw, decode, parse):
     if sidecar.is_symlink() or not sidecar.is_file():
         _error("include sidecar must be a regular local file, not a symlink")
     try:
-        manifest = json.loads(sidecar.read_bytes().decode("utf-8"), object_pairs_hook=_unique)
+        sidecar_data = sidecar.read_bytes()
+        if expected_sidecar_hash is not None and hashlib.sha256(sidecar_data).hexdigest() != expected_sidecar_hash:
+            _error("include sidecar fingerprint mismatch")
+        manifest = json.loads(sidecar_data.decode("utf-8"), object_pairs_hook=_unique)
     except (ValueError, UnicodeError, OSError) as exc:
         from refracto.declaration.loader import DeclarationError
         raise DeclarationError("invalid include sidecar JSON") from exc
@@ -224,6 +227,8 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
                     visit_external(value)
 
         def convert(ref):
+            if ref.source == "flow":
+                return ref
             if ref.source == "input":
                 key = namespace[ref.key]
                 visit_external(parameters[key])

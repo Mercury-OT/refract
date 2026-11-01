@@ -26,6 +26,8 @@ def expansion_view(scenario):
         if isinstance(node, StringConcat):
             return {"kind": "concat", "parts": [value(part) for part in node.parts]}
         if isinstance(node, ValueRef):
+            if node.source == "flow":
+                return {"kind": "reference", "from_flow": node.key}
             if node.source == "input":
                 return {"kind": "reference", "from_parameter": node.key}
             binding = bindings.get(node.key)
@@ -96,3 +98,26 @@ def expansion_view(scenario):
             "results": aliases(scenario.results),
             "included_results": {sid: aliases(items) for sid, items in scenario.included_results.items()},
             "parameters": {key: value(item) for key, item in parameters.items()}, "steps": steps}
+
+
+def flow_expansion_view(flow):
+    """An explicit source-confidentiality view of boundaries and symbolic data."""
+    from refracto.declaration.model import ResultSource
+
+    def write(source):
+        if isinstance(source, ResultSource):
+            return {"from_step": source.from_step, "response_field": source.response_field}
+        return {"from_flow" if source.source == "flow" else "from_parameter": source.key}
+
+    return {"view": "flow-expanded-review/1", "flow": flow.id, "description": flow.description,
+            "users": list(flow.users), "on_failure": flow.on_failure,
+            "parameters": {key: {"initial": copy.deepcopy(value.initial)} if value.initialized else {}
+                           for key, value in flow.parameters.items()},
+            "dependencies": copy.deepcopy(flow.dependencies),
+            "source_pins": copy.deepcopy(flow.source_pins),
+            "scenarios": [{"id": node.id, "scenario": node.scenario_id,
+                           "with_users": dict(node.with_users), "step_ids": list(node.step_ids),
+                           "read_inputs": dict(node.read_inputs),
+                           "write_flow": {key: write(source) for key, source in node.write_flow.items()}}
+                          for node in flow.nodes],
+            "execution": expansion_view(flow.scenario)}

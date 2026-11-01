@@ -510,7 +510,8 @@ def _before_context_error(scenario, projection, exc):
 def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         projection="frontend", mode="mock", eval_response=None, state=None,
         recorder=None, api=None, resolve_request=None, poll_config=None,
-        mock_plan=None, now=None, sleep=None, object_state=None):
+        mock_plan=None, now=None, sleep=None, object_state=None,
+        flow_execution=None):
     """No legacy path: every Scenario uses this one action/expectation loop."""
     needs_ui = any(s.action in {"open", "click", "fill", "press"} or s.expect.frontend
                    for s in scenario.steps)
@@ -565,22 +566,33 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     consumed, results, recordings, prior = [], [], [], {}
     flow = FlowState()
     contexts = {}
+    failed_contexts = set()
     mock_queue = ports.MockResponseQueue(copy.deepcopy(retained_plan)) if mode == "mock" else None
 
     def close_user(user):
         # Remove before calling the adapter so a failed close is never retried.
         existing = contexts.pop(user, None)
         if existing is not None:
-            header_ops.call_port("UI close", ui.close_stepwise, existing[0], sensitive=sensitive_headers)
+            try:
+                header_ops.call_port("UI close", ui.close_stepwise, existing[0], sensitive=sensitive_headers)
+            except Exception:
+                failed_contexts.add(user)
+                raise
 
     def context_for(lease):
+        if lease.user in failed_contexts:
+            raise ValueError("UI context is unavailable after an earlier lifecycle failure")
         existing = contexts.get(lease.user)
         if existing is None:
             identity = secrets.token_hex(16)
-            context = backend_proj._call_action_port("UI open", ui.open_stepwise,
-                lease.credentials, mode=mode,
-                mock_plan=copy.deepcopy(retained_plan), mock_queue=mock_queue,
-                user=lease.user, session_generation=lease.generation, context_id=identity)
+            try:
+                context = backend_proj._call_action_port("UI open", ui.open_stepwise,
+                    lease.credentials, mode=mode,
+                    mock_plan=copy.deepcopy(retained_plan), mock_queue=mock_queue,
+                    user=lease.user, session_generation=lease.generation, context_id=identity)
+            except Exception:
+                failed_contexts.add(lease.user)
+                raise
             existing = contexts[lease.user] = (context, lease.generation, identity)
         if existing[1] != lease.generation:
             raise ValueError("UI context belongs to an obsolete session")
@@ -589,6 +601,18 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     try:
         for declared in scenario.steps:
             user = scenario.effective_user(declared)
+            if flow_execution is not None:
+                boundary_blocked = flow_execution.before(declared, scenario, results, prior)
+                if flow_execution.changed:
+                    # Scenario-local continuation resets at a Flow boundary;
+                    # session leases, contexts and evidence ownership do not.
+                    failures = flow.failures
+                    flow = FlowState()
+                    flow.failures = list(failures)
+                if boundary_blocked is not None:
+                    boundary_blocked.user = user
+                    results.append(boundary_blocked)
+                    continue
             blocked = flow.blocked(declared)
             if blocked is not None:
                 blocked.user = user
@@ -604,6 +628,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 lease = sessions.acquire(user, new=step.session == "new")
                 if step.session == "new":
                     close_user(user)
+                    failed_contexts.discard(user)
                 if step.action == "request":
                     sr, norm = backend_proj.execute_api_step(
                         scenario, step, session=lease.credentials, session_lease=lease, api=_VerifiedApi(api),
@@ -720,10 +745,18 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
             try:
                 close_user(user)
             except Exception as exc:
+                if flow_execution is not None:
+                    results.append(StepResult(f"@flow-close:{len(results)}", ERROR,
+                        detail=f"UI context close failed: {exc}", user=user))
+                    continue
                 for sr in reversed(results):
                     if sr.status != BLOCKED:
                         sr.status, sr.detail = ERROR, f"UI context close failed: {exc}"
                         break
+    if flow_execution is not None:
+        # Cleanup errors are part of the final Scenario's outcome and must be
+        # visible before its atomic writes are considered for publication.
+        flow_execution.finish(results, prior)
     return DomainResult(projection, steps=results,
                         provider_recordings=recordings if mode == "live" else [],
                         mock_consumption=consumed,
