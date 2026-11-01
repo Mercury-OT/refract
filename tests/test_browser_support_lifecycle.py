@@ -130,3 +130,54 @@ def test_closed_context_is_collectible_without_reauthorizing_its_execution(monke
             other.perform(other_context, permit, selector="button")
     finally:
         other.close(other_context)
+
+
+@pytest.mark.parametrize("policy_fault", [True, False])
+def test_failed_action_closes_resources_without_reentering_rejected_renderer(monkeypatch, policy_fault):
+    calls = []
+    monkeypatch.setattr(_support, "_acquire_playwright", lambda: Resource("runtime", calls))
+    monkeypatch.setattr(_support, "_release_playwright", lambda: calls.append("stop"))
+    support = BrowserSupport("http://example.com/", lambda page: pytest.fail("failed action read rendering"))
+    context = support.open("live")
+
+    class Page:
+        def evaluate(self, expression, *args):
+            if "?.errors" in expression:
+                return []
+            if "armed = arm" in expression:
+                calls.append("arm")
+                return
+            assert "armed = null" in expression
+            calls.append("reset_renderer")
+            if policy_fault:
+                # A real renderer can stop responding here after a paused
+                # secondary target was denied. Do not wait for it to clean up.
+                raise RuntimeError("rejected-renderer-sentinel")
+
+        def wait_for_function(self, *args, **kwargs):
+            pass
+
+        def locator(self, selector):
+            return self
+
+        def count(self):
+            return 1
+
+        def click(self, **kwargs):
+            calls.append("click")
+            if policy_fault:
+                context.errors.append("browser secondary targets are unsupported")
+            raise TimeoutError("action-timeout-sentinel")
+
+    context.page = Page()
+    permit = ports.UiActionPermit(execution_id="fault-run", action_id="fault-action",
+        step_id="step", mode="live", action="click", target="button", value=None,
+        token=f"fault-token-{policy_fault}")
+    with pytest.raises(RuntimeError, match="browser action or evidence collection failed") as error:
+        support.perform(context, permit, selector="button")
+    assert calls.count("reset_renderer") == (0 if policy_fault else 1)
+    assert calls[-3:] == ["close_context", "close_browser", "stop"]
+    assert context.closed and context.traffic == []
+    assert "sentinel" not in str(error.value)
+    support.close(context)
+    assert all(calls.count(operation) == 1 for operation in ("close_context", "close_browser", "stop"))

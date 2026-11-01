@@ -366,7 +366,10 @@ class BrowserSupport:
                         selection = context.navigation.selection()
                 finally:
                     try:
-                        if pressed is None:
+                        # A rejected secondary target can leave the opener's
+                        # renderer unresponsive. Owning-resource cleanup below
+                        # must not wait for another evaluation in that renderer.
+                        if pressed is None and not context.errors:
                             context.page.evaluate("""() => {
                             window.__refractBrowser.armed = null;
                             window.__refractBrowser.event = null;
