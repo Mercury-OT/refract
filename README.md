@@ -128,6 +128,9 @@ For optional Playwright support in UI adapters, see
 For changes affecting existing Python integrations, see the
 [selected compatibility notes](CHANGELOG.md).
 
+For repository test execution, bounded stall diagnostics and CI artifacts, see
+[running the tests](docs/testing.md).
+
 ## Philosophy
 
 See [`MANIFESTO.md`](MANIFESTO.md) for the beliefs and vision behind this framework.
