@@ -109,6 +109,11 @@ executable-source freeze remained unchanged through verification. New documentat
 and acceptance status were reviewed separately for English-only neutral content,
 working links, no local machine paths and no private source information.
 
+The final tracked-file hygiene check then rejected a negative-test URI using a
+non-allowlisted documentation host. It was replaced with the allowed example.com
+host without changing the rejection test's meaning or any production code. The
+80-test declaration suite and tracked-file hygiene passed again before push.
+
 ## Limits and delivery boundary
 
 Only linear ordering is implemented. All non-PASSED results remain non-PASSED;
