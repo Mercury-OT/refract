@@ -5,6 +5,18 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-01: Enter-triggered same-page form handlers
+
+The [bounded form task](docs/tasks/enter-form-submission.md) extends BrowserSupport
+without changing YAML, Python ports, core or the key receipt. A pinned native
+default submitter may carry the actual Enter operation into its owning form's
+submit handler. The product must itself cancel navigation; its finite fetch/XHR
+then uses the existing request association and checks. Programmatic submission
+methods establish a null invocation scope rather than borrowing a keyboard
+callback's evidence. No focus repair, native document submission or extra action
+is added. Existing Scenario and adapter bytes are reused by the new
+[form consumer](examples/ui_enter_form/README.md).
+
 ## 2026-11-01: explicit Enter input operation
 
 The [bounded Enter task](docs/tasks/ui-enter-press.md) adds `do: press`, target

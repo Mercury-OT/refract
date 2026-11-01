@@ -23,12 +23,42 @@ _ARM = """({selector, actionId}) => {
         return element;
     };
     const control = lookup();
+    const form = control.form;
+    // Chromium's default submitter is the first form-owned submit control in
+    // document order, including external controls with a form attribute.
+    const defaultButton = () => [...document.querySelectorAll('button,input')].find(button =>
+        button.form === form && (button instanceof HTMLButtonElement && button.type === 'submit' ||
+        button instanceof HTMLInputElement && ['submit', 'image'].includes(button.type))) || null;
+    const button = form ? defaultButton() : null;
+    let activation = null, submission = null;
+    const currentForm = () => form instanceof HTMLFormElement && form.isConnected &&
+        form.ownerDocument === document && control.form === form && defaultButton() === button &&
+        (button instanceof HTMLButtonElement || button instanceof HTMLInputElement) &&
+        button.type === 'submit' && button.isConnected && !button.matches(':disabled') &&
+        !button.closest('[aria-disabled="true"], [inert]');
     const seen = new WeakSet();
     let keypresses = 0;
     const result = {key: 'Enter', target_matches: 1, focused: true,
         keydown_count: 0, keyup_count: 0};
     const arm = {type: 'press', action_id: actionId, control};
     arm.guard = event => {
+        if (['click', 'submit'].includes(event.type)) {
+            if (lookup() !== control || !event.isTrusted) return false;
+            if (seen.has(event)) return true;
+            if (!currentForm()) return false;
+            if (result.keydown_count !== 1 || result.keyup_count || keypresses !== 1) return false;
+            if (event.type === 'click') {
+                if (activation || event.target !== button || event.detail !== 0 || event.button !== 0 ||
+                    event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+                activation = event;
+            } else {
+                if (submission || !activation || activation.defaultPrevented ||
+                    event.target !== form || event.submitter !== button) return false;
+                submission = event;
+            }
+            seen.add(event);
+            return true;
+        }
         if (lookup() !== control || event.target !== control || !event.isTrusted ||
             event.key !== 'Enter' || event.code !== 'Enter' || event.location !== 0 ||
             event.repeat || event.isComposing || event.altKey || event.ctrlKey ||
@@ -50,8 +80,13 @@ _ARM = """({selector, actionId}) => {
     arm.finish = () => {
         if (window.__refractBrowser !== state || state.armed !== arm ||
             state.errors.length || lookup() !== control ||
-            result.keydown_count !== 1 || result.keyup_count !== 1)
+            result.keydown_count !== 1 || result.keyup_count !== 1 ||
+            submission && !submission.defaultPrevented)
             throw new Error('keyboard delivery unavailable');
+        // Validation or a cancelled click may prevent submit altogether. A
+        // key receipt then carries no form request; core checks declared needs.
+        // For an observed submit, require product cancellation after dispatch.
+        // Navigation-guard cancellation is a different event and cannot fill it.
         return {...result};
     };
     state.armed = arm;

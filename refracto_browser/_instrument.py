@@ -13,7 +13,8 @@ _TEMPLATE = r"""(() => {
   const listeners = new WeakMap();
   const xhrs = new WeakMap();
   const state = window.__refractBrowser = {
-    armed: null, event: null, origin: null, syncOrigin: null, pending: {}, errors: []
+    armed: null, event: null, origin: null, syncOrigin: null, pending: {}, errors: [],
+    programmatic: 0
   };
   const pushError = Array.prototype.push;
   const receipt = payload => {
@@ -86,14 +87,31 @@ _TEMPLATE = r"""(() => {
   };
   // A nested synthetic event is a distinct, unassociated invocation even if a
   // parsed property handler bypassed our JavaScript property setters.
-  EventTarget.prototype.dispatchEvent = function(event) {
-    return call(null, dispatch, this, [event]);
+  const programmatic = (callback, self, args) => {
+    state.programmatic++;
+    try { return call(null, callback, self, args); }
+    finally { state.programmatic--; }
   };
+  EventTarget.prototype.dispatchEvent = function(event) {
+    return programmatic(dispatch, this, [event]);
+  };
+  // requestSubmit and synthetic activation can dispatch a trusted submit. Keep
+  // their entire synchronous default action in a null invocation scope. Trust
+  // flags alone cannot distinguish these calls from Enter's native default.
+  for (const [prototype, property] of [[HTMLFormElement.prototype, 'requestSubmit'],
+      [HTMLFormElement.prototype, 'submit'], [HTMLElement.prototype, 'click']]) {
+    const original = prototype[property];
+    prototype[property] = function(...args) {
+      if (state.armed?.type !== 'press') return Reflect.apply(original, this, args);
+      return programmatic(original, this, args);
+    };
+  }
   const capture = options => typeof options === 'boolean' ? options : !!options?.capture;
   const eventOrigin = event => {
     const arm = state.armed;
     if (arm?.type === 'press') {
-      if (event.isTrusted && ['keydown', 'keypress', 'keyup'].includes(event.type)) {
+      if (state.programmatic) return null;
+      if (event.isTrusted && ['keydown', 'keypress', 'keyup', 'click', 'submit'].includes(event.type)) {
         let allowed = false;
         try { allowed = arm.guard(event) === true; } catch (_) {}
         if (!allowed) {
@@ -104,7 +122,9 @@ _TEMPLATE = r"""(() => {
         }
         state.event = event;
       }
-      return event.isTrusted && state.event === event ? arm.action_id : null;
+      // An implicit button click establishes the native form transition, but
+      // its onclick work is not submit-handler evidence.
+      return event.type !== 'click' && event.isTrusted && state.event === event ? arm.action_id : null;
     }
     if (arm && !state.event && event.isTrusted && arm.type === event.type) {
       if (typeof arm.guard === 'function') {
@@ -161,14 +181,22 @@ _TEMPLATE = r"""(() => {
   const wrapProperty = listener => {
     if (typeof listener !== 'function' || propertyOriginals.has(listener)) return listener;
     if (!propertyWrappers.has(listener)) {
-      const wrapped = function(event) { return invoke(listener, this, event); };
+      const wrapped = function(event) {
+        // Submit property handlers were not wrapped before Enter/form support.
+        // Outside a press, preserve their original caller scope and return
+        // value. Decide at invocation, not assignment: the same callback or
+        // installed property can be reused by a later explicitly declared click.
+        if (event.type === 'submit' && state.armed?.type !== 'press')
+          return Reflect.apply(listener, this, [event]);
+        return invoke(listener, this, event);
+      };
       propertyWrappers.set(listener, wrapped);
       propertyOriginals.set(wrapped, listener);
     }
     return propertyWrappers.get(listener);
   };
   for (const prototype of [Window.prototype, Document.prototype, HTMLElement.prototype, SVGElement.prototype]) {
-    for (const property of ['onclick', 'oninput', 'onkeydown', 'onkeypress', 'onkeyup']) {
+    for (const property of ['onclick', 'oninput', 'onkeydown', 'onkeypress', 'onkeyup', 'onsubmit']) {
       const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
       if (!descriptor?.get || !descriptor?.set || !descriptor.configurable) continue;
       Object.defineProperty(prototype, property, {...descriptor,
@@ -180,7 +208,7 @@ _TEMPLATE = r"""(() => {
       });
     }
   }
-  for (const type of ['click', 'input', 'keydown', 'keypress', 'keyup']) add.call(window, type, event => {
+  for (const type of ['click', 'input', 'keydown', 'keypress', 'keyup', 'submit']) add.call(window, type, event => {
     // Null-origin events need property wrappers too: otherwise a nested inline
     // handler's native await could inherit an outer trusted invocation.
     eventOrigin(event);
@@ -193,13 +221,6 @@ _TEMPLATE = r"""(() => {
     if (state.armed?.type === 'press' && event.isTrusted &&
         event.target === state.armed.control)
       reportError('keyboard focus changed');
-  }, true);
-  for (const type of ['click', 'submit']) add.call(window, type, event => {
-    if (state.armed?.type === 'press' && event.isTrusted) {
-      reportError('keyboard activation is unsupported');
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
   }, true);
   Promise.prototype.then = function(onFulfilled, onRejected) {
     const origin = state.origin;

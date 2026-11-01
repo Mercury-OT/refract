@@ -147,9 +147,12 @@ a scheduled job, change the host clock, or assert success.
 
 Press accepts only literal `Enter`; it has no value, object_id, repeat, modifier,
 sequence, polling or implicit focus action. `key` is invalid on other actions.
-An unsupported driver fails before creating a UI context. The first browser
-helper supports ordinary editable text/search inputs in the main document;
-textarea, contenteditable, native form submission and navigation are not added.
+An unsupported driver fails before creating a UI context. The browser helper
+supports ordinary editable text/search inputs in the main document. An Enter
+default action may submit the input's actual owning form through its pinned
+native default submitter, when product code cancels navigation and sends fetch/XHR
+from the submit handler. This does not add textarea, contenteditable, native
+form-navigation requests or document navigation.
 No match, ambiguity or wrong focus is ERROR without sending the key. Focus
 displacement during delivery/collection remains an error even if later restored.
 The helper observes the trusted down/up pair; it cannot undo product effects
@@ -180,6 +183,10 @@ Run live e2e to verify the keyboard obligation. Backend direct requests and
 contract recordings do not verify Enter; frontend mocks are not live evidence.
 The [browser guide](docs/browser-support.md#enter-on-an-already-focused-input)
 describes the capability and receipt required from custom adapters.
+The [same-page form consumer](examples/ui_enter_form/README.md) reuses this exact
+Scenario and adapter on two form-handler variants. Programmatic submissions and
+implicit-button click-handler requests cannot stand in for the native submit
+handler; missing evidence retains the failure rules above.
 
 An API action stores its request under `do.request`, never under `expect`.
 A UI action may declare `expect.request` to constrain the traffic it causes.

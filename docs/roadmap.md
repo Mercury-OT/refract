@@ -75,6 +75,21 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved [Enter-triggered same-page form submission](tasks/enter-form-submission.md)
+on 2026-11-01. A real-browser feasibility gate passed before implementation:
+the actual native default submitter chain can be distinguished from programmatic
+trusted submissions using pinned ownership and null invocation scopes. Keep
+current YAML, format 1, one-level includes, core and ports unchanged. The product
+must cancel its own navigation; no focus repair or API replacement is allowed.
+Development, both independent audits and architect acceptance passed: 5400 full-
+suite tests, 4351 dev-only tests per supported Python version, 55 independent
+mechanism checks and 25 independent consumer checks. A discovered ordinary-click
+regression was corrected and independently rechecked. See the
+[verification record](tasks/enter-form-submission-acceptance.md). The authorized
+task-branch submission, green PR/main checks and cleanup are recorded separately
+by the associated PR/history. Object absence stays paused; Flow and native
+document form submission are not added.
+
 The maintainer approved [explicit Enter on an already focused input](tasks/ui-enter-press.md)
 on 2026-11-01. Real Chromium feasibility probes established a bounded route for
 trusted key callbacks and existing async ancestry, with controls for background
@@ -83,7 +98,9 @@ independent core/browser audit and architect acceptance passed: 5304 full-suite
 tests, 4351 dev-only tests on each supported Python version, and independent
 core/browser probes. See the [acceptance record](tasks/ui-enter-press-acceptance.md).
 Authorized hosted delivery follows green PR/main checks and branch cleanup,
-recorded by the associated PR and commit history. Keep format 1 and one-level inclusion; add
+recorded by the associated PR and commit history. Delivery completed through
+PR #44 in main `b6107be`, with eight branch/PR checks and four main jobs passing
+and both task branches removed. Keep format 1 and one-level inclusion; add
 only press/target/literal Enter, not general keyboard scripting. No automatic
 focus repair, new assertion, object absence or Flow is part of this task.
 
@@ -156,7 +173,8 @@ Scenario YAML or authorize Flow, broader transports or target changes.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Implemented and accepted | [Focused Enter operation](tasks/ui-enter-press.md) | Literal Enter, explicit driver capability, owned delivery receipt and reliable bounded request association. No focus repair. [Checks and limits](tasks/ui-enter-press-acceptance.md). | Authorized PR/main CI and cleanup; retain the narrow text/search-input boundary. No other keyboard operation or object absence is added. |
+| Implemented and accepted | [Same-page Enter form submission](tasks/enter-form-submission.md) | Native default submitter and owning-form association; exact Scenario/adapter reuse. Both independent audits and 5400 full-suite tests passed. [Checks and limits](tasks/enter-form-submission-acceptance.md). No core or YAML change. | Authorized hosted delivery is recorded by the associated PR and main CI. No focus repair, native document submit, object absence or Flow. |
+| Delivered | [Focused Enter operation](tasks/ui-enter-press.md) | Literal Enter, explicit driver capability, owned delivery receipt and reliable bounded request association. No focus repair. [Checks and limits](tasks/ui-enter-press-acceptance.md). | Delivered through PR #44 in main `b6107be`; eight branch/PR checks and four main jobs passed, branches removed. The separate form task extends only the documented same-page submission boundary. |
 | Implemented and accepted | [Object-specific UI selection](tasks/ui-object-target-selection.md) | Optional click object_id with strict unique selection and receipt; format 1 and one-level includes unchanged. Two independent audits passed; 5032 full-suite tests and 4241 dev-only tests per Python version passed. [Results](tasks/ui-object-target-selection-acceptance.md) distinguish the two new synthetic consumers from adoption evidence. | Hosted delivery is recorded by the authorized task PR and main CI. Retain the current-document, strict-identity and unchanged-product boundaries. Object absence remains paused. |
 | Delivered | [Verified review repairs](tasks/review-followup-20261031.md) | Collection, safe diagnostics, owned-snapshot/falsy-body validation and regression-cost fixes passed independent audit and architect acceptance: 4842 full-suite tests, 4133 dev-only tests per Python version. Selected Python migrations now have a history-linked entry point. | Delivered through PR #41 in main `19d5ef1`; eight branch/PR checks and four main jobs passed, branches removed. |
 | Delivered | [Bounded native-await association](tasks/browser-native-await.md) | Independent mechanism/consumer audits and local architect acceptance passed again on 2026-10-31 after a background-communication fix: 4790 full-suite tests, 4081 dev-only tests per Python version, and both unchanged consumer implementations passing. [Results](tasks/browser-native-await-acceptance.md) retain the bounded evidence limitations. No declaration changes. | Delivered through PR #40 in main `4a4b8af`; eight final branch/PR checks and four main jobs passed, branches removed. Unsupported or missing ancestry cannot pass by inference; broader transports and Flow remain separate proposals. |
