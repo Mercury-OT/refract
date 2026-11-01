@@ -6,6 +6,7 @@ listed tests, including the optional real HTTP/browser tests.
 """
 from dataclasses import dataclass
 import ast
+import copy
 import hashlib
 import importlib.util
 import json
@@ -364,11 +365,61 @@ def test_consumer_inventory_names_real_functions_and_collected_nodes():
     assert collected == expected
 
 
-def test_full_suite_ci_includes_optional_real_consumers_without_selection_filter():
-    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+def _assert_full_suite_ci(workflow):
     commands = [step.get("run", "") for step in workflow["jobs"]["full-suite"]["steps"]]
     assert any('pip install -e ".[dev,demo]"' in command for command in commands)
     assert any("playwright install --with-deps chromium" in command for command in commands)
-    assert "pytest -q" in commands
+    # Exact guarded entry: no -k, -m, directory restriction or ignore filter.
+    assert ('python scripts/run_tests.py --output-dir '
+            '"$RUNNER_TEMP/test-guard-full" -- -q') in commands
+    assert workflow["jobs"]["full-suite"]["timeout-minutes"] == 60
+    retention = [step for step in workflow["jobs"]["full-suite"]["steps"]
+                 if step.get("uses") == "actions/upload-artifact@v4"]
+    assert len(retention) == 1
+    assert retention[0]["if"] == "always()"
+    assert retention[0]["with"]["path"] == "${{ runner.temp }}/test-guard-full"
+    assert retention[0]["with"]["retention-days"] == 7
+
+
+def test_full_suite_ci_includes_optional_real_consumers_without_selection_filter():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    _assert_full_suite_ci(workflow)
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["tool"]["pytest"]["ini_options"]["testpaths"] == ["tests"]
+
+
+@pytest.mark.parametrize("mutation", ["filtered", "unguarded", "no-browser", "no-retention", "success-only"])
+def test_full_suite_ci_rejects_reduced_execution_or_missing_diagnostics(mutation):
+    original = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    workflow = copy.deepcopy(original)
+    steps = workflow["jobs"]["full-suite"]["steps"]
+    execution = next(step for step in steps if step.get("name") == "Run the full test suite")
+    if mutation == "filtered":
+        execution["run"] += " --ignore=tests/browser"
+    elif mutation == "unguarded":
+        execution["run"] = "pytest -q"
+    elif mutation == "no-browser":
+        steps[:] = [step for step in steps if step.get("name") != "Install Playwright Chromium"]
+    elif mutation == "no-retention":
+        steps[:] = [step for step in steps if step.get("name") != "Retain test diagnostics"]
+    else:
+        next(step for step in steps if step.get("name") == "Retain test diagnostics")["if"] = "success()"
+    with pytest.raises(AssertionError):
+        _assert_full_suite_ci(workflow)
+
+
+def test_core_ci_preserves_both_python_versions_litmus_and_complete_core_runs():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    job = workflow["jobs"]["core-only"]
+    assert job["strategy"]["matrix"]["python-version"] == ["3.11", "3.12"]
+    assert job["timeout-minutes"] == 20
+    commands = [step.get("run", "") for step in job["steps"]]
+    assert ('python scripts/run_tests.py --output-dir "$RUNNER_TEMP/test-guard-litmus" '
+            '--suite-timeout 120 -- tests/test_opensource_litmus.py -q') in commands
+    assert ('python scripts/run_tests.py --output-dir "$RUNNER_TEMP/test-guard-core" '
+            '--suite-timeout 600 -- -q') in commands
+    retention = next(step for step in job["steps"]
+                     if step.get("uses") == "actions/upload-artifact@v4")
+    assert retention["if"] == "always()"
+    assert retention["with"]["path"] == "${{ runner.temp }}/test-guard-*"
+    assert retention["with"]["retention-days"] == 7

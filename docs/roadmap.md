@@ -75,6 +75,22 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer authorized [bounded test execution and stall diagnostics](tasks/test-execution-guard.md)
+on 2026-11-01. This is a finite test-infrastructure task: identify the active
+test/phase, retain diagnostics and enforce an external execution ceiling without
+changing Scenario YAML, business checks or production deadlines. Development,
+independent audits and architect acceptance passed: 5457 full-suite tests with
+real Chromium, 4408 dev-only tests per supported Python version and 51 independent
+guard controls. See the [verification record](tasks/test-execution-guard-acceptance.md),
+including the observed cleanup defects and their corrections. Authorized hosted
+delivery is evidenced separately by the task PR, exact main CI and branch cleanup.
+The first main CI attempt after PR #45 stopped reporting progress and was
+cancelled; the exact commit passed on retry. Its root cause remains unproven.
+This task does not claim to repair that unknown cause or start another general
+stabilization campaign. After delivery, return to the bounded, text-only Flow
+design assessment below; no Flow implementation is authorized. Object absence
+stays paused and private workspaces remain outside scope.
+
 The maintainer approved [Enter-triggered same-page form submission](tasks/enter-form-submission.md)
 on 2026-11-01. A real-browser feasibility gate passed before implementation:
 the actual native default submitter chain can be distinguished from programmatic
@@ -87,7 +103,12 @@ mechanism checks and 25 independent consumer checks. A discovered ordinary-click
 regression was corrected and independently rechecked. See the
 [verification record](tasks/enter-form-submission-acceptance.md). The authorized
 task-branch submission, green PR/main checks and cleanup are recorded separately
-by the associated PR/history. Object absence stays paused; Flow and native
+by the associated PR/history. Delivery completed through PR #45 in main
+`101585b`: eight branch/PR checks passed, all four main jobs were green after the
+second attempt (only full-suite reran), and both task branches were removed.
+The first main attempt's unexplained
+stall and cancellation remain recorded, not treated as a passing attempt.
+Object absence stays paused; Flow and native
 document form submission are not added.
 
 The maintainer approved [explicit Enter on an already focused input](tasks/ui-enter-press.md)
@@ -173,7 +194,8 @@ Scenario YAML or authorize Flow, broader transports or target changes.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Implemented and accepted | [Same-page Enter form submission](tasks/enter-form-submission.md) | Native default submitter and owning-form association; exact Scenario/adapter reuse. Both independent audits and 5400 full-suite tests passed. [Checks and limits](tasks/enter-form-submission-acceptance.md). No core or YAML change. | Authorized hosted delivery is recorded by the associated PR and main CI. No focus repair, native document submit, object absence or Flow. |
+| Implemented and accepted | [Bounded test execution and stall diagnostics](tasks/test-execution-guard.md) | Test-only supervision, phase diagnostics and bounded failure; 5457 full-suite tests, 4408 dev-only tests per Python version and 51 independent guard controls passed. [Verification and limits](tasks/test-execution-guard-acceptance.md). No production, Scenario, dependency or assertion change. | Authorized hosted delivery is recorded by the associated PR, exact main CI and branch cleanup. Return to Flow design assessment afterward, not implementation. |
+| Delivered | [Same-page Enter form submission](tasks/enter-form-submission.md) | Native default submitter and owning-form association; exact Scenario/adapter reuse. Both independent audits and 5400 full-suite tests passed. [Checks and limits](tasks/enter-form-submission-acceptance.md). No core or YAML change. | Delivered through PR #45 in main `101585b`; eight branch/PR checks passed and four main jobs were green after the full-suite retry; branches removed. First main attempt was cancelled after an unexplained stall. No focus repair, native document submit, object absence or Flow. |
 | Delivered | [Focused Enter operation](tasks/ui-enter-press.md) | Literal Enter, explicit driver capability, owned delivery receipt and reliable bounded request association. No focus repair. [Checks and limits](tasks/ui-enter-press-acceptance.md). | Delivered through PR #44 in main `b6107be`; eight branch/PR checks and four main jobs passed, branches removed. The separate form task extends only the documented same-page submission boundary. |
 | Implemented and accepted | [Object-specific UI selection](tasks/ui-object-target-selection.md) | Optional click object_id with strict unique selection and receipt; format 1 and one-level includes unchanged. Two independent audits passed; 5032 full-suite tests and 4241 dev-only tests per Python version passed. [Results](tasks/ui-object-target-selection-acceptance.md) distinguish the two new synthetic consumers from adoption evidence. | Hosted delivery is recorded by the authorized task PR and main CI. Retain the current-document, strict-identity and unchanged-product boundaries. Object absence remains paused. |
 | Delivered | [Verified review repairs](tasks/review-followup-20261031.md) | Collection, safe diagnostics, owned-snapshot/falsy-body validation and regression-cost fixes passed independent audit and architect acceptance: 4842 full-suite tests, 4133 dev-only tests per Python version. Selected Python migrations now have a history-linked entry point. | Delivered through PR #41 in main `19d5ef1`; eight branch/PR checks and four main jobs passed, branches removed. |
