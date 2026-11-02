@@ -75,6 +75,18 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved the [runnable browser Flow consumer](tasks/browser-flow-consumer.md)
+on 2026-11-02. This finite task uses the existing synthetic browser application
+unchanged to create, update and read a record through one retained page. It adds
+a DOM business-result mapping, four declarations and runnable positive/negative
+controls, not a new Flow capability or YAML form. Live e2e is the selected
+projection; no independent storage evidence or adoption benefit is claimed.
+Development, independent review and architect acceptance passed: 5650 full-suite
+tests, 4589 dev-only tests per supported Python version, 45 focused tests and six
+independent browser probes. See the [verification record](tasks/browser-flow-consumer-acceptance.md).
+The explicitly authorized PR/main CI delivery follows these gates. Object absence remains paused; private workspaces,
+core, browser support and the target application are outside the change scope.
+
 The maintainer approved the [ordered Scenario Flow specification](tasks/scenario-flow.md)
 and its create/update/read expression on 2026-11-01. The authorized slice is a
 linear Flow with shared parameter snapshots, atomic successful writes, failed-write
@@ -85,7 +97,11 @@ each supported Python version. See the [verification record](tasks/scenario-flow
 Submission and green-CI merge are explicitly authorized after these gates.
 No branches, editor, automatic cleanup, object absence or private workspace access
 are included. [FLOW.md](../FLOW.md) is the execution contract for this slice;
-delivery evidence is recorded separately after verification.
+delivery evidence is recorded separately after verification. Delivery completed
+through PR #47 in main `522e030`: eight final branch/PR checks and four main jobs
+passed, and both task branches were removed. The final corrected hosted suites
+executed 5605 full-suite tests and 4554 dev-only tests per Python version; the
+historical local verification counts above remain unchanged.
 
 The maintainer authorized [bounded test execution and stall diagnostics](tasks/test-execution-guard.md)
 on 2026-11-01. This is a finite test-infrastructure task: identify the active
@@ -207,7 +223,8 @@ Scenario YAML or authorize Flow, broader transports or target changes.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Implemented and accepted | [Ordered Scenario Flow](tasks/scenario-flow.md) | Shared snapshots, atomic writes/invalidation, mapped multi-user continuity and hierarchical reports. [Verification](tasks/scenario-flow-acceptance.md): 5603 full-suite tests, 4552 dev-only tests per Python version and two independent audits passed. | Authorized task branch, PR, passing checks, merge and main CI; no branching/editor/object-absence expansion. |
+| Implemented and accepted | [Runnable browser Flow consumer](tasks/browser-flow-consumer.md) | One unchanged synthetic target, two frontend implementations, retained-page create/update/read, actual DOM checks and bounded fault controls. [Verification](tasks/browser-flow-consumer-acceptance.md): 5650 full-suite, 4589 dev-only per Python version, 45 focused tests and six independent browser probes passed. | Authorized task branch, PR, green checks, merge and main CI; no new declaration or core capability. |
+| Delivered | [Ordered Scenario Flow](tasks/scenario-flow.md) | Shared snapshots, atomic writes/invalidation, mapped multi-user continuity and hierarchical reports. [Verification](tasks/scenario-flow-acceptance.md) retains the local results and hosted cleanup correction. | Delivered through PR #47 in main `522e030`; final hosted suites: 5605 full, 4554 dev-only per Python version, all checks green and branches removed. No branching/editor/object-absence expansion. |
 | Delivered | [Bounded test execution and stall diagnostics](tasks/test-execution-guard.md) | Test-only supervision, phase diagnostics and bounded failure; 5457 full-suite tests, 4408 dev-only tests per Python version and 51 independent guard controls passed. [Verification and limits](tasks/test-execution-guard-acceptance.md). No production, Scenario, dependency or assertion change. | Delivered through PR #46 in main `5015e45`; PR and main CI passed, branches cleaned. The later Flow authorization is separate. |
 | Delivered | [Same-page Enter form submission](tasks/enter-form-submission.md) | Native default submitter and owning-form association; exact Scenario/adapter reuse. Both independent audits and 5400 full-suite tests passed. [Checks and limits](tasks/enter-form-submission-acceptance.md). No core or YAML change. | Delivered through PR #45 in main `101585b`; eight branch/PR checks passed and four main jobs were green after the full-suite retry; branches removed. First main attempt was cancelled after an unexplained stall. No focus repair, native document submit, object absence or Flow. |
 | Delivered | [Focused Enter operation](tasks/ui-enter-press.md) | Literal Enter, explicit driver capability, owned delivery receipt and reliable bounded request association. No focus repair. [Checks and limits](tasks/ui-enter-press-acceptance.md). | Delivered through PR #44 in main `b6107be`; eight branch/PR checks and four main jobs passed, branches removed. The separate form task extends only the documented same-page submission boundary. |

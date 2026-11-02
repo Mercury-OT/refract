@@ -1,0 +1,40 @@
+schema_version: 1
+scenario: records.browser_create
+description: Create a record through the page and publish its observed identity.
+users: [operator]
+parameters:
+  code: {from_run: unique}
+steps:
+  - id: open
+    do: open
+    target: records.page
+  - id: fill_name
+    do: fill
+    target: name
+    value: {from_flow: expected_name}
+  - id: fill_code
+    do: fill
+    target: code
+    value: {from_parameter: code}
+  - id: submit
+    do: click
+    target: create
+    expect:
+      request:
+        method: POST
+        path: [records-api, records]
+        body:
+          name: {from_flow: expected_name}
+          code: {from_parameter: code}
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: id}
+        - {check: field_equals, field: name, value: {from_flow: expected_name}}
+        - {check: field_equals, field: code, value: {from_parameter: code}}
+      ui:
+        - {check: objects_matching_count, anchor: records.result, field: name, value: {from_flow: expected_name}, count: 1}
+        - {check: objects_matching_count, anchor: records.result, field: code, value: {from_parameter: code}, count: 1}
+write_flow:
+  record_id: {from_step: submit, response_field: id}
+  record_code: {from_parameter: code}

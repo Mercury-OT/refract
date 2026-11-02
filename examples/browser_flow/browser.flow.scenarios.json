@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "scenarios": {
+    "records.browser_create": {
+      "path": "create.yaml",
+      "sha256": "7ffe03ba46cca68ed650fff2dc11dd39db76964bdc890408cf1359121e689c13"
+    },
+    "records.browser_update": {
+      "path": "update.yaml",
+      "sha256": "5a749602f2b3f9198c4f97427e467bbefd29fce4bf52d9dab55a23a84b2ea0e2"
+    },
+    "records.browser_read": {
+      "path": "read.yaml",
+      "sha256": "40534ef78ebda0018e941b424ec11b1e690e9b608625de106d696e4f08121d9b"
+    }
+  }
+}

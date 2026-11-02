@@ -40,6 +40,8 @@ An ordered [Flow](FLOW.md) connects multiple Scenarios while retaining each user
 current session and explicit shared parameters. Results remain visible at Flow,
 Scenario and step levels. The [runnable example](examples/flow/README.md) creates,
 updates and reads one document through the existing synthetic Documents adapter.
+A [browser Flow example](examples/browser_flow/README.md) performs the same three
+operations through one retained page and checks its actual displayed result.
 
 ## Current Scope
 
