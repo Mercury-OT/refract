@@ -1,0 +1,31 @@
+schema_version: 1
+scenario: records.browser_update
+description: Update the created record without reopening the page.
+users: [operator]
+steps:
+  - id: select_record
+    do: fill
+    target: record_id
+    value: {from_flow: record_id}
+  - id: fill_name
+    do: fill
+    target: name
+    value: {from_flow: updated_name}
+  - id: submit
+    do: click
+    target: update
+    expect:
+      request:
+        method: PATCH
+        path: [records-api, records, {from_flow: record_id}]
+        body:
+          name: {from_flow: updated_name}
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: id, value: {from_flow: record_id}}
+        - {check: field_equals, field: name, value: {from_flow: updated_name}}
+      ui:
+        - {check: object_field_equals, anchor: records.result, id: {from_flow: record_id}, field: name, value: {from_flow: updated_name}}
+write_flow:
+  expected_name: {from_flow: updated_name}

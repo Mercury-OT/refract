@@ -1,0 +1,20 @@
+schema_version: 1
+scenario: records.browser_read
+description: Read the retained selection and verify the response and page.
+users: [operator]
+steps:
+  - id: read
+    do: click
+    target: read
+    expect:
+      request:
+        method: GET
+        path: [records-api, records, {from_flow: record_id}]
+      response:
+        - {check: status_equals, value: 200}
+        - {check: success}
+        - {check: field_equals, field: id, value: {from_flow: record_id}}
+        - {check: field_equals, field: name, value: {from_flow: expected_name}}
+        - {check: field_equals, field: code, value: {from_flow: record_code}}
+      ui:
+        - {check: object_field_equals, anchor: records.result, id: {from_flow: record_id}, field: name, value: {from_flow: expected_name}}

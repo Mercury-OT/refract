@@ -1,0 +1,20 @@
+schema_version: 1
+flow: records.browser_lifecycle
+description: Create, update, and read one record through the same browser page.
+users: [creator]
+on_failure: stop
+parameters:
+  record_id: {}
+  record_code: {}
+  expected_name: {initial: Initial record}
+  updated_name: {initial: Updated record}
+scenarios:
+  - id: create
+    scenario: records.browser_create
+    with_users: {operator: creator}
+  - id: update
+    scenario: records.browser_update
+    with_users: {operator: creator}
+  - id: read
+    scenario: records.browser_read
+    with_users: {operator: creator}

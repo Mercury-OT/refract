@@ -34,6 +34,13 @@ expects three real target operations with one authentication. Contract checks
 the same provider evidence, not an independent data source. A standalone
 `refracto validate` of one of these Flow-dependent Scenarios intentionally fails.
 
+For live page operations, the [browser Flow consumer](examples/browser_flow/README.md)
+uses the existing multi-origin synthetic target unchanged. Its create/update/read
+Scenarios retain one page and mapped user's session, and check both actual HTTP
+responses and DOM content. It runs e2e only. These are distinct observations of
+the same application, not independent database evidence. The consumer includes
+fault controls for wrong rendering and an update that is not persisted.
+
 ## Flow document
 
 | Field | Meaning |

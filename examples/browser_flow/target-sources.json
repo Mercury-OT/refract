@@ -1,0 +1,9 @@
+{
+  "manifest_version": 1,
+  "baseline_commit": "522e0306744ab42642c9a204e71a282bc8dbc993",
+  "sources": {
+    "examples/browser_multi_origin/app.py": "4369ef4d97c2ff14e4f22e9c9ad2634cc9bd3cba93230950d9da95462a2808bb",
+    "examples/browser_multi_origin/promise.js": "dc8a2f5e77d594f26c74a84d7ae90303e6e32965fb1d5744c7b03be6e21b0b1b",
+    "examples/browser_multi_origin/async.js": "8bc44f85dbf9078f579078e37e3022839ea36bedb13446551ec2e449346fa598"
+  }
+}
