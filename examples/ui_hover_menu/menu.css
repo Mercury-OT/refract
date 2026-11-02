@@ -1,0 +1,7 @@
+body { font: 16px sans-serif; margin: 32px; }
+#menu { width: 220px; padding: 4px; }
+#menu-trigger, #archived { width: 210px; height: 40px; }
+#menu-items { display: none; }
+body[data-menu-mode="css"] #menu:hover #menu-items,
+body[data-menu-mode="javascript"] #menu[data-expanded="yes"] #menu-items { display: block; }
+#results { min-height: 32px; }

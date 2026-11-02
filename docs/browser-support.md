@@ -19,6 +19,58 @@ playwright install chromium
 The `demo` extra continues to include Playwright. Installing only the core or
 `dev` extra does not install it; core imports and offline tests need no browser.
 
+## Hover with page-only evidence
+
+`do: hover` moves the pointer once onto a literal logical `target`; the existing
+`expect.ui` checks describe the required page result. An adapter opts in through
+`supports_hover(mode)`, returning exact True only for supported modes. The base
+driver returns false; unsupported hover is rejected before context creation.
+Map the target to one native CSS selector and pass the unchanged permit to
+`BrowserSupport.perform(context, permit, selector=...)`.
+
+The helper pins one visible main-document element and uses its in-viewport
+center point. A descendant hit is allowed. It requires actual trusted pointer
+movement, the same connected element and a valid hit test through the final
+snapshot. Missing, duplicate, hidden, covered, replaced or unavailable targets
+produce an evidence error. It does not scroll, force an interaction, click,
+focus, alter styles or move away and back to manufacture another mouseenter.
+An already-positioned pointer can yield a movement receipt; that is not proof
+that another enter event occurred. Existing page checks determine the result.
+
+Completed evidence carries `UiHover(target_matches=1, pointer_on_target=True)`
+in `UiActionEvidence.hover`. Core requires strict types, checks execution
+identity, and copies it into `StepResult.hover`. Other actions must not claim
+this receipt, and a skipped action cannot replace it. An observed wrong page
+result is FAILED; missing delivery or observation evidence is ERROR. These are
+bounded consistency checks, not protection against hostile adapter/page code.
+
+Hover-related requests stay background diagnostics and cannot satisfy a hover
+or a later click. This slice rejects request, response and backend_state sections
+on hover, including empty sections; declare a subsequent click as its own step
+when that action makes a request. Mock execution still requires explicit mock
+responses and cannot fall through to live services. Navigation, new documents,
+additional tabs/frames and downloads during hover or its protected idle gap are
+unsupported. The next authorized action retains its existing rules after that
+gap has been checked.
+
+Once a mock context accepts hover, all unassociated API requests in that context
+are aborted and noted diagnostically, including later arrivals. They cannot
+consume the ordered fixtures reserved for associated actions. This is a
+conservative restriction for late background work, not a claim to identify its
+origin. It can affect pages whose menus depend on such background responses;
+those pages need live evidence or a separately reviewed extension. Contexts
+without hover retain their existing mock behavior; live background traffic is
+unchanged. An aborted request does not acquire an invented response record.
+
+Backend does not perform hover: it reports the UI-only step NOT_APPLICABLE and
+the UI obligations not checked. A hover-only backend selection is EMPTY, not
+PASSED. A mixed Scenario can pass its backend request checks without proving
+menu behavior; use frontend or e2e for that evidence. Contract likewise cannot
+prove pointer delivery. No aggregation or projection-selection rule changes.
+See the [menu consumer](../examples/ui_hover_menu/README.md) and
+[bounded task](tasks/ui-hover.md). The consumer checks that the menu item starts
+hidden before testing its reveal; missing menu structure is not an empty list.
+
 ## Enter on an already focused input
 
 `do: press`, `target`, `key: Enter` performs one real key down/up pair, without

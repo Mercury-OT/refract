@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "data": {
+    "records": [
+      {"id": "r1", "name": "Archived record", "status": "archived"}
+    ]
+  }
+}

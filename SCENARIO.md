@@ -144,6 +144,7 @@ execution, not a multi-action adapter primitive.
 | Click | `do: click`, `target`, optional `object_id` | activate one logical control, optionally for one observed business object |
 | Fill | `do: fill`, `target`, `value` | fill one logical input |
 | Press | `do: press`, `target`, `key: Enter` | press and release Enter once on the unique, already focused logical input |
+| Hover | `do: hover`, `target` | move the pointer onto one unique visible logical control and observe its UI |
 | Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
 | API request | `do: {request: {method, path, query?, headers?, body?}}` | send the declared request |
 
@@ -196,8 +197,49 @@ Scenario and adapter on two form-handler variants. Programmatic submissions and
 implicit-button click-handler requests cannot stand in for the native submit
 handler; missing evidence retains the failure rules above.
 
+Hover accepts a literal logical target and only `expect.ui` checks. It has no
+value, key, object_id, coordinates, polling, forced interaction or hidden click.
+Non-UI expectation sections are rejected even when empty. There may be several
+UI checks, or no checks on that step if another step checks the Scenario.
+
+```yaml
+- id: reveal_menu
+  do: hover
+  target: records.menu_trigger
+  expect:
+    ui:
+      - check: objects_matching_count
+        anchor: records.menu_items
+        field: text
+        value: {from_parameter: menu_text}
+        count: 1
+```
+
+The [complete menu consumer](examples/ui_hover_menu/scenario.yaml) first checks
+that the item is absent, hovers, then clicks it as a separate step and checks
+the resulting request, response and page. A permanently displayed item does not
+prove that hover revealed it. An unreadable menu region is unavailable evidence,
+not an empty collection. A completed hover whose observed UI mismatches is
+FAILED; an unavailable, ambiguous, hidden, obstructed or replaced target is
+ERROR. Ordinary continuation and explicit stop rules remain unchanged.
+
+Custom drivers opt in through supports_hover(mode). A completed action needs a
+UiHover receipt: exactly one target and pointer_on_target exactly true. The
+browser helper supports an in-viewport main-document target and actual pointer
+delivery without automatic scrolling, focus repair or moving away and back.
+Hover-related HTTP remains background diagnostics and cannot supply evidence
+for hover or rescue a later click. See the [browser guide](docs/browser-support.md).
+
+Backend skips requestless hover as NOT_APPLICABLE and records unchecked UI
+obligations; it may directly check later declared requests without verifying the
+menu. A hover-only Scenario is EMPTY for backend or contract, never PASSED.
+Selecting an EMPTY backend together with a PASSED e2e produces DEGRADED under
+the existing aggregation rule; select e2e to verify this purely UI obligation.
+Contract records hover as outside its scope. No projection selection is inferred.
+
 An API action stores its request under `do.request`, never under `expect`.
-A UI action may declare `expect.request` to constrain the traffic it causes.
+A supported request-bearing UI action may declare `expect.request` to constrain
+the traffic it causes; hover does not support request association.
 The same step cannot contain both request forms. Requests use an HTTP method,
 an explicit list of logical path segments, optional query and business-header
 mappings, and an optional body mapping.

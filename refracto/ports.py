@@ -216,6 +216,14 @@ class UiKeyPress:
 
 
 @dataclass(frozen=True, kw_only=True)
+class UiHover:
+    """Observed pointer delivery; a checked adapter claim, not attestation."""
+
+    target_matches: int = field(repr=False)
+    pointer_on_target: bool = field(repr=False)
+
+
+@dataclass(frozen=True, kw_only=True)
 class UiActionEvidence:
     """Adapter evidence returned for one permitted semantic UI action."""
 
@@ -251,6 +259,7 @@ class UiActionEvidence:
     diagnostic_notes: list[str] = field(default_factory=list, kw_only=True, repr=False)
     object_selection: UiObjectSelection | None = field(default=None, repr=False, metadata={"sensitive": True})
     key_press: UiKeyPress | None = field(default=None, repr=False, metadata={"sensitive": True})
+    hover: UiHover | None = field(default=None, repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -326,6 +335,10 @@ class StepwiseUiDriver(ABC):
 
     def supports_key_press(self, mode: str, key: str) -> bool:
         """Opt in only when key delivery provides a validated focused receipt."""
+        return False
+
+    def supports_hover(self, mode: str) -> bool:
+        """Opt in only when pointer delivery provides a validated target receipt."""
         return False
 
     @abstractmethod

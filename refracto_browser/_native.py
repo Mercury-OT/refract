@@ -171,6 +171,13 @@ class NativeCollector:
             entry.update(spec=spec, request_items=request_items, trace_id=trace_id,
                          actual_path=urlsplit(request['url']).path, fixture_id=None)
             if self.context.mode == 'mock':
+                if entry['action'] is None and self.context.block_unassociated_mock:
+                    if 'background HTTP acquisition failed' not in self.notes:
+                        self.notes.append('background HTTP acquisition failed')
+                    entry['blocked_mock_background'] = True
+                    self.target_guard.send('Fetch.failRequest', {
+                        'requestId': event['requestId'], 'errorReason': 'BlockedByClient'})
+                    return
                 # Preflight responses are not invented from transport policy.
                 if event['resourceType'] == 'Preflight' or request['method'] == 'OPTIONS':
                     raise ValueError()
@@ -360,7 +367,8 @@ class NativeCollector:
             # A CORS-blocked response never becomes usable response evidence,
             # even if the server completed its side of the exchange. Policy
             # failures have already made the context erroneous before aborting.
-            if entry.get('action') is not None or event.get('corsErrorStatus'):
+            blocked_background = entry.get('blocked_mock_background') is True
+            if entry.get('action') is not None or event.get('corsErrorStatus') and not blocked_background:
                 self._error()
             elif 'background HTTP acquisition failed' not in self.notes:
                 self.notes.append('background HTTP acquisition failed')

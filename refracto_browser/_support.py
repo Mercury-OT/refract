@@ -21,6 +21,7 @@ from ._navigation import NavigationCollector
 from ._request_body import is_form_content_type, parse_form_body
 from ._object_target import ObjectTarget, PinnedObjectTarget, require_browser_id
 from ._key_press import KeyPressBoundary, PinnedKeyPress
+from ._hover import PinnedHover
 
 
 _runtime = threading.local()
@@ -89,6 +90,8 @@ class _Context:
     native: object = None
     navigation: object = None
     key_boundary: object = None
+    block_unassociated_mock: bool = False
+    diagnostic_notes: list = field(default_factory=list)
 
     def __repr__(self):
         return "<BrowserSupport context>"
@@ -100,6 +103,11 @@ class BrowserSupport:
     URL/selector mappings and read-only rendered-field interpretation belong to
     the caller. Raw port evidence remains sensitive; this helper's repr/errors
     deliberately omit browser handles, URLs, bodies, options, and input values.
+    After the first hover authorization in a context, unassociated mock API
+    requests are blocked with diagnostics for the rest of that context, including
+    deferred arrivals in later steps or Flow nodes. They never consume ordered
+    fixtures or reach a live service. Live diagnostics and non-hover mock
+    contexts retain their existing behavior.
     """
 
     def __init__(self, base_url, read_rendered, logical_path=None, timeout_ms=5000, *, network_policy=None):
@@ -249,7 +257,7 @@ class BrowserSupport:
     def _authorize(self, context, permit, url, selector, object_target=None):
         if not isinstance(permit, ports.UiActionPermit):
             raise ValueError("browser action requires an action permit")
-        if permit.mode != context.mode or permit.action not in {"open", "click", "fill", "press"}:
+        if permit.mode != context.mode or permit.action not in {"open", "click", "fill", "press", "hover"}:
             raise ValueError("browser action permit is incompatible with context")
         for name in ("user", "session_generation", "context_id"):
             actual, expected = getattr(permit, name), getattr(context, name)
@@ -293,6 +301,11 @@ class BrowserSupport:
         # making the authorization registry retain a closed context.
         _authorizations[permit.token] = self
         context.permits[permit.action_id] = permit
+        if permit.action == "hover":
+            # Hover has no ordered request fixture. This protection persists in
+            # a reused context: a deferred hover callback cannot take a later
+            # click's fixture. Non-hover contexts retain their legacy policy.
+            context.block_unassociated_mock = True
 
     def perform(self, context, permit, *, url=None, selector=None, object_target=None):
         """Perform one authorized primitive, then collect bounded evidence."""
@@ -303,16 +316,18 @@ class BrowserSupport:
         context.deadline = time.monotonic() + self._timeout_ms / 1000
         start, diagnostic_start, mock_start = context.traffic_cursor, context.diagnostic_cursor, context.mock_cursor
         pressed = None
+        hovered = None
         try:
             self._check(context)
             if context.key_boundary is not None:
                 context.key_boundary.check()
-            if context.key_boundary is not None and permit.action != "press":
+            if context.key_boundary is not None and permit.action not in {"press", "hover"}:
                 # Only after checking the protected idle gap may the next
                 # explicitly authorized action resume its existing semantics.
                 context.key_boundary.protected = False
             selection = None
             key_press = None
+            hover = None
             if permit.action == "open":
                 if context.navigation is not None:
                     context.navigation.opening = True
@@ -324,6 +339,12 @@ class BrowserSupport:
                         context.key_boundary = KeyPressBoundary(context)
                     context.key_boundary.begin()
                     pressed = PinnedKeyPress(context.page, selector, permit.action_id)
+                elif permit.action == "hover":
+                    if context.key_boundary is None:
+                        context.key_boundary = KeyPressBoundary(context)
+                    context.key_boundary.begin(kind="hover")
+                    hovered = PinnedHover(context.page, selector, permit.action_id,
+                                          lambda: self._remaining(context))
                 elif object_target is not None:
                     if context.navigation is None:
                         context.navigation = NavigationCollector(self, context)
@@ -355,6 +376,8 @@ class BrowserSupport:
                         # The capture guard revalidates each actual trusted event.
                         context.page.keyboard.down("Enter")
                         context.page.keyboard.up("Enter")
+                    elif permit.action == "hover":
+                        context.page.mouse.move(**hovered.position)
                     elif permit.action == "click":
                         locator.click(timeout=self._remaining(context))
                     else:
@@ -369,7 +392,7 @@ class BrowserSupport:
                         # A rejected secondary target can leave the opener's
                         # renderer unresponsive. Owning-resource cleanup below
                         # must not wait for another evaluation in that renderer.
-                        if pressed is None and not context.errors:
+                        if pressed is None and hovered is None and not context.errors:
                             context.page.evaluate("""() => {
                             window.__refractBrowser.armed = null;
                             window.__refractBrowser.event = null;
@@ -403,12 +426,20 @@ class BrowserSupport:
                 pressed = None
                 context.key_boundary.check()
                 self._remaining(context)
+            if hovered is not None:
+                hover = hovered.receipt()
+                hovered.close()
+                hovered = None
+                context.key_boundary.check()
+                self._remaining(context)
             current, diagnostics = [], list(context.diagnostics[diagnostic_start:diagnostic_end])
             for traffic in context.traffic[start:traffic_end]:
                 if traffic.action_id == permit.action_id:
                     current.append(traffic)
                 else:
                     diagnostics.append(traffic.response)
+            if permit.action == "hover" and current:
+                raise RuntimeError("hover cannot claim request evidence")
             result = ports.UiActionResult(evidence=ports.UiActionEvidence(
                 execution_id=permit.execution_id, action_id=permit.action_id,
                 step_id=permit.step_id, mode=permit.mode, permit_token=permit.token,
@@ -417,9 +448,9 @@ class BrowserSupport:
                 diagnostic_outgoing=[recording.request for recording in diagnostics],
                 diagnostic_recorded=diagnostics,
                 mock_recordings=mock_recordings,
-                diagnostic_notes=list(context.native.notes) if context.native is not None else [],
+                diagnostic_notes=list(context.native.notes) if context.native is not None else list(context.diagnostic_notes),
                 object_selection=selection,
-                key_press=key_press,
+                key_press=key_press, hover=hover,
             ))
             if context.navigation is not None:
                 context.navigation.end()
@@ -430,6 +461,11 @@ class BrowserSupport:
         except Exception:
             self._fail(context, "browser action or evidence collection failed")
         finally:
+            if hovered is not None:
+                try:
+                    hovered.close()
+                except Exception:
+                    pass
             if pressed is not None:
                 try:
                     pressed.close()
@@ -510,6 +546,11 @@ class BrowserSupport:
                 spec = ports.RequestSpec(request.method, logical_path, body, traceparent,
                                          query=actual_query)
             if api and context.mode == "mock":
+                if permit is None and context.block_unassociated_mock:
+                    if "background HTTP acquisition failed" not in context.diagnostic_notes:
+                        context.diagnostic_notes.append("background HTTP acquisition failed")
+                    route.abort()
+                    return
                 if context.mock_queue.index >= len(context.mock_queue.plan):
                     raise ValueError("browser mock plan is exhausted")
                 fixture = context.mock_queue.plan[context.mock_queue.index]

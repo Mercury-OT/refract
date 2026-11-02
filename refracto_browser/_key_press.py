@@ -122,7 +122,7 @@ class PinnedKeyPress:
 
 
 class KeyPressBoundary:
-    """Reject unsupported transitions during press and its following idle gap.
+    """Reject unsupported transitions during press/hover and the following idle gap.
 
     The next authorized primitive resumes its own existing navigation rules.
     A successful receipt cannot prove that an unbounded future timer is safe.
@@ -131,6 +131,7 @@ class KeyPressBoundary:
     def __init__(self, context):
         self.context = context
         self.protected = False
+        self.kind = "keyboard"
         self.session = context.browser_context.new_cdp_session(context.page)
         for event in ("Page.frameRequestedNavigation", "Page.frameStartedNavigating",
                       "Page.frameNavigated", "Page.navigatedWithinDocument",
@@ -144,7 +145,7 @@ class KeyPressBoundary:
 
     def _transition(self, _):
         if self.protected:
-            self.context.errors.append("browser keyboard transition is unsupported")
+            self.context.errors.append(f"browser {self.kind} transition is unsupported")
 
     def _request(self, event):
         if event.get("type") == "Document":
@@ -154,13 +155,14 @@ class KeyPressBoundary:
         if page is not self.context.page:
             self._transition(page)
 
-    def begin(self):
+    def begin(self, *, kind="keyboard"):
+        self.kind = kind
         if len(self.context.page.frames) != 1 or len(self.context.browser_context.pages) != 1:
-            raise RuntimeError("browser keyboard document is unavailable")
+            raise RuntimeError(f"browser {self.kind} document is unavailable")
         self.protected = True
 
     def check(self):
         # Browser reads pump protocol events, so inspect the host ledger after
         # the final DOM receipt read as well as the ordinary helper checks.
         if self.context.errors:
-            raise RuntimeError("browser keyboard boundary failed")
+            raise RuntimeError(f"browser {self.kind} boundary failed")

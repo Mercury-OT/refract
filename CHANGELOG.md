@@ -5,6 +5,29 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-03: explicit UI hover
+
+The [bounded hover task](docs/tasks/ui-hover.md) adds `do: hover` with literal
+target and existing UI checks. It retains schema_version: 1, one-level includes
+and the current Scenario/Flow structure. This first slice rejects request,
+response and backend_state sections on hover; a later click remains a separate
+step with its own request evidence.
+
+Custom drivers explicitly opt in through supports_hover(mode), default false.
+Completed hover evidence requires a frozen keyword-only UiHover in
+UiActionEvidence.hover, with strict integer target_matches equal to 1 and
+pointer_on_target exactly true. Other actions omit it. Core retains an owned
+StepResult.hover copy; both fields are hidden from default repr. Existing permit
+arguments and operation-only ports are unchanged. Skipping the action or
+claiming associated HTTP traffic cannot substitute for pointer evidence.
+
+Unsupported drivers fail before authentication/context creation. BrowserSupport
+requires a unique visible unobscured in-viewport main-document target; it does
+not scroll, click, focus, or move away and back to manufacture a hover result.
+See the [browser guide](docs/browser-support.md) for evidence limits. Backend and
+contract cannot verify hover; requestless backend steps remain NOT_APPLICABLE,
+and a hover-only backend/contract run remains EMPTY.
+
 ## 2026-11-01: Enter-triggered same-page form handlers
 
 The [bounded form task](docs/tasks/enter-form-submission.md) extends BrowserSupport
