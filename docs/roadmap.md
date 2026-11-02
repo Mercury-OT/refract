@@ -75,6 +75,21 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved [explicit UI hover](tasks/ui-hover.md) on 2026-11-02.
+The real-browser feasibility gate passed before implementation: a pinned visible
+target receives an actual pointer movement; hover traffic remains diagnostic and
+cannot substitute for a following click. The bounded slice adds only hover with
+a literal logical target and existing UI assertions, plus a checked delivery
+receipt. Format 1, one-level inclusion and projection aggregation remain unchanged.
+Development, independent core/browser audits and architect acceptance passed:
+5839 full-suite tests, 4710 dev-only tests per Python version, 41 independent
+core probes and 17 additional independent Chromium probes. See the
+[verification record](tasks/ui-hover-acceptance.md), including the bounded
+post-hover mock restriction and unchanged target-source hashes. Hosted delivery
+uses the authorized PR, green branch/main CI and cleanup sequence; the associated
+PR and history record those results separately from local acceptance.
+Object absence remains paused; private workspaces are outside scope.
+
 The maintainer approved the [runnable browser Flow consumer](tasks/browser-flow-consumer.md)
 on 2026-11-02. This finite task uses the existing synthetic browser application
 unchanged to create, update and read a record through one retained page. It adds
@@ -84,8 +99,11 @@ projection; no independent storage evidence or adoption benefit is claimed.
 Development, independent review and architect acceptance passed: 5650 full-suite
 tests, 4589 dev-only tests per supported Python version, 45 focused tests and six
 independent browser probes. See the [verification record](tasks/browser-flow-consumer-acceptance.md).
-The explicitly authorized PR/main CI delivery follows these gates. Object absence remains paused; private workspaces,
-core, browser support and the target application are outside the change scope.
+Delivery completed through PR #48 in main `272dad7`: eight branch/PR checks and
+four main jobs passed, both task branches were removed, and local main was clean
+and synchronized. The historical acceptance counts above remain unchanged.
+Object absence remains paused; private workspaces, core, browser support and the
+target application were outside that change scope.
 
 The maintainer approved the [ordered Scenario Flow specification](tasks/scenario-flow.md)
 and its create/update/read expression on 2026-11-01. The authorized slice is a
@@ -223,7 +241,8 @@ Scenario YAML or authorize Flow, broader transports or target changes.
 
 | Order | Task | State | Next gate |
 | --- | --- | --- | --- |
-| Implemented and accepted | [Runnable browser Flow consumer](tasks/browser-flow-consumer.md) | One unchanged synthetic target, two frontend implementations, retained-page create/update/read, actual DOM checks and bounded fault controls. [Verification](tasks/browser-flow-consumer-acceptance.md): 5650 full-suite, 4589 dev-only per Python version, 45 focused tests and six independent browser probes passed. | Authorized task branch, PR, green checks, merge and main CI; no new declaration or core capability. |
+| Implemented and accepted | [Explicit UI hover](tasks/ui-hover.md) | One real pointer movement, existing UI checks, no hover request evidence or automatic repair. [Verification](tasks/ui-hover-acceptance.md): 5839 full-suite tests, 4710 dev-only per Python version, independent core/browser audits passed. | Authorized PR, green branch/main CI, merge and cleanup; hosted evidence is recorded by the associated PR/history. |
+| Delivered | [Runnable browser Flow consumer](tasks/browser-flow-consumer.md) | One unchanged synthetic target, two frontend implementations, retained-page create/update/read, actual DOM checks and bounded fault controls. [Verification](tasks/browser-flow-consumer-acceptance.md): 5650 full-suite, 4589 dev-only per Python version, 45 focused tests and six independent browser probes passed. | Delivered through PR #48 in main `272dad7`; eight branch/PR checks and four main jobs passed, branches removed. No new declaration or core capability. |
 | Delivered | [Ordered Scenario Flow](tasks/scenario-flow.md) | Shared snapshots, atomic writes/invalidation, mapped multi-user continuity and hierarchical reports. [Verification](tasks/scenario-flow-acceptance.md) retains the local results and hosted cleanup correction. | Delivered through PR #47 in main `522e030`; final hosted suites: 5605 full, 4554 dev-only per Python version, all checks green and branches removed. No branching/editor/object-absence expansion. |
 | Delivered | [Bounded test execution and stall diagnostics](tasks/test-execution-guard.md) | Test-only supervision, phase diagnostics and bounded failure; 5457 full-suite tests, 4408 dev-only tests per Python version and 51 independent guard controls passed. [Verification and limits](tasks/test-execution-guard-acceptance.md). No production, Scenario, dependency or assertion change. | Delivered through PR #46 in main `5015e45`; PR and main CI passed, branches cleaned. The later Flow authorization is separate. |
 | Delivered | [Same-page Enter form submission](tasks/enter-form-submission.md) | Native default submitter and owning-form association; exact Scenario/adapter reuse. Both independent audits and 5400 full-suite tests passed. [Checks and limits](tasks/enter-form-submission-acceptance.md). No core or YAML change. | Delivered through PR #45 in main `101585b`; eight branch/PR checks passed and four main jobs were green after the full-suite retry; branches removed. First main attempt was cancelled after an unexplained stall. No focus repair, native document submit, object absence or Flow. |

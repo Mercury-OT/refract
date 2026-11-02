@@ -631,9 +631,9 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
                 raise DeclarationError("do mapping must contain only request")
             request = _request(action["request"], declared_parameters, prior, bindings, "do.request")
             action = "request"
-        elif action not in ("open", "click", "fill", "press", "wait"):
-            raise DeclarationError("do must be open/click/fill/press/wait or a request mapping")
-        allowed = ({"target"} if action in ("open", "click") else
+        elif action not in ("open", "click", "fill", "press", "hover", "wait"):
+            raise DeclarationError("do must be open/click/fill/press/hover/wait or a request mapping")
+        allowed = ({"target"} if action in ("open", "click", "hover") else
                    {"target", "value"} if action == "fill" else
                    {"target", "key"} if action == "press" else
                    {"duration"} if action == "wait" else set())
@@ -657,6 +657,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
         if action == "wait" and (type(duration) is not int or duration < 0):
             raise DeclarationError("duration must be a non-negative integer in milliseconds")
         exp = _mapping(item.get("expect", {}), {"request", "ui", "response", "backend_state"}, "expect")
+        if action == "hover" and set(exp) - {"ui"}:
+            raise DeclarationError("hover supports only UI expectations; request evidence is unsupported")
         request_asserted = "request" in exp
         if request_asserted:
             if action == "request":

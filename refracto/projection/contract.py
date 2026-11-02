@@ -91,6 +91,8 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None,
                        for step in scenario.steps if step.object_id is not None)
     not_checked.extend(f"{step.id}: key press is outside contract scope"
                        for step in scenario.steps if step.action == "press")
+    not_checked.extend(f"{step.id}: hover is outside contract scope"
+                       for step in scenario.steps if step.action == "hover")
     try:
         ensure_bound_run_values(scenario)
     except ValueError as exc:

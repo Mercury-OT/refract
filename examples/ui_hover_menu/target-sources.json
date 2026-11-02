@@ -1,0 +1,9 @@
+{
+  "manifest_version": 1,
+  "freeze_stage": "before adapter integration",
+  "sources": {
+    "examples/ui_hover_menu/app.py": "ebc84e1c0520e281771fceca1ec2f7b3afe7ad9e8a8448edb92e1d55906b16a2",
+    "examples/ui_hover_menu/menu.css": "123ecf77c8cfe586b82081af7aecba216dd3229091578066ea7ff6064e86db69",
+    "examples/ui_hover_menu/menu.js": "96af986353f528b381fc94ffaea11fd8add1878476eeff7d0ece447b133725ba"
+  }
+}

@@ -1,0 +1,64 @@
+schema_version: 1
+scenario: records.browse_archived_via_menu
+description: Reveal the menu, choose archived records, and check the query result
+users: [reader]
+parameters:
+  menu_text: Archived records
+  archived_name: Archived record
+  active_name: Active record
+steps:
+  - id: open_page
+    do: open
+    target: records.page
+    on_failure: stop
+    expect:
+      ui:
+        - check: objects_matching_count
+          anchor: records.menu_items
+          field: text
+          value: {from_parameter: menu_text}
+          count: 0
+  - id: reveal_menu
+    do: hover
+    target: records.menu_trigger
+    on_failure: stop
+    expect:
+      ui:
+        - check: objects_matching_count
+          anchor: records.menu_items
+          field: text
+          value: {from_parameter: menu_text}
+          count: 1
+  - id: browse_archived
+    do: click
+    target: records.archived_menu_item
+    expect:
+      request:
+        method: GET
+        path: [records]
+        query: {status: archived}
+      response:
+        - check: status_equals
+          value: 200
+        - check: success
+        - check: collection_length
+          field: records
+          op: "=="
+          value: 1
+        - check: collection_matching_count
+          field: records
+          matching:
+            name: {from_parameter: archived_name}
+            status: archived
+          count: 1
+      ui:
+        - check: objects_matching_count
+          anchor: records.result_rows
+          field: name
+          value: {from_parameter: archived_name}
+          count: 1
+        - check: objects_matching_count
+          anchor: records.result_rows
+          field: name
+          value: {from_parameter: active_name}
+          count: 0

@@ -27,8 +27,8 @@ _TEMPLATE = r"""(() => {
     pending: state.pending[state.armed.action_id] || 0, errors: state.errors.length > 0});
   if (window.navigation) add.call(window.navigation, 'navigate', event => {
     const arm = state.armed;
-    if (arm?.type === 'press') {
-      state.errors.push('keyboard navigation is unsupported');
+    if (['press', 'hover'].includes(arm?.type)) {
+      state.errors.push('action navigation is unsupported');
       if (event.cancelable) event.preventDefault();
       return;
     }
@@ -109,6 +109,9 @@ _TEMPLATE = r"""(() => {
   const capture = options => typeof options === 'boolean' ? options : !!options?.capture;
   const eventOrigin = event => {
     const arm = state.armed;
+    // Hover has a DOM delivery receipt only. No hover callback, including a
+    // property handler or its native-await continuation, owns request evidence.
+    if (arm?.type === 'hover') return null;
     if (arm?.type === 'press') {
       if (state.programmatic) return null;
       if (event.isTrusted && ['keydown', 'keypress', 'keyup', 'click', 'submit'].includes(event.type)) {
@@ -196,7 +199,9 @@ _TEMPLATE = r"""(() => {
     return propertyWrappers.get(listener);
   };
   for (const prototype of [Window.prototype, Document.prototype, HTMLElement.prototype, SVGElement.prototype]) {
-    for (const property of ['onclick', 'oninput', 'onkeydown', 'onkeypress', 'onkeyup', 'onsubmit']) {
+    for (const property of ['onclick', 'oninput', 'onkeydown', 'onkeypress', 'onkeyup', 'onsubmit',
+        'onmouseover', 'onmouseenter', 'onmousemove', 'onmouseout', 'onmouseleave',
+        'onpointerover', 'onpointerenter', 'onpointermove', 'onpointerout', 'onpointerleave']) {
       const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
       if (!descriptor?.get || !descriptor?.set || !descriptor.configurable) continue;
       Object.defineProperty(prototype, property, {...descriptor,
@@ -208,7 +213,9 @@ _TEMPLATE = r"""(() => {
       });
     }
   }
-  for (const type of ['click', 'input', 'keydown', 'keypress', 'keyup', 'submit']) add.call(window, type, event => {
+  for (const type of ['click', 'input', 'keydown', 'keypress', 'keyup', 'submit',
+      'mouseover', 'mouseenter', 'mousemove', 'mouseout', 'mouseleave',
+      'pointerover', 'pointerenter', 'pointermove', 'pointerout', 'pointerleave']) add.call(window, type, event => {
     // Null-origin events need property wrappers too: otherwise a nested inline
     // handler's native await could inherit an outer trusted invocation.
     eventOrigin(event);

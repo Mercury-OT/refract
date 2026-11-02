@@ -241,6 +241,8 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     if not hmac.compare_digest(permit.token, signed):
         raise ValueError("action permit was modified")
     if result.evidence is None:
+        if permit.action == "hover":
+            raise ValueError("UI hover requires pointer delivery evidence")
         if permit.action == "press":
             raise ValueError("UI press requires key delivery evidence")
         if permit.object_id is not None:
@@ -254,6 +256,16 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     if evidence.permit_token in accepted_tokens:
         raise ValueError("replayed action evidence")
     _require_equal("permit token", evidence.permit_token, permit.token)
+    hover = evidence.hover
+    if permit.action != "hover":
+        if hover is not None:
+            raise ValueError("non-hover UI action must not claim pointer delivery")
+    else:
+        if type(hover) is not ports.UiHover:
+            raise TypeError("UI hover requires UiHover")
+        if (type(hover.target_matches) is not int or hover.target_matches != 1
+                or hover.pointer_on_target is not True):
+            raise ValueError("UI hover requires one target with the pointer on it")
     key_press = evidence.key_press
     if permit.action != "press":
         if key_press is not None:
@@ -280,6 +292,8 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
             raise ValueError("UI object and control selection must both be unique")
     if type(evidence.traffic) is not list:
         raise TypeError("rendered and traffic must be dict/list")
+    if permit.action == "hover" and evidence.traffic:
+        raise ValueError("UI hover must not claim associated request traffic")
     if (type(evidence.diagnostic_notes) is not list or any(
             type(note) is not str or note not in {
                 "background diagnostics truncated", "background HTTP acquisition failed"}
@@ -513,11 +527,18 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         mock_plan=None, now=None, sleep=None, object_state=None,
         flow_execution=None):
     """No legacy path: every Scenario uses this one action/expectation loop."""
-    needs_ui = any(s.action in {"open", "click", "fill", "press"} or s.expect.frontend
+    needs_ui = any(s.action in {"open", "click", "fill", "press", "hover"} or s.expect.frontend
                    for s in scenario.steps)
     try:
         ensure_bound_run_values(scenario)
         for step in scenario.steps:
+            if step.action == "hover":
+                if (type(step.target) is not str or not step.target.strip()
+                        or step.value is not None or step.key is not None
+                        or step.duration is not None or step.object_id is not None
+                        or step.poll is not None or step.request is not None
+                        or step.request_asserted or step.expect.response or step.expect.backend_state):
+                    raise ValueError("UI hover requires a literal target and UI expectations only")
             if step.action == "press":
                 if (type(step.key) is not str or step.key != "Enter"
                         or type(step.target) is not str or not step.target.strip()
@@ -526,6 +547,10 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                     raise ValueError("UI press requires a literal target and Enter key only")
             elif step.key is not None:
                 raise ValueError("key is only supported on press steps")
+        if any(step.action == "hover" for step in scenario.steps):
+            if (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
+                    "UI hover", ui.supports_hover, mode) is not True):
+                raise ValueError("UI hover capability not supported")
         sessions = SessionManager(scenario, auth)
         sessions.preflight()
         if needs_ui and (not isinstance(ui, ports.StepwiseUiDriver)
@@ -618,7 +643,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 blocked.user = user
                 results.append(blocked)
                 continue
-            resolved, norm, object_selection, key_press = {}, None, None, None
+            resolved, norm, object_selection, key_press, hover = {}, None, None, None, None
             lease = None
             prepared_ok = False
             try:
@@ -665,6 +690,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                                                       seen_requests, seen_traces, retained_plan, consumed)
                         object_selection = copy.deepcopy(evidence.object_selection) if evidence is not None else None
                         key_press = copy.deepcopy(evidence.key_press) if evidence is not None else None
+                        hover = copy.deepcopy(evidence.hover) if evidence is not None else None
                         if evidence is None:
                             sr = StepResult(step.id, SKIPPED, skipped=[outcome.skip_reason])
                             sr.resolved_bindings = resolved
@@ -733,6 +759,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 norm = None
             sr.object_selection = object_selection
             sr.key_press = key_press
+            sr.hover = hover
             sr.resolved_bindings = resolved
             sr.user = user
             sr.session_generation = lease.generation if lease is not None else None
