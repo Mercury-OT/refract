@@ -1,0 +1,4 @@
+body { font-family: sans-serif; margin: 2rem; }
+input { display: block; margin: .5rem 0; padding: .5rem; }
+ul { border: 1px solid #888; padding: 1rem 2rem; max-width: 24rem; }
+[hidden] { display: none; }

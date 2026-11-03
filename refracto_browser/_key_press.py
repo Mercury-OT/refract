@@ -1,9 +1,9 @@
-"""Pinned, already-focused Enter delivery and a bounded document guard."""
+"""Pinned, already-focused key delivery and a bounded document guard."""
 
 from refracto import ports
 
 
-_ARM = """({selector, actionId}) => {
+_ARM = """({selector, actionId, key}) => {
     const state = window.__refractBrowser;
     const lookup = () => {
         const matches = [...document.querySelectorAll(selector)].filter(element => {
@@ -38,11 +38,12 @@ _ARM = """({selector, actionId}) => {
         !button.closest('[aria-disabled="true"], [inert]');
     const seen = new WeakSet();
     let keypresses = 0;
-    const result = {key: 'Enter', target_matches: 1, focused: true,
+    const result = {key, target_matches: 1, focused: true,
         keydown_count: 0, keyup_count: 0};
-    const arm = {type: 'press', action_id: actionId, control};
+    const arm = {type: 'press', action_id: actionId, control, key};
     arm.guard = event => {
         if (['click', 'submit'].includes(event.type)) {
+            if (key !== 'Enter') return false;
             if (lookup() !== control || !event.isTrusted) return false;
             if (seen.has(event)) return true;
             if (!currentForm()) return false;
@@ -60,7 +61,7 @@ _ARM = """({selector, actionId}) => {
             return true;
         }
         if (lookup() !== control || event.target !== control || !event.isTrusted ||
-            event.key !== 'Enter' || event.code !== 'Enter' || event.location !== 0 ||
+            event.key !== key || event.code !== key || event.location !== 0 ||
             event.repeat || event.isComposing || event.altKey || event.ctrlKey ||
             event.metaKey || event.shiftKey) return false;
         if (seen.has(event)) return true;
@@ -68,7 +69,7 @@ _ARM = """({selector, actionId}) => {
             if (result.keydown_count || result.keyup_count) return false;
             result.keydown_count++;
         } else if (event.type === 'keypress') {
-            if (result.keydown_count !== 1 || result.keyup_count || keypresses) return false;
+            if (key !== 'Enter' || result.keydown_count !== 1 || result.keyup_count || keypresses) return false;
             keypresses++;
         } else if (event.type === 'keyup') {
             if (result.keydown_count !== 1 || result.keyup_count) return false;
@@ -98,8 +99,11 @@ _ARM = """({selector, actionId}) => {
 class PinnedKeyPress:
     """Retain the actual DOM object; neither select a replacement nor focus it."""
 
-    def __init__(self, page, selector, action_id):
-        self.arm = page.evaluate_handle(_ARM, {"selector": selector, "actionId": action_id})
+    def __init__(self, page, selector, action_id, *, key="Enter"):
+        if type(key) is not str or key not in {"Enter", "Escape"}:
+            raise ValueError("browser keyboard key is unsupported")
+        self.key = key
+        self.arm = page.evaluate_handle(_ARM, {"selector": selector, "actionId": action_id, "key": key})
 
     def receipt(self):
         value = self.arm.evaluate("""arm => {
@@ -111,7 +115,7 @@ class PinnedKeyPress:
         }""")
         if (type(value) is not dict or set(value) != {
                 "key", "target_matches", "focused", "keydown_count", "keyup_count"}
-                or value["key"] != "Enter" or value["focused"] is not True
+                or value["key"] != self.key or value["focused"] is not True
                 or any(type(value[name]) is not int or value[name] != 1
                        for name in ("target_matches", "keydown_count", "keyup_count"))):
             raise RuntimeError("browser keyboard receipt unavailable")

@@ -1,0 +1,48 @@
+schema_version: 1
+scenario: records.dismiss_search_suggestions
+description: Close search suggestions with Escape while preserving typed search content.
+users: [reader]
+parameters:
+  search_text: report
+steps:
+  - id: open_search
+    do: open
+    target: records.search_page
+    on_failure: stop
+    expect:
+      ui:
+        - check: visible
+          anchor: records.search_input
+  - id: enter_search_text
+    do: fill
+    target: records.search_input
+    value: {from_parameter: search_text}
+    on_failure: stop
+    expect:
+      ui:
+        - check: objects_matching_count
+          anchor: records.search_input
+          field: value
+          value: {from_parameter: search_text}
+          count: 1
+        - check: objects_matching_count
+          anchor: records.search_input
+          field: suggestions_visible
+          value: true
+          count: 1
+  - id: dismiss_suggestions
+    do: press
+    target: records.search_input
+    key: Escape
+    expect:
+      ui:
+        - check: objects_matching_count
+          anchor: records.search_input
+          field: suggestions_visible
+          value: false
+          count: 1
+        - check: objects_matching_count
+          anchor: records.search_input
+          field: value
+          value: {from_parameter: search_text}
+          count: 1

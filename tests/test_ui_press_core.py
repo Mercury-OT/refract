@@ -77,7 +77,7 @@ def test_literal_enter_survives_preparation_and_run_materialization():
     assert expansion_view(s)["steps"][0]["key"] == "Enter"
 
 
-@pytest.mark.parametrize("key", [None, False, True, 1, "", "enter", "Return", "Escape",
+@pytest.mark.parametrize("key", [None, False, True, 1, "", "enter", "Return", "Esc",
     "Control+Enter", "Enter Enter", ["Enter"], {"from_parameter": "key"},
     {"from_step": "previous", "response_field": "key"}, {"concat": ["Enter"]}])
 def test_other_or_dynamic_keys_are_rejected(key):
@@ -200,7 +200,7 @@ def test_old_driver_keeps_ordinary_actions_and_opts_out_of_press():
     assert old.open_calls == 0 and not old.permits
 
 
-@pytest.mark.parametrize("change", [{"key": None}, {"key": "Escape"}, {"key": ["Enter"]},
+@pytest.mark.parametrize("change", [{"key": None}, {"key": "Tab"}, {"key": ["Enter"]},
     {"target": None}, {"target": ""}, {"target": {}}, {"value": "input"},
     {"duration": 0}, {"object_id": "row"}, {"poll": object()}])
 def test_direct_constructed_invalid_press_never_issues_a_permit(change):

@@ -273,8 +273,8 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     else:
         if type(key_press) is not ports.UiKeyPress:
             raise TypeError("UI press requires UiKeyPress")
-        if type(key_press.key) is not str or key_press.key != "Enter":
-            raise ValueError("UI key delivery must be Enter")
+        if type(key_press.key) is not str or key_press.key not in ("Enter", "Escape"):
+            raise ValueError("UI key delivery must be Enter or Escape")
         _require_equal("pressed key", key_press.key, permit.key)
         if (key_press.focused is not True or any(type(count) is not int or count != 1
                 for count in (key_press.target_matches, key_press.keydown_count, key_press.keyup_count))):
@@ -294,6 +294,8 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
         raise TypeError("rendered and traffic must be dict/list")
     if permit.action == "hover" and evidence.traffic:
         raise ValueError("UI hover must not claim associated request traffic")
+    if permit.action == "press" and permit.key == "Escape" and evidence.traffic:
+        raise ValueError("UI Escape must not claim associated request traffic")
     if (type(evidence.diagnostic_notes) is not list or any(
             type(note) is not str or note not in {
                 "background diagnostics truncated", "background HTTP acquisition failed"}
@@ -540,26 +542,29 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         or step.request_asserted or step.expect.response or step.expect.backend_state):
                     raise ValueError("UI hover requires a literal target and UI expectations only")
             if step.action == "press":
-                if (type(step.key) is not str or step.key != "Enter"
+                if (type(step.key) is not str or step.key not in ("Enter", "Escape")
                         or type(step.target) is not str or not step.target.strip()
                         or step.value is not None or step.duration is not None
                         or step.object_id is not None or step.poll is not None):
-                    raise ValueError("UI press requires a literal target and Enter key only")
+                    raise ValueError("UI press requires a literal target and Enter or Escape key only")
+                if step.key == "Escape" and (step.request is not None or step.request_asserted
+                                            or step.expect.response or step.expect.backend_state):
+                    raise ValueError("UI Escape requires UI expectations only")
             elif step.key is not None:
                 raise ValueError("key is only supported on press steps")
         if any(step.action == "hover" for step in scenario.steps):
             if (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
                     "UI hover", ui.supports_hover, mode) is not True):
                 raise ValueError("UI hover capability not supported")
+        for key in dict.fromkeys(step.key for step in scenario.steps if step.action == "press"):
+            if (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
+                    "UI key press", ui.supports_key_press, mode, key) is not True):
+                raise ValueError("UI key press capability not supported")
         sessions = SessionManager(scenario, auth)
         sessions.preflight()
         if needs_ui and (not isinstance(ui, ports.StepwiseUiDriver)
                          or ui.supports_stepwise_mode(mode) is not True):
             raise ValueError("primitive UI capability not supported")
-        if any(step.action == "press" for step in scenario.steps):
-            if (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
-                    "UI key press", ui.supports_key_press, mode, "Enter") is not True):
-                raise ValueError("UI key press capability not supported")
         if any(step.object_id is not None for step in scenario.steps):
             if (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
                     "UI object targeting", ui.supports_object_targeting, mode) is not True):

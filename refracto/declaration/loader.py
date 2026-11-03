@@ -641,8 +641,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
             raise DeclarationError(f"{action}: wrong action fields; required {sorted(allowed)}")
         target = _string(item["target"], "target") if "target" in item else None
         key = item.get("key")
-        if action == "press" and (type(key) is not str or key != "Enter"):
-            raise DeclarationError("press key must be the literal string Enter")
+        if action == "press" and (type(key) is not str or key not in ("Enter", "Escape")):
+            raise DeclarationError("press key must be the literal string Enter or Escape")
         object_id = None
         if "object_id" in item:
             if action != "click":
@@ -659,6 +659,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
         exp = _mapping(item.get("expect", {}), {"request", "ui", "response", "backend_state"}, "expect")
         if action == "hover" and set(exp) - {"ui"}:
             raise DeclarationError("hover supports only UI expectations; request evidence is unsupported")
+        if action == "press" and key == "Escape" and set(exp) - {"ui"}:
+            raise DeclarationError("Escape supports only UI expectations; request evidence is unsupported")
         request_asserted = "request" in exp
         if request_asserted:
             if action == "request":

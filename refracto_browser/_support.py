@@ -103,10 +103,10 @@ class BrowserSupport:
     URL/selector mappings and read-only rendered-field interpretation belong to
     the caller. Raw port evidence remains sensitive; this helper's repr/errors
     deliberately omit browser handles, URLs, bodies, options, and input values.
-    After the first hover authorization in a context, unassociated mock API
+    After the first hover or Escape authorization in a context, unassociated mock API
     requests are blocked with diagnostics for the rest of that context, including
     deferred arrivals in later steps or Flow nodes. They never consume ordered
-    fixtures or reach a live service. Live diagnostics and non-hover mock
+    fixtures or reach a live service. Live diagnostics and other mock
     contexts retain their existing behavior.
     """
 
@@ -282,7 +282,7 @@ class BrowserSupport:
             raise ValueError("browser fill requires a string value")
         if permit.action != "fill" and permit.value is not None:
             raise ValueError("browser action does not accept a bound value")
-        if (permit.action == "press" and (type(permit.key) is not str or permit.key != "Enter")
+        if (permit.action == "press" and (type(permit.key) is not str or permit.key not in {"Enter", "Escape"})
                 or permit.action != "press" and permit.key is not None):
             raise ValueError("browser action key is invalid")
         if context.execution_id not in {None, permit.execution_id}:
@@ -301,10 +301,10 @@ class BrowserSupport:
         # making the authorization registry retain a closed context.
         _authorizations[permit.token] = self
         context.permits[permit.action_id] = permit
-        if permit.action == "hover":
-            # Hover has no ordered request fixture. This protection persists in
-            # a reused context: a deferred hover callback cannot take a later
-            # click's fixture. Non-hover contexts retain their legacy policy.
+        if permit.action == "hover" or permit.action == "press" and permit.key == "Escape":
+            # These page-only actions have no ordered request fixture. Keep the
+            # protection for deferred callbacks on the reused context as well.
+            # Contexts without these actions retain their legacy policy.
             context.block_unassociated_mock = True
 
     def perform(self, context, permit, *, url=None, selector=None, object_target=None):
@@ -338,7 +338,7 @@ class BrowserSupport:
                     if context.key_boundary is None:
                         context.key_boundary = KeyPressBoundary(context)
                     context.key_boundary.begin()
-                    pressed = PinnedKeyPress(context.page, selector, permit.action_id)
+                    pressed = PinnedKeyPress(context.page, selector, permit.action_id, key=permit.key)
                 elif permit.action == "hover":
                     if context.key_boundary is None:
                         context.key_boundary = KeyPressBoundary(context)
@@ -374,8 +374,8 @@ class BrowserSupport:
                     if permit.action == "press":
                         # page.keyboard has no locator focus or click behavior.
                         # The capture guard revalidates each actual trusted event.
-                        context.page.keyboard.down("Enter")
-                        context.page.keyboard.up("Enter")
+                        context.page.keyboard.down(permit.key)
+                        context.page.keyboard.up(permit.key)
                     elif permit.action == "hover":
                         context.page.mouse.move(**hovered.position)
                     elif permit.action == "click":
@@ -438,8 +438,8 @@ class BrowserSupport:
                     current.append(traffic)
                 else:
                     diagnostics.append(traffic.response)
-            if permit.action == "hover" and current:
-                raise RuntimeError("hover cannot claim request evidence")
+            if (permit.action == "hover" or permit.action == "press" and permit.key == "Escape") and current:
+                raise RuntimeError("page-only action cannot claim request evidence")
             result = ports.UiActionResult(evidence=ports.UiActionEvidence(
                 execution_id=permit.execution_id, action_id=permit.action_id,
                 step_id=permit.step_id, mode=permit.mode, permit_token=permit.token,

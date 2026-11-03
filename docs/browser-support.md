@@ -53,13 +53,13 @@ additional tabs/frames and downloads during hover or its protected idle gap are
 unsupported. The next authorized action retains its existing rules after that
 gap has been checked.
 
-Once a mock context accepts hover, all unassociated API requests in that context
+Once a mock context accepts hover or Escape, all unassociated API requests in that context
 are aborted and noted diagnostically, including later arrivals. They cannot
 consume the ordered fixtures reserved for associated actions. This is a
 conservative restriction for late background work, not a claim to identify its
 origin. It can affect pages whose menus depend on such background responses;
 those pages need live evidence or a separately reviewed extension. Contexts
-without hover retain their existing mock behavior; live background traffic is
+without either action retain their existing mock behavior; live background traffic is
 unchanged. An aborted request does not acquire an invented response record.
 
 Backend does not perform hover: it reports the UI-only step NOT_APPLICABLE and
@@ -70,6 +70,49 @@ prove pointer delivery. No aggregation or projection-selection rule changes.
 See the [menu consumer](../examples/ui_hover_menu/README.md) and
 [bounded task](tasks/ui-hover.md). The consumer checks that the menu item starts
 hidden before testing its reveal; missing menu structure is not an empty list.
+
+## Escape on an already focused input
+
+`do: press`, literal `target`, and `key: Escape` deliver one actual down/up pair
+to a unique visible enabled editable text/search input in the main document.
+The driver must explicitly support supports_key_press(mode, "Escape"). The
+existing UiKeyPress receipt carries Escape, strict integer counts of 1 and
+focused exactly true. Enter-only capability is insufficient.
+
+The target must already have focus and remain the same mounted, focused object
+through collection. Transient focus loss is an error even if restored. Do not
+call focus, click, locator.press, dispatchEvent or hide a panel to implement this
+primitive. Escape does not require a keypress event and cannot borrow Enter's
+implicit click/form-submission chain. Only UI expectations are supported.
+
+The [consumer](../examples/ui_escape_suggestions/README.md) checks actual input
+content and associated suggestion-panel visibility before and after Escape.
+Unavailable or ambiguous structure cannot become false visibility. A valid
+delivery with wrong page results is FAILED; unavailable delivery/observation is
+ERROR. This does not cover dialogs that remove the input or move focus.
+
+Escape handlers and their asynchronous work receive no request-evidence origin.
+Their traffic stays diagnostic and cannot rescue a later declared request. After
+the first Escape or hover in a mock context, unassociated API traffic is aborted
+diagnostically for the rest of that context, without consuming ordered fixtures
+or reaching live services. Live diagnostics keep existing network policy; this
+does not claim arbitrary background-response-dependent pages work under mocks.
+This quarantine is BrowserSupport policy. Core still validates custom-driver
+receipts, associated traffic and existing mock identities; it does not impose
+this helper's scheduler on separately supplied diagnostic mock fixtures. Such
+diagnostics are not Escape request evidence or proof of live application behavior.
+Navigation, document replacement, new tabs, frames and downloads remain guarded
+during Escape and its protected idle gap. The next authorized action resumes its
+own documented rules. No automatic repair or rollback of product effects.
+Rejecting a paused secondary target closes the owned browser context, without
+resuming that target. Closing only the new tab could leave the original key
+dispatch pending. The ordinary failure path still releases the browser and
+Playwright resources; no other browser context is selected from target metadata.
+
+Backend skips requestless Escape and records unchecked page obligations; pure
+UI selections are EMPTY for backend/contract, not PASSED. The existing combined
+report rules and one-level Scenario/Flow composition remain unchanged. See the
+[specification](tasks/ui-escape-press.md) for scope and verification requirements.
 
 ## Enter on an already focused input
 

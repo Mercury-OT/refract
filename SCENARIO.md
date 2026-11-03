@@ -143,7 +143,7 @@ execution, not a multi-action adapter primitive.
 | Open | `do: open`, `target` | open one logical page |
 | Click | `do: click`, `target`, optional `object_id` | activate one logical control, optionally for one observed business object |
 | Fill | `do: fill`, `target`, `value` | fill one logical input |
-| Press | `do: press`, `target`, `key: Enter` | press and release Enter once on the unique, already focused logical input |
+| Press | `do: press`, `target`, `key: Enter` or `key: Escape` | press and release the declared key once on the unique, already focused logical input |
 | Hover | `do: hover`, `target` | move the pointer onto one unique visible logical control and observe its UI |
 | Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
 | API request | `do: {request: {method, path, query?, headers?, body?}}` | send the declared request |
@@ -154,7 +154,7 @@ The product may naturally navigate in response to that one actual click; the
 browser helper's documented evidence limits still apply. Wait does not trigger
 a scheduled job, change the host clock, or assert success.
 
-Press accepts only literal `Enter`; it has no value, object_id, repeat, modifier,
+Press accepts only literal `Enter` or `Escape`; it has no value, object_id, repeat, modifier,
 sequence, polling or implicit focus action. `key` is invalid on other actions.
 An unsupported driver fails before creating a UI context. The browser helper
 supports ordinary editable text/search inputs in the main document. An Enter
@@ -196,6 +196,51 @@ The [same-page form consumer](examples/ui_enter_form/README.md) reuses this exac
 Scenario and adapter on two form-handler variants. Programmatic submissions and
 implicit-button click-handler requests cannot stand in for the native submit
 handler; missing evidence retains the failure rules above.
+
+### Escape with page-only expectations
+
+Escape uses the same press shape but permits only `expect.ui`; request, response
+and backend_state sections are rejected even when empty. It does not inherit
+Enter's form-submission or request-association behavior. The unique editable
+text/search input must already have focus and remain mounted and focused through
+collection. No hidden click, focus repair or script-driven panel dismissal.
+
+```yaml
+- id: dismiss_suggestions
+  do: press
+  target: records.search_input
+  key: Escape
+  expect:
+    ui:
+      - check: objects_matching_count
+        anchor: records.search_input
+        field: suggestions_visible
+        value: false
+        count: 1
+      - check: objects_matching_count
+        anchor: records.search_input
+        field: value
+        value: {from_parameter: search_text}
+        count: 1
+```
+
+The complete [search-suggestions consumer](examples/ui_escape_suggestions/scenario.yaml)
+first opens search, fills the declared text and checks that suggestions actually
+opened. Its read-only mapping observes the associated panel's real visibility;
+missing or ambiguous structure is ERROR, never an invented false value. A valid
+Escape receipt with the panel still visible or the input cleared is ordinary
+FAILED. Default continuation and explicit stop remain unchanged.
+
+Drivers opt in separately for Escape through supports_key_press(mode, key).
+The owned UiKeyPress receipt identifies Escape and one real down/up pair; no
+keypress event or implicit form activation is required. Traffic caused by Escape
+remains diagnostic, never evidence for this or a later action. See the
+[browser boundary](docs/browser-support.md#escape-on-an-already-focused-input).
+Backend and contract do not prove Escape; this requestless UI-only example is
+EMPTY for those projections. It requires frontend or live e2e for page evidence.
+Dialogs that remove the input or transfer focus are outside this bounded slice.
+
+### Hover with page-only expectations
 
 Hover accepts a literal logical target and only `expect.ui` checks. It has no
 value, key, object_id, coordinates, polling, forced interaction or hidden click.

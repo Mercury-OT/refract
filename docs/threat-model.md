@@ -35,6 +35,13 @@ and unavailable dependencies keep their existing distinct handling. Do not add
 a universal rule that empty, false, null, or non-success HTTP responses must make
 every Scenario fail. Preserve valid negative scenarios and visible evidence gaps.
 
+The bounded Escape extension reuses the key receipt and requires the same input
+and focus throughout collection. Escape callbacks have no request-evidence origin;
+page checks separately establish dismissal and retained text. A synthetic event
+can change a page but cannot substitute for the actual down/up receipt. This is
+not a guarantee for dialogs that move focus, nor hostile-page attestation.
+Unavailable panel association is an error, not false visibility.
+
 New claims of trust or resistance to fabrication must identify their threat,
 controlled boundary, and verification. Deliberately hostile in-process code,
 compromised collectors, and adversarial AI scoring require separately designed
