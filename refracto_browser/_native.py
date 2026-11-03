@@ -63,7 +63,12 @@ class NativeCollector:
         info = event['targetInfo']
         if info['targetId'] != self.target_id:
             self.context.errors.append('browser secondary targets are unsupported')
-            self.target_guard.send('Target.closeTarget', {'targetId': info['targetId']})
+            # Closing only a paused popup can leave the opener's
+            # Input.dispatchKeyEvent pending.
+            # Dispose our owned context instead: this aborts the pending action
+            # without resuming the rejected page or entering either renderer.
+            # The ordinary failure path still owns browser/Playwright cleanup.
+            self.context.browser_context.close()
 
     def _error(self, request_id=None):
         self.context.errors.append('native browser request policy or evidence failed')

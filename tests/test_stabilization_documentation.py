@@ -30,6 +30,7 @@ DOCUMENT = ROOT / "SCENARIO.md"
 # Each signature identifies a context, never a copied declaration. Unknown,
 # duplicate and missing fences require an explicit inventory decision.
 CONTEXTS = {
+    "escape_press": "- id: dismiss_suggestions\n",
     "hover": "- id: reveal_menu\n",
     "enter_press": "- id: submit_search\n",
     "object_selection": "- id: open_editor\n",
@@ -104,6 +105,7 @@ def render_context(name, body):
         return body
     metadata = {"schema_version": 1, "scenario": "demo.documented_context", "users": ["owner"]}
     parameters = {
+        "escape_press": {"search_text": "report"},
         "hover": {"menu_text": "Archived records"},
         "enter_press": {"search_text": "report"},
         "query": {"category": "guide"},
@@ -228,6 +230,7 @@ def test_alternate_valid_fences_are_inventoried(opening, closing):
 
 
 @pytest.mark.parametrize("name,before,after", [
+    ("escape_press", "key: Escape", "key: Tab"),
     ("hover", "do: hover", "do: unsupported_hover"),
     ("object_selection", "from_step: create", "from_step: missing_create"),
     ("object_selection", "do: click", "do: open"),
@@ -268,6 +271,7 @@ class Consumer:
 
 
 EXAMPLES = {
+    "examples/ui_escape_suggestions/scenario.yaml": Consumer("tests/browser/test_ui_escape_consumer.py::test_real_escape_closes_suggestions_and_preserves_input", "frontend mock, live UI e2e; frozen listener and property search-suggestions handlers"),
     "examples/ui_hover_menu/scenario.yaml": Consumer("tests/browser/test_ui_hover_consumer.py::test_real_hover_reveals_menu_before_separate_click", "frontend mock, live UI e2e; frozen CSS and JavaScript menu implementations"),
     "examples/ui_enter_search/scenario.yaml": Consumer("tests/browser/test_enter_search_consumers.py::test_enter_search_live", "live UI e2e; frozen synthetic search handlers and real HTTP"),
     "examples/ui_object_navigation/scenario.yaml": Consumer("tests/browser/test_object_navigation_consumers.py::test_same_scenario_navigates_edits_and_reads_the_selected_object", "live UI e2e; two full-document Chromium consumers and real HTTP"),
@@ -321,7 +325,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 29
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 30
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps

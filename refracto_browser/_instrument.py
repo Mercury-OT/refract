@@ -125,9 +125,12 @@ _TEMPLATE = r"""(() => {
         }
         state.event = event;
       }
-      // An implicit button click establishes the native form transition, but
-      // its onclick work is not submit-handler evidence.
-      return event.type !== 'click' && event.isTrusted && state.event === event ? arm.action_id : null;
+      // Escape has delivery evidence only. Its immediate or deferred callbacks
+      // always receive a null origin, including native-await continuations.
+      // An Enter implicit button click establishes the native form transition,
+      // but its onclick work is not submit-handler evidence.
+      return arm.key !== 'Escape' && event.type !== 'click' && event.isTrusted &&
+        state.event === event ? arm.action_id : null;
     }
     if (arm && !state.event && event.isTrusted && arm.type === event.type) {
       if (typeof arm.guard === 'function') {

@@ -1,0 +1,9 @@
+{
+  "manifest_version": 1,
+  "freeze_stage": "before adapter integration",
+  "sources": {
+    "examples/ui_escape_suggestions/app.py": "917a12960ab494673389c7bedb0f9dcccdc3850df3dcd29271398bd80a70577c",
+    "examples/ui_escape_suggestions/search.css": "9f47ca5e58af660010212402c98b574f93f65aa2c08724e4aad580d1e9890ee8",
+    "examples/ui_escape_suggestions/search.js": "593b9287ebca1bbbb9ab1e88dd27235605814147890ffd9100768c36e9d35f50"
+  }
+}

@@ -5,6 +5,25 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-03: explicit Escape input operation
+
+The [bounded Escape task](docs/tasks/ui-escape-press.md) adds literal `key: Escape`
+to the existing press shape, retaining schema_version 1 and one-level includes.
+Escape accepts UI checks only. Existing Enter declarations and behavior remain.
+The existing supports_key_press(mode, key) capability is checked for each requested
+key before UI effects; an Enter-only driver does not automatically support Escape.
+The existing UiKeyPress receipt now accepts the exact declared Enter or Escape;
+Python port signatures and assertion vocabulary do not change.
+
+BrowserSupport requires the same unique already-focused input through collection.
+Escape receives a real down/up pair without Enter's keypress/form chain. Its
+requests stay diagnostic; after Escape, unassociated mock API traffic is blocked
+for the remaining context lifetime, like the post-hover policy. No focus repair,
+general dialog-dismissal guarantee or new HTTP association is introduced.
+An unsupported paused secondary target now closes its owned context so an
+in-flight key dispatch cannot remain waiting after only the new tab was closed.
+The target is never resumed; normal failure cleanup retains resource ownership.
+
 ## 2026-11-03: explicit UI hover
 
 The [bounded hover task](docs/tasks/ui-hover.md) adds `do: hover` with literal
