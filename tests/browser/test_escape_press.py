@@ -5,6 +5,7 @@ import time
 import pytest
 
 from refracto import ports
+from refracto.errors import ActionFailure, ActionFailureReason as Reason
 from tests.browser.test_enter_press import focus, lab, permit
 
 
@@ -204,13 +205,19 @@ def test_mock_escape_cannot_consume_later_fixture_or_reach_live_service(lab, nat
     go.onclick=()=>{release();return tracked('click')};""".replace("WAIT", "await pending" if deferred else "")
     support, context, app, api = lab(script, mode="mock", native=native, fixtures=[fixture])
     focus(context)
-    first = escape(support, context)
-    assert first.traffic == [] and first.mock_recordings == []
-    second = support.perform(context, permit("click", mode="mock"), selector="#go").evidence
-    context.page.wait_for_function("done.includes('escape')")
-    assert [t.request.body for t in second.traffic] == [{"tag": "click"}]
-    assert [r.mock_fixture_id for r in second.mock_recordings] == ["click-fixture"]
-    assert context.mock_queue.index == 1
+    with pytest.raises(ActionFailure) as error:
+        first = escape(support, context)
+        assert deferred
+        assert first.traffic == [] and first.mock_recordings == []
+        support.perform(context, permit("click", mode="mock"), selector="#go")
+    assert error.value.reason is Reason.MOCK_BACKGROUND_BLOCKED
+    assert context.closed
+    # A following click can consume its own fixture before the deferred block
+    # arrives; no Escape background request may consume that fixture.
+    assert context.mock_queue.index <= (1 if deferred else 0)
+    assert all(t.request.body == {"tag": "click"} for t in context.traffic)
+    assert all(r.mock_fixture_id == "click-fixture" and r.request.body == {"tag": "click"}
+               for r in context.mock_recordings)
     assert api.requests == [] and not any(r["path"].startswith("/api/") for r in app.requests)
 
 

@@ -141,7 +141,8 @@ def test_invalid_wire_query_fails_before_http_or_fixture_consumption(browser_lab
     with pytest.raises(Exception) as error:
         act(support, context, "#query", mode=mode)
     assert raw not in str(error.value)
-    assert context.errors[0] == "browser request transport or recording failed"
+    from refracto.errors import ActionFailureReason
+    assert context.errors[0] is ActionFailureReason.EVIDENCE_INVALID
     assert context.mock_queue.index == 0
     assert http_peer.api_requests == []
 

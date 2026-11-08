@@ -215,8 +215,10 @@ traffic. Selecting backend does not verify UI interactions.
 
 ## Strict quality gates
 
-Do not use `assert rep.passed` as a strict gate: `passed` deliberately includes
-`DEGRADED`. The only strict gate is `rep.status == "PASSED"`. An empty
+Use `rep.status == "PASSED"` as an explicit strict gate. `rep.passed` is now
+equivalent for DomainResult, RunReport and FlowReport: DEGRADED returns false.
+Older callers that intentionally permitted degradation must make that choice
+explicit; see the [Python migration notes](../CHANGELOG.md). An empty
 `rep.degradations()` is a useful supplementary observation, but it must not be
 used as a gate on its own: `EMPTY` and `NOT_SELECTED` reports also have no
 degradations. This runnable check is copied directly from
@@ -230,7 +232,7 @@ def run():
         adapters,
         projections=("backend", "contract"),
     )
-    # Do not gate on rep.passed: it includes DEGRADED.
+    # Explicit strict gate; rep.passed has the same meaning.
     assert rep.status == "PASSED"
     assert rep.degradations() == []
     return rep

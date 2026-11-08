@@ -11,6 +11,7 @@ from uuid import uuid4
 from urllib.parse import unquote, urlsplit
 
 from refracto import ports
+from refracto.errors import ActionFailure, ActionFailureReason as Reason
 from refracto.headers import header_map, match_headers, require_header_items
 from refracto.query import parse_query
 from ._request_body import is_form_content_type, parse_form_body
@@ -43,6 +44,9 @@ class NativeCollector:
         self.extra_requests, self.extra_responses = {}, {}
         self.background_count = 0
         self.background_bytes = 0
+        self.background_reads = 0
+        self.body_reads_active = 0
+        self.deferred_diagnostics = []
         self.notes = []
         self.mock_pending = []
         self.session.on('Network.requestWillBeSent', self._request)
@@ -62,7 +66,7 @@ class NativeCollector:
     def _target(self, event):
         info = event['targetInfo']
         if info['targetId'] != self.target_id:
-            self.context.errors.append('browser secondary targets are unsupported')
+            self.context.errors.append(Reason.POLICY_DENIED)
             # Closing only a paused popup can leave the opener's
             # Input.dispatchKeyEvent pending.
             # Dispose our owned context instead: this aborts the pending action
@@ -70,13 +74,13 @@ class NativeCollector:
             # The ordinary failure path still owns browser/Playwright cleanup.
             self.context.browser_context.close()
 
-    def _error(self, request_id=None):
-        self.context.errors.append('native browser request policy or evidence failed')
+    def _error(self, request_id=None, *, reason=Reason.EVIDENCE_INVALID):
+        self.context.errors.append(reason)
         if request_id is not None:
             try:
                 self.target_guard.send('Fetch.failRequest', {'requestId': request_id, 'errorReason': 'BlockedByClient'})
             except Exception:
-                pass
+                self.context.errors.append(Reason.CLEANUP_FAILED)
 
     def _request(self, event):
         try:
@@ -106,8 +110,8 @@ class NativeCollector:
                 self._response_extra(self.extra_responses.pop(identity))
             if identity in self.waiting:
                 self._process(self.waiting.pop(identity))
-        except Exception:
-            self._error()
+        except Exception as error:
+            self._error(reason=self.owner._reason(self.context, error, Reason.EVIDENCE_INVALID))
 
     def _paused(self, event):
         try:
@@ -120,19 +124,23 @@ class NativeCollector:
                 self.waiting[identity] = event
                 return
             self._process(event)
-        except Exception:
-            self._error(event.get('requestId'))
+        except Exception as error:
+            self._error(event.get('requestId'), reason=self.owner._reason(
+                self.context, error, Reason.EVIDENCE_INVALID))
 
     def _process(self, event):
         identity = event['networkId']
         entry = self.requests[identity]
         request = event['request']
         if event.get('frameId') != self.frame:
-            raise ValueError()
-        origin, logical = self.policy.classify(self.base, request['url'], event['resourceType'],
-                                               request['method'], request['headers'])
+            raise ActionFailure(Reason.POLICY_DENIED)
+        try:
+            origin, logical = self.policy.classify(self.base, request['url'], event['resourceType'],
+                                                   request['method'], request['headers'])
+        except Exception:
+            raise ActionFailure(Reason.POLICY_DENIED) from None
         if event['resourceType'] == 'Document' and origin != self.base:
-            raise ValueError()
+            raise ActionFailure(Reason.POLICY_DENIED)
         if 'responseStatusCode' in event:
             status = event['responseStatusCode']
             items = [(item['name'], item['value']) for item in event.get('responseHeaders', [])]
@@ -140,7 +148,7 @@ class NativeCollector:
             lower = {name.lower(): value for name, value in items}
             if (300 <= status < 400 and 'location' in lower
                     or 'text/event-stream' in lower.get('content-type', '').lower()):
-                raise ValueError()
+                raise ActionFailure(Reason.POLICY_DENIED)
             entry['status'] = status
             self.target_guard.send('Fetch.continueResponse', {'requestId': event['requestId']})
             return
@@ -177,15 +185,14 @@ class NativeCollector:
                          actual_path=urlsplit(request['url']).path, fixture_id=None)
             if self.context.mode == 'mock':
                 if entry['action'] is None and self.context.block_unassociated_mock:
-                    if 'background HTTP acquisition failed' not in self.notes:
-                        self.notes.append('background HTTP acquisition failed')
+                    self.context.errors.append(Reason.MOCK_BACKGROUND_BLOCKED)
                     entry['blocked_mock_background'] = True
                     self.target_guard.send('Fetch.failRequest', {
                         'requestId': event['requestId'], 'errorReason': 'BlockedByClient'})
                     return
                 # Preflight responses are not invented from transport policy.
                 if event['resourceType'] == 'Preflight' or request['method'] == 'OPTIONS':
-                    raise ValueError()
+                    raise ActionFailure(Reason.POLICY_DENIED)
                 queue = self.context.mock_queue
                 if queue.index >= len(queue.plan):
                     raise ValueError()
@@ -284,10 +291,11 @@ class NativeCollector:
             entry['drop_diagnostic'] = True
             self._truncate()
 
-    def _finished(self, event):
+    def _finished(self, event, *, read_deferred=False):
         identity = event['requestId']
         entry = self.requests.get(identity)
-        if entry is None:
+        if (entry is None or entry.get('body_read_started')
+                or entry.get('diagnostic_deferred') and not read_deferred):
             return
         entry['finished'] = event
         if entry.get('logical') is not None and not entry.get('preflight') and 'header_items' not in entry:
@@ -298,11 +306,29 @@ class NativeCollector:
                 return
             diagnostic = entry['action'] is None
             if diagnostic and self.context.mode != 'mock' and (
-                    self.background_count >= 100 or entry.get('drop_diagnostic')
+                    (self.background_reads + len(self.deferred_diagnostics) >= 100 and not read_deferred)
+                    or entry.get('drop_diagnostic')
                     or event.get('encodedDataLength', 0) > 256 * 1024 - self.background_bytes):
                 self._truncate()
                 return
-            body = self.session.send('Network.getResponseBody', {'requestId': identity})
+            if diagnostic and self.context.mode != 'mock' and self.body_reads_active:
+                # Keep a small finite queue instead of nesting optional RPCs or
+                # discarding an ordinary overlapping background observation.
+                entry['diagnostic_deferred'] = True
+                self.deferred_diagnostics.append(identity)
+                return
+            # Sending a synchronous protocol command pumps other browser events.
+            # Reserve work first and never recursively fetch optional diagnostic
+            # bodies while any body read is active. Deferral is bounded; actual
+            # associated responses and exact mock consumption are not discarded.
+            entry['body_read_started'] = True
+            if diagnostic and self.context.mode != 'mock':
+                self.background_reads += 1
+            self.body_reads_active += 1
+            try:
+                body = self.session.send('Network.getResponseBody', {'requestId': identity})
+            finally:
+                self.body_reads_active -= 1
             text = (base64.b64decode(body['body'], validate=True).decode('utf-8')
                     if body.get('base64Encoded') else body['body'])
             if len(text.encode('utf-8')) > 8 * 1024 * 1024:
@@ -348,13 +374,30 @@ class NativeCollector:
                 ))
             entry['recording'] = recording
             self._flush_mocks()
-        except Exception:
-            self._error()
+        except Exception as error:
+            self._error(reason=self.owner._reason(self.context, error, Reason.EVIDENCE_INVALID))
         finally:
             # Retain only in-flight requests and exact mock ordering state. Large
             # raw transport events are not an unbounded second diagnostics log.
-            if identity not in self.mock_pending:
+            if identity not in self.mock_pending and not entry.get('diagnostic_deferred'):
                 self.requests.pop(identity, None)
+
+    def _collect_diagnostics(self):
+        # Do not replace recursive callback work with draining a moving queue.
+        # Finish at most eight already queued optional bodies per collection.
+        # Later collections can sample the remainder; foreground never waits
+        # for background network idle. The lifetime retrieval budget is 100.
+        pending = tuple(self.deferred_diagnostics[:8])
+        for identity in pending:
+            self.owner._remaining(self.context)
+            self.deferred_diagnostics.remove(identity)
+            entry = self.requests.get(identity)
+            if entry is None:
+                continue
+            entry['diagnostic_deferred'] = False
+            self._finished(entry['finished'], read_deferred=True)
+        if self.deferred_diagnostics:
+            self._truncate()
 
     def _flush_mocks(self):
         while self.mock_pending:
@@ -374,7 +417,8 @@ class NativeCollector:
             # failures have already made the context erroneous before aborting.
             blocked_background = entry.get('blocked_mock_background') is True
             if entry.get('action') is not None or event.get('corsErrorStatus') and not blocked_background:
-                self._error()
+                self._error(reason=Reason.POLICY_DENIED if event.get('corsErrorStatus')
+                            else Reason.COLLECTION_FAILED)
             elif 'background HTTP acquisition failed' not in self.notes:
                 self.notes.append('background HTTP acquisition failed')
 
@@ -385,4 +429,6 @@ class NativeCollector:
                or pending_mock.intersection(self.mock_pending)):
             self.owner._check(self.context)
             self.context.page.wait_for_timeout(min(10, self.owner._remaining(self.context)))
+        self.owner._check(self.context)
+        self._collect_diagnostics()
         self.owner._check(self.context)

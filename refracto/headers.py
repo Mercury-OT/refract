@@ -5,6 +5,8 @@ Raw pairs remain ordered and duplicate-preserving; maps cannot establish absence
 """
 import re
 
+from refracto.errors import safe_action_failure
+
 CHECKS = frozenset({"header_equals", "header_absent"})
 _TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", re.ASCII)
 _RESERVED = frozenset(name.lower() for name in (
@@ -110,7 +112,12 @@ def call_port(operation, callback, *args, sensitive=False, **kwargs):
     """
     try:
         return callback(*args, **kwargs)
-    except Exception:
+    except Exception as exc:
         if not sensitive:
             raise
+        safe = safe_action_failure(exc)
+        if safe is not None:
+            category, cleanup_failed = safe
+            suffix = "; cleanup_failed" if cleanup_failed else ""
+            raise ValueError(f"{operation} failed ({category}{suffix})") from None
         raise ValueError(f"{operation} failed while handling sensitive header data") from None

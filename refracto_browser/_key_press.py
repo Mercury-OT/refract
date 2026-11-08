@@ -1,6 +1,7 @@
 """Pinned, already-focused key delivery and a bounded document guard."""
 
 from refracto import ports
+from refracto.errors import ActionFailureReason as Reason
 
 
 _ARM = """({selector, actionId, key}) => {
@@ -149,7 +150,7 @@ class KeyPressBoundary:
 
     def _transition(self, _):
         if self.protected:
-            self.context.errors.append(f"browser {self.kind} transition is unsupported")
+            self.context.errors.append(Reason.POLICY_DENIED)
 
     def _request(self, event):
         if event.get("type") == "Document":

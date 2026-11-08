@@ -39,13 +39,13 @@ def test_domain_failed_when_step_failed():
 def test_domain_degraded_when_a_step_skipped():
     step = StepResult("s1", SKIPPED)
     d = DomainResult("backend", steps=[step])
-    assert d.status == DEGRADED and d.passed
+    assert d.status == DEGRADED and not d.passed
 
 
 def test_domain_degraded_when_step_has_skipped_notes_but_ok_checks():
     step = StepResult("s1", PASSED, checks=[_ok("s1")], skipped=["s1 span_exists — no probe"])
     d = DomainResult("backend", steps=[step])
-    assert d.status == DEGRADED and d.passed
+    assert d.status == DEGRADED and not d.passed
 
 
 def test_domain_empty_when_no_steps():
@@ -62,7 +62,7 @@ def test_domain_empty_when_step_passed_but_asserts_nothing():
 def test_domain_degraded_when_step_has_only_skipped_no_checks():
     step = StepResult("s1", PASSED, checks=[], skipped=["s1 span_exists — no probe"])
     d = DomainResult("backend", steps=[step])
-    assert d.status == DEGRADED and d.passed
+    assert d.status == DEGRADED and not d.passed
 
 
 def test_domain_checks_property_aggregates_across_steps():
@@ -92,7 +92,7 @@ def test_report_failed_when_any_domain_failed():
 def test_report_degraded_when_domain_has_only_domain_level_skipped_no_steps():
     d = DomainResult("b", steps=[], skipped=["backend_state span_exists — no probe"])
     r = RunReport("x", domains=[d])
-    assert r.status == DEGRADED and r.passed
+    assert r.status == DEGRADED and not r.passed
 
 
 def test_report_passed_when_all_domains_passed():

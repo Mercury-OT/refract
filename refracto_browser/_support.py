@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from refracto import ports
+from refracto.errors import ActionFailure, ActionFailureReason as Reason, safe_action_failure
 from refracto.headers import header_map, match_headers, require_header_items, validate_name
 from refracto.query import parse_query
 
@@ -104,7 +105,7 @@ class BrowserSupport:
     the caller. Raw port evidence remains sensitive; this helper's repr/errors
     deliberately omit browser handles, URLs, bodies, options, and input values.
     After the first hover or Escape authorization in a context, unassociated mock API
-    requests are blocked with diagnostics for the rest of that context, including
+    requests are blocked with an explicit framework error for that context, including
     deferred arrivals in later steps or Flow nodes. They never consume ordered
     fixtures or reach a live service. Live diagnostics and other mock
     contexts retain their existing behavior.
@@ -188,12 +189,14 @@ class BrowserSupport:
             if self._network_policy is not None:
                 context.native = NativeCollector(self, context, self._network_policy, self._page_origin)
             context.page.on("response", lambda response: self._capture_mock_headers(context, response))
-            context.page.on("pageerror", lambda _: context.errors.append("browser event handler failed"))
-            context.page.on("worker", lambda _: context.errors.append("browser workers are unsupported"))
-            context.page.on("websocket", lambda _: context.errors.append("browser streaming transport is unsupported"))
+            # This is deliberately a whole-page policy, not proof that an
+            # uncaught exception belongs to the current action's handler.
+            context.page.on("pageerror", lambda _: context.errors.append(Reason.PAGE_ERROR))
+            context.page.on("worker", lambda _: context.errors.append(Reason.POLICY_DENIED))
+            context.page.on("websocket", lambda _: context.errors.append(Reason.POLICY_DENIED))
             return context
-        except Exception:
-            self._fail(context, "browser context creation failed")
+        except Exception as error:
+            self._fail(context, self._reason(context, error))
 
     def _context(self, context):
         if not isinstance(context, _Context) or context.owner is not self:
@@ -243,16 +246,40 @@ class BrowserSupport:
     def _remaining(self, context):
         remaining = self._timeout_ms if context.deadline is None else (context.deadline - time.monotonic()) * 1000
         if remaining <= 0:
-            raise RuntimeError("browser action collection timed out")
+            raise ActionFailure(Reason.COLLECTION_TIMEOUT)
         return remaining
 
     def _check(self, context):
         if context.errors:
-            raise RuntimeError(context.errors[0])
+            reason = context.errors[0]
+            raise ActionFailure(reason if type(reason) is Reason else Reason.EVIDENCE_INVALID)
         errors = context.page.evaluate("() => window.__refractBrowser?.errors || []")
         if errors:
             # Browser strings are not trusted error text.
-            raise RuntimeError("browser origin instrumentation failed")
+            raise ActionFailure(Reason.EVIDENCE_INVALID)
+
+    @staticmethod
+    def _reason(context, error, fallback=Reason.COLLECTION_FAILED):
+        # Prefer the first known host failure: a policy abort can make an
+        # unrelated Playwright call fail before _check observes the ledger.
+        if context.errors:
+            reason = context.errors[0]
+            return reason if type(reason) is Reason else Reason.EVIDENCE_INVALID
+        if safe_action_failure(error) is not None:
+            return error.reason
+        # Import only while executing the optional browser path. Never inspect
+        # arbitrary exception text or use a custom class name as a category.
+        if fallback is Reason.TARGET_UNAVAILABLE:
+            return fallback
+        if isinstance(error, TimeoutError):
+            return Reason.COLLECTION_TIMEOUT
+        try:
+            from playwright.sync_api import TimeoutError as BrowserTimeout
+        except ImportError:
+            return fallback
+        if isinstance(error, BrowserTimeout):
+            return Reason.COLLECTION_TIMEOUT
+        return fallback
 
     def _authorize(self, context, permit, url, selector, object_target=None):
         if not isinstance(permit, ports.UiActionPermit):
@@ -317,6 +344,7 @@ class BrowserSupport:
         start, diagnostic_start, mock_start = context.traffic_cursor, context.diagnostic_cursor, context.mock_cursor
         pressed = None
         hovered = None
+        failure_phase = Reason.COLLECTION_FAILED
         try:
             self._check(context)
             if context.key_boundary is not None:
@@ -333,6 +361,7 @@ class BrowserSupport:
                     context.navigation.opening = True
                 context.page.goto(url, wait_until="domcontentloaded", timeout=self._remaining(context))
             else:
+                failure_phase = Reason.TARGET_UNAVAILABLE
                 pinned = None
                 if permit.action == "press":
                     if context.key_boundary is None:
@@ -364,13 +393,14 @@ class BrowserSupport:
                     }""", arg=selector, timeout=self._remaining(context))
                     locator = context.page.locator("css=:is(" + selector + "):visible")
                     if locator.count() != 1:
-                        raise RuntimeError("browser target is ambiguous")
+                        raise ActionFailure(Reason.TARGET_UNAVAILABLE)
                     context.page.evaluate("""arm => {
                     window.__refractBrowser.armed = arm;
                     window.__refractBrowser.event = null;
                     }""", {"action_id": permit.action_id, "selector": selector,
                         "type": "click" if permit.action == "click" else "input"})
                 try:
+                    failure_phase = Reason.COLLECTION_FAILED
                     if permit.action == "press":
                         # page.keyboard has no locator focus or click behavior.
                         # The capture guard revalidates each actual trusted event.
@@ -419,6 +449,7 @@ class BrowserSupport:
             self._check(context)
             self._remaining(context)
             if pressed is not None:
+                failure_phase = Reason.EVIDENCE_INVALID
                 # Snapshot/header reads can dispatch focus and navigation work.
                 # Keep the guard armed until this final observed receipt boundary.
                 key_press = pressed.receipt()
@@ -427,6 +458,7 @@ class BrowserSupport:
                 context.key_boundary.check()
                 self._remaining(context)
             if hovered is not None:
+                failure_phase = Reason.EVIDENCE_INVALID
                 hover = hovered.receipt()
                 hovered.close()
                 hovered = None
@@ -439,7 +471,7 @@ class BrowserSupport:
                 else:
                     diagnostics.append(traffic.response)
             if (permit.action == "hover" or permit.action == "press" and permit.key == "Escape") and current:
-                raise RuntimeError("page-only action cannot claim request evidence")
+                raise ActionFailure(Reason.EVIDENCE_INVALID)
             result = ports.UiActionResult(evidence=ports.UiActionEvidence(
                 execution_id=permit.execution_id, action_id=permit.action_id,
                 step_id=permit.step_id, mode=permit.mode, permit_token=permit.token,
@@ -458,8 +490,9 @@ class BrowserSupport:
             context.diagnostic_cursor = diagnostic_end
             context.mock_cursor = mock_end
             return result
-        except Exception:
-            self._fail(context, "browser action or evidence collection failed")
+        except Exception as error:
+            self._fail(context, self._reason(context, error, failure_phase),
+                       cleanup_failed=(safe_action_failure(error) or (None, False))[1])
         finally:
             if hovered is not None:
                 try:
@@ -493,14 +526,14 @@ class BrowserSupport:
         try:
             request = route.request
             if _origin(request.url) != self._origin:
-                raise ValueError("cross-origin browser traffic is unsupported")
+                raise ActionFailure(Reason.POLICY_DENIED)
             if context.page is not None and request.frame != context.page.main_frame:
-                raise ValueError("browser frame traffic is unsupported")
+                raise ActionFailure(Reason.POLICY_DENIED)
             api = request.resource_type in {"fetch", "xhr"}
             if not api and (request.resource_type not in {
                     "document", "stylesheet", "script", "image", "font", "media", "texttrack", "manifest",
             } or request.method not in {"GET", "HEAD"}):
-                raise ValueError("browser request transport is unsupported")
+                raise ActionFailure(Reason.POLICY_DENIED)
             request_items = [(item["name"], item["value"]) for item in request.headers_array()]
             require_header_items(request_items)
             headers = dict(request.all_headers())
@@ -547,8 +580,7 @@ class BrowserSupport:
                                          query=actual_query)
             if api and context.mode == "mock":
                 if permit is None and context.block_unassociated_mock:
-                    if "background HTTP acquisition failed" not in context.diagnostic_notes:
-                        context.diagnostic_notes.append("background HTTP acquisition failed")
+                    context.errors.append(Reason.MOCK_BACKGROUND_BLOCKED)
                     route.abort()
                     return
                 if context.mock_queue.index >= len(context.mock_queue.plan):
@@ -578,9 +610,9 @@ class BrowserSupport:
                     response_items = [(item["name"], item["value"]) for item in response.headers_array]
                     require_header_items(response_items)
                     if 300 <= status < 400 and "location" in response_headers:
-                        raise ValueError("browser redirects are unsupported")
+                        raise ActionFailure(Reason.POLICY_DENIED)
                     if "text/event-stream" in response_headers.get("content-type", "").lower():
-                        raise ValueError("browser streaming responses are unsupported")
+                        raise ActionFailure(Reason.POLICY_DENIED)
                     if api:
                         text = response.text()
                         try:
@@ -615,12 +647,12 @@ class BrowserSupport:
                     ))
                 if context.mode == "mock":
                     route.fulfill(status=status, body=text, headers=response_headers)
-        except Exception:
-            context.errors.append("browser request transport or recording failed")
+        except Exception as error:
+            context.errors.append(self._reason(context, error, Reason.EVIDENCE_INVALID))
             try:
                 route.abort()
             except Exception:
-                context.errors.append("browser request cleanup failed")
+                context.errors.append(Reason.CLEANUP_FAILED)
 
     def snapshot(self, context):
         """Read product-owned rendering without executing another primitive."""
@@ -629,11 +661,11 @@ class BrowserSupport:
             self._check(context)
             rendered = self._read_rendered(context.page)
             if type(rendered) is not dict:
-                raise ValueError("browser rendered snapshot must be a mapping")
+                raise ActionFailure(Reason.EVIDENCE_INVALID)
             self._check(context)
             return rendered
-        except Exception:
-            self._fail(context, "browser rendered snapshot failed")
+        except Exception as error:
+            self._fail(context, self._reason(context, error))
 
     def close(self, context):
         """Release every owned resource, including after a partial open; repeat-safe."""
@@ -660,11 +692,14 @@ class BrowserSupport:
             except Exception:
                 failed = True
         if failed:
-            raise RuntimeError("browser resource cleanup failed") from None
+            raise ActionFailure(Reason.CLEANUP_FAILED) from None
 
-    def _fail(self, context, message):
+    def _fail(self, context, reason, *, cleanup_failed=False):
+        cleanup_failed = cleanup_failed or any(
+            type(item) is Reason and item is Reason.CLEANUP_FAILED
+            for item in getattr(context, "errors", ()))
         try:
             self.close(context)
         except Exception:
-            raise RuntimeError("browser operation and resource cleanup failed") from None
-        raise RuntimeError(message) from None
+            cleanup_failed = True
+        raise ActionFailure(reason, cleanup_failed=cleanup_failed) from None
