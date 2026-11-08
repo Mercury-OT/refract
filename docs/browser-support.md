@@ -19,6 +19,37 @@ playwright install chromium
 The `demo` extra continues to include Playwright. Installing only the core or
 `dev` extra does not install it; core imports and offline tests need no browser.
 
+## Failure classification and page errors
+
+Unavailable or invalid execution evidence produces a step ERROR, followed by the
+existing blocking rules. A completed, trustworthy observation that differs from
+the declaration produces an ordinary FAILED check. Aggregate reports retain their
+existing FAILED/DEGRADED rules; these error categories are not new report states.
+
+The helper exposes only finite safe causes: collection_timeout, page_error,
+policy_denied, target_unavailable, evidence_invalid, mock_background_blocked,
+collection_failed and cleanup_failed. Core preserves validated categories without
+copying exception messages, arbitrary class names, URLs, DOM contents or credentials.
+Unknown failures retain a conservative generic category. Cleanup failure must not
+erase an already known primary failure. This is diagnostic consistency, not a
+sandbox for arbitrary in-process code.
+
+The page policy is deliberately global and conservative: an uncaught script
+exception or unhandled Promise rejection makes the owned context erroneous,
+including errors from timers or third-party scripts without a proven relationship
+to the current action. The current or next evidence collection reports page_error
+and closes the context. This is not proof that the action's event handler failed.
+console.error alone does not invalidate the context. No implicit retry, repair,
+error suppression or action-origin inference is performed for page exceptions.
+
+A helper-initiated mock API block is mock_background_blocked, including page-load
+work after hover/Escape or in a later Flow node. The resulting altered page must
+not be judged as an ordinary product mismatch or promoted to a pass. The request
+still consumes no fixture and reaches no live API service. In native transport,
+an ordinary unassociated background connection failure retains its diagnostic-only
+policy. Legacy transport retains its existing acquisition-error behavior. See the
+[repair scope](tasks/execution-evidence-repairs.md).
+
 ## Hover with page-only evidence
 
 `do: hover` moves the pointer once onto a literal logical `target`; the existing
@@ -54,7 +85,7 @@ unsupported. The next authorized action retains its existing rules after that
 gap has been checked.
 
 Once a mock context accepts hover or Escape, all unassociated API requests in that context
-are aborted and noted diagnostically, including later arrivals. They cannot
+are aborted and reported as execution ERROR, including later arrivals. They cannot
 consume the ordered fixtures reserved for associated actions. This is a
 conservative restriction for late background work, not a claim to identify its
 origin. It can affect pages whose menus depend on such background responses;
@@ -94,7 +125,7 @@ ERROR. This does not cover dialogs that remove the input or move focus.
 Escape handlers and their asynchronous work receive no request-evidence origin.
 Their traffic stays diagnostic and cannot rescue a later declared request. After
 the first Escape or hover in a mock context, unassociated API traffic is aborted
-diagnostically for the rest of that context, without consuming ordered fixtures
+with an explicit execution ERROR for the rest of that context, without consuming ordered fixtures
 or reaching live services. Live diagnostics keep existing network policy; this
 does not claim arbitrary background-response-dependent pages work under mocks.
 This quarantine is BrowserSupport policy. Core still validates custom-driver
@@ -622,6 +653,16 @@ serialized records per context, including request values; truncation has a
 visible note. This is not a bound on all browser memory. Payloads and credentials
 are not printed in that note. A slow background request is not a reason to wait
 for global network idle.
+
+Optional background body retrieval reserves its work budget before calls that
+can process another event. Actual attempts plus pending reservations are capped
+at 100 per context. A collection processes at most eight already queued optional
+bodies within the action deadline, rather than draining a growing queue. The
+bound applies to attempted retrieval, not just successfully retained records;
+current-action evidence cannot be truncated using this policy. Mock fixture
+consumption remains exact. Required network-policy
+checks still run for background traffic. This does not promise unlimited traffic
+throughput or identical completion time on differently loaded hosts.
 
 This mode still excludes streams, WebSocket, EventSource, workers/service workers,
 frames/popups, redirect following, and generalized authentication flows. Native

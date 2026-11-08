@@ -50,11 +50,16 @@ _PROBE = textwrap.dedent('''
         context.native.session.send=delayed_send
         started=time.monotonic()
         initial=_click(support,context)
+        initial_elapsed=time.monotonic()-started
         context.page.wait_for_timeout(250)
+        current_started=time.monotonic()
         current=_click(support,context,'other')
+        current_elapsed=time.monotonic()-current_started
         context.page.evaluate('clearInterval(window.background)')
         result={
-            'elapsed':time.monotonic()-started,
+            'action_elapsed':[initial_elapsed,current_elapsed],
+            'action_budget':support._timeout_ms/1000,
+            'background_reads':context.native.background_reads,
             'initial_traffic':len(initial.traffic),
             'traffic':len(current.traffic),
             'claims':claims,
@@ -88,7 +93,10 @@ def test_background_pressure_does_not_starve_awaited_foreground_or_drain_backgro
         pytest.fail('background request handling exceeded the external completion bound')
     assert process.returncode == 0, stderr
     result = json.loads(stdout)
-    assert result['elapsed'] < 5
+    # Each production action keeps its original deadline. Startup, the explicit
+    # idle gap and two independent actions are not one five-second action.
+    assert all(elapsed < result['action_budget'] for elapsed in result['action_elapsed'])
+    assert result['background_reads'] <= 100
     assert result['initial_traffic'] == 0
     assert result['traffic'] == 1
     assert result['claims'] == {'associated': 1, 'background': 0}

@@ -840,7 +840,10 @@ truth or completeness of the adapter's normalization.
 operands, excluding booleans and numeric strings. Unsupported observed types
 cannot satisfy the check. Supported reference comparisons use equality. StateProbe remains separate
 and is called only for declared state checks against the selected real trace.
-Live UI state facts must carry that same nonempty, type-strict trace ID. Missing
+Backend and live UI state facts must be exact StateFacts with that same nonempty,
+type-strict trace ID; core validates and retains an owned copy before evaluating
+them, including the final observation after a polling timeout. Missing or invalid
+correlation is an execution ERROR, not a failed business assertion. Missing
 StateProbe is visible degradation. A span alone does not establish persistence;
 shared trace correlation does not establish independent evidence.
 
@@ -848,7 +851,7 @@ An explicit API call is paired with its returned request/response at the driver
 boundary. If that response has no trace ID, core may use the trace it put on the
 strictly matched outgoing request as local correlation. This is not evidence
 that the server echoed or observed that trace. A contradictory returned trace is
-an error in e2e; UI traffic still needs its separate action-origin association.
+an error in backend and e2e; UI traffic still needs its separate action-origin association.
 State assertions still require actual StateProbe facts, not this fallback alone.
 
 ### Business-object state observations
@@ -1603,16 +1606,29 @@ confidentiality rules.
 Machine exports need explicit allowlists or redaction, never direct generic
 serialization of these objects.
 
-The only complete strict execution gate is:
+The explicit strict execution gate is:
 
 ```python
 assert rep.status == "PASSED"
 ```
 
-`rep.passed` can include `DEGRADED`. `rep.degradations() == []` is supplementary,
+`DomainResult.passed`, `RunReport.passed` and `FlowReport.passed` are exactly
+equivalent to `status == "PASSED"`. DEGRADED is no longer a truthy pass; this
+Python API tightening requires no YAML migration. See [compatibility notes](CHANGELOG.md).
+`rep.degradations() == []` is supplementary,
 not a standalone gate: failed, empty, or unselected reports may have none.
 A pass covers performed checks, not omitted obligations or the correctness and
 completeness of the human-approved baseline.
+
+BrowserSupport retains a conservative whole-page uncaught-script-error policy:
+an unhandled exception or Promise rejection makes observation unavailable and
+the step ERROR, even without proven ownership by the current action. console.error
+alone does not. A helper-blocked mock API request likewise produces ERROR instead
+of a product assertion failure, including a page-load request after hover/Escape.
+These are execution limitations, not proof of a product defect. Safe fixed error
+categories distinguish these causes without exposing raw exceptions; see the
+[browser guide](docs/browser-support.md#failure-classification-and-page-errors).
+Step ERROR still aggregates through the existing FAILED report status.
 
 Any performed failing check makes the domain and run FAILED, even when its step
 also has a tolerated control-flow outcome. In particular, polling with

@@ -341,6 +341,7 @@ def test_continuous_background_is_bounded_without_holding_action_open(browser):
     assert time.monotonic()-before < 5
     assert len(evidence.traffic) == 1
     assert len(context.diagnostics) <= 100
+    assert context.native.background_reads + len(context.native.deferred_diagnostics) <= 100
     assert context.native.background_bytes <= 256*1024
     assert 'background diagnostics truncated' in evidence.diagnostic_notes
     assert all(r.step_id is None for r in context.diagnostics)

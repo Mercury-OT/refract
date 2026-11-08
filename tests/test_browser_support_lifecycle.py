@@ -6,6 +6,7 @@ import weakref
 import pytest
 
 from refracto import ports
+from refracto.errors import ActionFailure, ActionFailureReason as Reason
 from refracto_browser import BrowserSupport
 from refracto_browser import _support
 
@@ -79,7 +80,8 @@ def test_close_failure_still_closes_browser_and_releases_runtime(monkeypatch):
     with pytest.raises(RuntimeError) as error:
         support.close(context)
     assert calls[-3:] == ["close_context", "close_browser", "stop"]
-    assert str(error.value) == "browser resource cleanup failed"
+    assert type(error.value) is ActionFailure
+    assert error.value.reason is Reason.CLEANUP_FAILED
     support.close(context)
     with pytest.raises(ValueError, match="closed"):
         support.snapshot(context)

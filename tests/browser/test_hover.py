@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from refracto import ports
+from refracto.errors import ActionFailure, ActionFailureReason as Reason
 from refracto_browser import ApiEndpoint, BrowserNetworkPolicy, BrowserSupport
 from tests.browser.test_multi_origin_transport import Peer
 
@@ -241,11 +242,11 @@ def test_frontend_hover_background_cannot_consume_click_fixture_or_reach_live_ap
                                 response_headers={'access-control-allow-origin': '*'})
     support, context, app, api = lab("trigger.onmouseenter=()=>send().catch(()=>{});go.onclick=()=>send('click')",
                                      native=native, mode='mock', fixtures=[fixture])
-    evidence = hover(support, context)
-    assert evidence.traffic == [] and evidence.mock_recordings == []
-    click = support.perform(context, permit('click', mode='mock'), selector='#go').evidence
-    assert len(click.mock_recordings) == 1
-    assert click.mock_recordings[0].mock_fixture_id == 'click-fixture'
+    with pytest.raises(ActionFailure) as error:
+        hover(support, context)
+    assert error.value.reason is Reason.MOCK_BACKGROUND_BLOCKED
+    assert context.closed and context.mock_queue.index == 0
+    assert context.traffic == [] and context.mock_recordings == []
     assert api.requests == []
     assert not any(r['path'].startswith('/api/') for r in app.requests)
 
@@ -341,24 +342,28 @@ def test_deferred_mock_hover_keeps_later_steps_fixture_on_reused_context(lab, na
     support, context, app, api = lab(script, native=native, mode='mock', fixtures=[fixture])
     assert hover(support, context).mock_recordings == []
     next_node = replace(permit('click', mode='mock'), step_id='later_node/read')
-    result = support.perform(context, next_node, selector='#go').evidence
-    context.page.wait_for_function('done.includes("hover")')
-    assert [r.mock_fixture_id for r in result.mock_recordings] == ['later-click']
-    assert [t.request.body for t in result.traffic] == [{'tag': 'click'}]
-    assert context.mock_queue.index == 1
+    with pytest.raises(ActionFailure) as error:
+        support.perform(context, next_node, selector='#go')
+    assert error.value.reason is Reason.MOCK_BACKGROUND_BLOCKED
+    assert context.closed
+    # An associated click may already have consumed its own fixture before the
+    # delayed refusal is observed. No hover request may consume or claim it.
+    assert context.mock_queue.index <= 1
+    assert all(r.mock_fixture_id == 'later-click' and r.request.body == {'tag': 'click'}
+               for r in context.mock_recordings)
+    assert all(t.request.body == {'tag': 'click'} for t in context.traffic)
     assert api.requests == [] and not any(r['path'].startswith('/api/') for r in app.requests)
 
 
 def test_mock_hover_preflight_is_blocked_without_inventing_response(lab):
     support, context, _, api = lab("trigger.onmouseenter=()=>fetch(window.destination,{headers:{'X-Extra':'synthetic'}}).catch(()=>done.push('blocked'))", mode='mock', fixtures=[])
     context.page.evaluate('url=>window.destination=url', api.url + '/api/echo')
-    evidence = hover(support, context)
-    context.page.wait_for_function('done.includes("blocked")')
-    context.native.collect(evidence.action_id)
-    assert evidence.traffic == [] and evidence.mock_recordings == []
+    with pytest.raises(ActionFailure) as error:
+        hover(support, context)
+    assert error.value.reason is Reason.MOCK_BACKGROUND_BLOCKED
+    assert context.closed and context.mock_recordings == []
     assert context.diagnostics == []
-    assert 'background HTTP acquisition failed' in context.native.notes
-    assert context.errors == [] and api.requests == []
+    assert context.errors[0] is Reason.MOCK_BACKGROUND_BLOCKED and api.requests == []
 
 
 def test_nested_hover_property_await_cannot_inherit_trusted_click_origin(lab):

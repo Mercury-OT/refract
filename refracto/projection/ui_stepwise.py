@@ -434,10 +434,7 @@ def _record_verified_primary(recorder, response, expected_recordings):
 
 
 def _validate_state_facts(facts, trace_id):
-    if type(facts) is not ports.StateFacts:
-        raise TypeError("StateProbe.observe must return StateFacts")
-    _require_equal("state trace", facts.trace_id, trace_id)
-    return facts
+    return backend_proj.validate_state_facts(facts, trace_id)
 
 
 class _VerifiedRecorder:
@@ -604,7 +601,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         existing = contexts.pop(user, None)
         if existing is not None:
             try:
-                header_ops.call_port("UI close", ui.close_stepwise, existing[0], sensitive=sensitive_headers)
+                backend_proj._call_action_port("UI close", ui.close_stepwise, existing[0])
             except Exception:
                 failed_contexts.add(user)
                 raise
@@ -783,7 +780,9 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                     continue
                 for sr in reversed(results):
                     if sr.status != BLOCKED:
-                        sr.status, sr.detail = ERROR, f"UI context close failed: {exc}"
+                        primary = sr.detail if sr.status == ERROR else ""
+                        cleanup = f"UI context close failed: {exc}"
+                        sr.status, sr.detail = ERROR, f"{primary}; {cleanup}" if primary else cleanup
                         break
     if flow_execution is not None:
         # Cleanup errors are part of the final Scenario's outcome and must be

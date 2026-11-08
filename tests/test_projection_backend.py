@@ -125,7 +125,7 @@ def test_backend_state_skipped_when_no_probe():
     # response checks still pass; backend_state degraded to skipped
     assert any(c.check == "success" and c.ok for c in res.checks)
     assert any("span_exists" in sk for step in res.steps for sk in step.skipped)
-    assert res.passed   # skipped does not fail the domain
+    assert not res.passed   # unavailable evidence is not strict success
 
 def test_response_expectations_without_request_assertions():
     """Regression test (migrated to the step model): a step with no request template
@@ -421,7 +421,7 @@ def test_poll_step_skip_timeout_degrades_domain(tmp_path):
     assert res.steps[0].skipped == ["poll timed out (SKIP)"]
     assert res.steps[1].status == BLOCKED
     assert res.status == DEGRADED
-    assert res.passed   # DEGRADED still counts as passed — nothing asserted false
+    assert not res.passed   # unexecuted work cannot satisfy the strict gate
 
 
 def test_poll_step_fail_timeout_fails_domain(tmp_path):

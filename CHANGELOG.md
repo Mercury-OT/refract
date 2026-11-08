@@ -5,6 +5,39 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-08: strict passes and execution-evidence repairs
+
+The [bounded repair](docs/tasks/execution-evidence-repairs.md) changes
+DomainResult.passed, RunReport.passed and FlowReport.passed to exactly
+`status == "PASSED"`. Existing status/continuation/Flow publication rules remain.
+Python callers that deliberately accept DEGRADED must now inspect status
+explicitly; no permissive compatibility alias is added. YAML and schema_version
+1 are unchanged. This records a Python behavior change, not a package release.
+
+Backend StateProbe facts now receive the same exact type and trace checks as
+live UI, including polling observations. A contradictory API response trace is
+also rejected. Valid request-side correlation without a server echo is preserved.
+Missing probe remains degradation; invalid evidence is ERROR; genuine assertion
+mismatch remains FAILED. Backend adapters must return the requested trace with
+their actual StateFacts, not a lookalike object or unrelated facts.
+
+BrowserSupport keeps post-hover/Escape mock isolation, but an actual blocked
+mock API request now errors rather than letting the changed page be judged as
+a product failure. Existing callers that tolerated these blocks must treat them
+as unsupported execution. Ordinary unrelated connection failures retain each
+transport's existing policy: diagnostic in native collection, acquisition error
+in legacy routing. Whole-page uncaught exceptions remain errors; their category
+does not claim association with the current action. Safe finite categories now
+survive the browser/action boundary without exposing exception payloads.
+UI context-close failures now use the same fixed-category boundary even without
+declared business headers; callers must not depend on raw cleanup exception text.
+If cleanup also fails, the original action error remains visible.
+
+Background diagnostic work is reserved before reentrant collection. Pressure
+controls inspect actual reads and foreground evidence, not just retained records.
+This does not add general browser support, ignore required evidence, relax
+credential policy, or guarantee performance on arbitrary hosts.
+
 ## 2026-11-03: explicit Escape input operation
 
 The [bounded Escape task](docs/tasks/ui-escape-press.md) adds literal `key: Escape`

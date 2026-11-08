@@ -118,7 +118,7 @@ class DomainResult:
 
     @property
     def passed(self):
-        return self.status in (PASSED, DEGRADED)
+        return self.status == PASSED
 
 
 @dataclass
@@ -154,7 +154,7 @@ class RunReport:
 
     @property
     def passed(self):
-        return self.status in (PASSED, DEGRADED)
+        return self.status == PASSED
 
     def degradations(self):
         """Return ``(projection, step_id, reason)`` for skipped or blocked work.
@@ -243,7 +243,7 @@ class FlowReport:
 
     @property
     def passed(self):
-        return self.status in (PASSED, DEGRADED)
+        return self.status == PASSED
 
     @property
     def domains(self):

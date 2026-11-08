@@ -597,7 +597,7 @@ def test_skip_timeout_cannot_hide_request_failure_or_resume_flow(mode, correct_r
     assert len(domain.checks) == len(domain.provider_recordings)
     assert all(check.ok is correct_request for check in domain.checks)
     assert domain.status == report.status == ("DEGRADED" if correct_request else "FAILED")
-    assert domain.passed is report.passed is correct_request
+    assert domain.passed is report.passed is False  # SKIP is not strict success
     diagnostic = repr(report) + str(report.localize()) + str(report.degradations())
     diagnostic += " ".join(step.detail for step in domain.steps)
     assert SENTINEL not in diagnostic
@@ -671,10 +671,10 @@ def test_returned_headers_protect_close_even_when_evidence_validation_fails(cont
     assert SENTINEL not in result.steps[0].detail + repr(result)
 
 
-def test_legacy_ui_without_captured_header_blocks_preserves_close_diagnostic():
+def test_ui_without_captured_header_blocks_preserves_only_safe_close_category():
     class Ui(ScriptedUi):
         def close_stepwise(self, context):
             raise RuntimeError("legacy UI close diagnostic")
     ui = Ui(count=1, requests=[[ports.RequestSpec("GET", "read")]])
     result = run_ui(load(request(ui=True)), ui, auth=None)
-    assert result.steps[0].detail == "UI context close failed: legacy UI close diagnostic"
+    assert result.steps[0].detail == "UI context close failed: UI close failed (RuntimeError)"

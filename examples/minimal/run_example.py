@@ -17,7 +17,7 @@ def run():
         adapters,
         projections=("backend", "contract"),
     )
-    # Do not gate on rep.passed: it includes DEGRADED.
+    # Explicit strict gate; rep.passed has the same meaning.
     assert rep.status == "PASSED"
     assert rep.degradations() == []
     return rep

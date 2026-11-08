@@ -168,8 +168,9 @@ def test_invalid_forms_fail_before_forwarding_or_mock_consumption(browser_lab, h
     configure(context, [configured])
     with pytest.raises(RuntimeError) as error:
         act(support, context, "#form-fetch", mode=mode)
-    assert str(error.value) == "browser action or evidence collection failed"
-    assert context.errors == ["browser request transport or recording failed"]
+    assert str(error.value) == "browser action or evidence collection failed (evidence_invalid)"
+    from refracto.errors import ActionFailureReason
+    assert context.errors == [ActionFailureReason.EVIDENCE_INVALID]
     assert context.mock_queue.index == 0
     assert http_peer.api_requests == []
     assert context.closed

@@ -317,7 +317,7 @@ def test_separately_declared_state_obligation_is_never_a_silent_pass(tmp_path, p
                           sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds))
     domain = report.domains[0]
     if evidence == "unavailable":
-        assert report.status == "DEGRADED" and report.passed is True
+        assert report.status == "DEGRADED" and report.passed is False
         assert domain.steps[2].skipped and "StateProbe" in domain.steps[2].skipped[0]
         assert report.degradations()
         assert app.request_count == 4 and probe.calls == 0

@@ -12,6 +12,8 @@ from refracto import asyncwait, ports, object_state as object_observation
 from refracto import headers as header_ops
 from refracto.query import wire_query, require_wire_query, request_path
 from refracto.normalization import normalize_response
+from refracto.errors import safe_action_failure
+from refracto.state_evidence import require_trace_id, validate_state_facts
 from refracto.declaration import binding
 from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.declaration import values
@@ -46,8 +48,14 @@ def _call_action_port(operation, callback, *args, **kwargs):
     try:
         return callback(*args, **kwargs)
     except Exception as exc:
-        category = next((_ACTION_ERROR_CATEGORIES[base] for base in type(exc).__mro__
-                         if base in _ACTION_ERROR_CATEGORIES), "Exception")
+        safe = safe_action_failure(exc)
+        if safe is not None:
+            category, cleanup_failed = safe
+            if cleanup_failed:
+                category += "; cleanup_failed"
+        else:
+            category = next((_ACTION_ERROR_CATEGORIES[base] for base in type(exc).__mro__
+                             if base in _ACTION_ERROR_CATEGORIES), "Exception")
         raise ValueError(f"{operation} failed ({category})") from None
 
 
@@ -175,7 +183,7 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
     """Evaluate a step's backend-state assertions.
 
     * `state is None` -> visible degradation
-    * `trace_id is None` with declared expectations -> failing check
+    * missing/invalid current trace or unrelated/malformed facts -> execution error
     * otherwise poll on the assertion predicate until it holds or times out
 
     `bound_values` carries this step's already-resolved `bind` values, used to
@@ -192,14 +200,11 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
             # Preserve the unmet check and degradation without echoing its data.
             skipped.append(f"{a.check} — no StateProbe (backend-state evidence unavailable)")
         return checks, skipped
-    if trace_id is None:
-        checks.append(CheckResult(point="backend_state", check="_no_trace_id", ok=False,
-            detail="backend_state declared but no trace id was captured from the execution"))
-        return checks, skipped
+    require_trace_id(trace_id)
 
     # Poll on the full backend-state predicate, not merely on span-name presence.
     def _poll():
-        facts = state.observe(trace_id)
+        facts = validate_state_facts(state.observe(trace_id), trace_id)
         ok = all(_eval_span(a, facts, bound_values, inputs).ok for a in span_assertions)
         return (ok, facts)
 
@@ -209,7 +214,7 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
     except asyncwait.WaitTimeout:
         # On timeout, report the specific failing assertions against the most
         # recent observation rather than a generic timeout marker.
-        facts = state.observe(trace_id)
+        facts = validate_state_facts(state.observe(trace_id), trace_id)
         for a in span_assertions:
             checks.append(_eval_span(a, facts, bound_values, inputs))
     else:
@@ -275,7 +280,12 @@ def _send_verified(api, spec, session, *, sensitive_headers=False):
                for field in dataclasses.fields(ports.RequestSpec)):
         raise ValueError("API request/response pairing mismatch")
     _require_live_response(response)
-    return copy.deepcopy(response)
+    protected = copy.deepcopy(response)
+    request_trace = expected.traceparent.split("-")[1]
+    if protected.trace_id is not None and (
+            type(protected.trace_id) is not str or protected.trace_id != request_trace):
+        raise ValueError("API response trace mismatch")
+    return protected
 
 
 def _run_poll_step(step, template, spec, api, session, recorder, normalizer, state,

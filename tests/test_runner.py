@@ -196,7 +196,7 @@ def test_missing_state_probe_is_discoverable_from_the_run_report():
     )
 
     assert rep.status == DEGRADED
-    assert rep.passed
+    assert not rep.passed
     assert rep.degradations()
     assert any(
         projection == "backend"
