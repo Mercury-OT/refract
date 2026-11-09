@@ -75,6 +75,19 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved [exact-ID object absence](tasks/object-absence.md) on
+2026-11-09. This resumes the previously paused absence slice: one bounded
+`backend_state.object_absent` assertion, reusing the existing read-only object
+probe, format 1 and one-level inclusion. The accepted create / verify existence /
+delete consumer distinguishes complete absence from query failure and missing
+capability. No async waiting, broader selector, storage DSL, new report state or
+private integration is authorized. Development, independent audit and architect
+acceptance passed: 6384 full-suite tests and 5139 dev-only tests per supported
+Python version, plus 82 independent controls. See the
+[verification record](tasks/object-absence-acceptance.md). Task-branch delivery
+is authorized after these gates; hosted checks, merge and cleanup belong to the
+associated PR/commit history, not to the local acceptance claim.
+
 The maintainer approved [execution-evidence repairs](tasks/execution-evidence-repairs.md)
 on 2026-11-08: strict passed properties, consistent state correlation, explicit
 mock-intervention errors, bounded background diagnostic work and safe failure
@@ -83,9 +96,10 @@ explicit. This finite task preserves YAML, format 1, one-level inclusion and
 business assertions. Development, independent core/browser audits and architect
 acceptance passed on 2026-11-09: 6190 full-suite tests and 4945 dev-only tests per
 supported Python version passed. See the [verification record](tasks/execution-evidence-repairs-acceptance.md).
-Task-branch delivery is authorized; hosted CI, merge and cleanup belong to the
-associated PR/commit history. Object absence remains paused; private workspaces
-are outside scope. No general browser compatibility or new capability is implied.
+Delivered through PR #51 in main `c9410f5`; eight branch/PR checks and four main
+jobs passed, and both task branches were removed. Object absence was paused at
+that delivery and is separately authorized above; private workspaces remain
+outside scope. No general browser compatibility was implied by those repairs.
 
 The maintainer approved [explicit Escape](tasks/ui-escape-press.md) on 2026-11-03:
 close search suggestions while retaining typed input and focus. Real Chromium

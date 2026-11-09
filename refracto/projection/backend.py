@@ -14,7 +14,7 @@ from refracto.query import wire_query, require_wire_query, request_path
 from refracto.normalization import normalize_response
 from refracto.errors import safe_action_failure
 from refracto.state_evidence import require_trace_id, validate_state_facts
-from refracto.declaration import binding
+from refracto.declaration import binding, object_state
 from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.declaration import values
 from refracto.declaration import collections
@@ -190,7 +190,7 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
     resolve any `span_attr.value` that references a bound placeholder.
     """
     span_assertions = [a for a in step.expect.backend_state
-                       if a.check != "object_field_equals"]
+                       if a.check not in object_state.CHECKS]
     checks, skipped = [], []
     if not span_assertions:
         return checks, skipped

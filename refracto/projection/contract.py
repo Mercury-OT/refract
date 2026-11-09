@@ -13,6 +13,7 @@ remain recording evidence, but do not change which declared endpoint a provider
 response satisfies.
 """
 from refracto.contract import store
+from refracto.declaration import object_state
 from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.report import (CheckResult, DomainResult, StepResult, PASSED, FAILED,
                             ERROR, BLOCKED, NOT_APPLICABLE, SKIPPED, COMPLETED)
@@ -84,9 +85,10 @@ def _execution_provenance(scenario, recordings, execution_steps, flow_blocks=Non
 
 def run(scenario, provider_recordings, normalizer, *, execution_steps=None,
         flow_blocks=None) -> DomainResult:
-    not_checked = [f"{step.id}: object_field_equals is outside contract scope"
+    not_checked = [f"{step.id}: {check} is outside contract scope"
                    for step in scenario.steps
-                   if any(a.check == "object_field_equals" for a in step.expect.backend_state)]
+                   for check in dict.fromkeys(a.check for a in step.expect.backend_state
+                                              if a.check in object_state.CHECKS)]
     not_checked.extend(f"{step.id}: object_id selection is outside contract scope"
                        for step in scenario.steps if step.object_id is not None)
     not_checked.extend(f"{step.id}: key press is outside contract scope"

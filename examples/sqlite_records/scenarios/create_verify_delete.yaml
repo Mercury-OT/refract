@@ -1,0 +1,57 @@
+schema_version: 1
+scenario: records.create_verify_delete
+description: Create a record, verify its committed existence, and delete it
+users: [creator]
+parameters:
+  record_code: {from_run: unique}
+  record_name: Example record
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          code: {from_parameter: record_code}
+          name: {from_parameter: record_name}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: id}
+  - id: verify_exists
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path:
+          - records
+          - {from_step: create, response_field: id}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - check: field_equals
+          field: id
+          value: {from_step: create, response_field: id}
+      # This positive control must see the committed record before deletion.
+      backend_state:
+        - check: object_field_equals
+          object: record
+          id: {from_step: create, response_field: id}
+          field: code
+          value: {from_parameter: record_code}
+  - id: delete
+    do:
+      request:
+        method: DELETE
+        path:
+          - records
+          - {from_step: create, response_field: id}
+    expect:
+      response:
+        - {check: status_equals, value: 204}
+      backend_state:
+        - check: object_absent
+          object: record
+          id: {from_step: create, response_field: id}

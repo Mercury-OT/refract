@@ -271,6 +271,7 @@ class Consumer:
 
 
 EXAMPLES = {
+    "examples/sqlite_records/scenarios/create_verify_delete.yaml": Consumer("tests/test_object_absence_sqlite.py::test_committed_deletion_passes_after_positive_existence_control", "backend, API e2e; SQLite"),
     "examples/ui_escape_suggestions/scenario.yaml": Consumer("tests/browser/test_ui_escape_consumer.py::test_real_escape_closes_suggestions_and_preserves_input", "frontend mock, live UI e2e; frozen listener and property search-suggestions handlers"),
     "examples/ui_hover_menu/scenario.yaml": Consumer("tests/browser/test_ui_hover_consumer.py::test_real_hover_reveals_menu_before_separate_click", "frontend mock, live UI e2e; frozen CSS and JavaScript menu implementations"),
     "examples/ui_enter_search/scenario.yaml": Consumer("tests/browser/test_enter_search_consumers.py::test_enter_search_live", "live UI e2e; frozen synthetic search handlers and real HTTP"),
@@ -325,7 +326,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 30
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 31
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps

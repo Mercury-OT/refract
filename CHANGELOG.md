@@ -5,6 +5,18 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-09: exact-ID object absence
+
+The [bounded absence task](docs/tasks/object-absence.md) adds only
+`expect.backend_state.object_absent` with `object` and referenced `id`.
+Format 1, inclusion depth and Python port signatures remain unchanged. The
+existing ObjectStateProbe receives an empty field tuple for absence-only queries;
+it must still perform an actual complete lookup and return any matching object.
+An empty field selection never means that the object can be omitted.
+Complete zero matches pass; one object fails; incomplete, ambiguous or invalid
+evidence errors. Equality retains its existing zero-match failure semantics.
+Backend/live e2e evaluate storage evidence; frontend/contract do not query storage.
+
 ## 2026-11-08: strict passes and execution-evidence repairs
 
 The [bounded repair](docs/tasks/execution-evidence-repairs.md) changes

@@ -9,7 +9,7 @@ from refracto.runner import run_scenario
 
 
 def main():
-    scenario = Path(__file__).parent / "scenarios/create_and_verify_storage.yaml"
+    scenario = Path(__file__).parent / "scenarios/create_verify_delete.yaml"
     with TemporaryDirectory(prefix="refract-records-") as directory:
         with RecordsApp(Path(directory) / "records.sqlite") as app:
             report = run_scenario(scenario, build_adapters(app), projections=("backend",))

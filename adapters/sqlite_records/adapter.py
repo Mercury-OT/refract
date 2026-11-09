@@ -29,7 +29,8 @@ class RecordsAuthenticator(ports.Authenticator):
 def resolve_request(action):
     path = action.path.strip("/")
     if not ((action.method == "POST" and path == "records")
-            or (action.method == "GET" and len(path.split("/")) == 2 and path.startswith("records/"))):
+            or (action.method in {"GET", "DELETE"} and len(path.split("/")) == 2
+                and path.startswith("records/"))):
         raise ValueError("unsupported logical record request")
     return ports.RequestSpec(action.method, "/" + path, deepcopy(action.body),
                              query=wire_query(action.query or {}),
@@ -49,7 +50,7 @@ class RecordsApiDriver(ports.ApiDriver):
         response = self.app.handle(request.method, request_path(request.path, request.query),
                                    request.body, headers)
         return ports.RecordedResponse(response.status, dict(response.headers),
-            deepcopy(response.body), json.dumps(response.body), None, request,
+            deepcopy(response.body), "" if response.body is None else json.dumps(response.body), None, request,
             request_header_items=list(headers.items()), header_items=list(response.headers.items()))
 
 
