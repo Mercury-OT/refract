@@ -3,6 +3,8 @@ import math
 
 
 CHECK = "object_field_equals"
+ABSENT_CHECK = "object_absent"
+CHECKS = (CHECK, ABSENT_CHECK)
 
 
 def require_id(value):

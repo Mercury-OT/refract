@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 @dataclass(frozen=True)
 class Response:
     status: int
-    body: dict
+    body: dict | None
     headers: dict = field(default_factory=lambda: {"content-type": "application/json"})
 
 
@@ -42,6 +42,10 @@ class RecordsApp:
     def _commit_write(self):
         self.connection.commit()
 
+    def _delete_record(self, record_id):
+        self.connection.execute("DELETE FROM entries WHERE record_id = ?", (record_id,))
+        self._commit_write()
+
     def handle(self, method, path, body=None, headers=None):
         headers = dict(headers or {})
         self.requests.append((method, path, deepcopy(body), deepcopy(headers)))
@@ -66,12 +70,15 @@ class RecordsApp:
                 return Response(409, {"error": "code_exists"})
             return Response(201, {"id": inserted.lastrowid, **deepcopy(body)})
         parts = parsed.path.strip("/").split("/")
-        if method == "GET" and len(parts) == 2 and parts[0] == "records" and parts[1].isdigit():
+        if method in {"GET", "DELETE"} and len(parts) == 2 and parts[0] == "records" and parts[1].isdigit():
             row = self.connection.execute(
                 "SELECT record_id, business_code, label FROM entries WHERE record_id = ?",
                 (int(parts[1]),),
             ).fetchone()
             if row is not None:
+                if method == "DELETE":
+                    self._delete_record(row[0])
+                    return Response(204, None)
                 return Response(200, dict(zip(("id", "code", "name"), row, strict=True)))
         return Response(404, {"error": "record_missing"})
 

@@ -72,6 +72,13 @@ configuration remain adapter responsibilities. Core receives actual facts and
 performs the comparison. This does not change the minimum request/response
 integration above or the existing trace-based `StateProbe`.
 
+The [delete example](../examples/sqlite_records/scenarios/create_verify_delete.yaml)
+uses `object_absent` for the same observed ID after confirming existence and
+deleting it. Only a complete zero-match read passes. Query failures and incomplete
+reads are errors, not absence; retained objects fail the check. Absence has the
+scope of the reviewed storage mapping, not every cache or a permission-filtered
+list. No storage queries or connection details enter the Scenario.
+
 The declaration uses `schema_version: 1`, a required `users` list, a `parameters` mapping, and ordered
 steps. API commands are under `do.request`; response checks are under
 `expect.response`. Preparation is another visible step. Later steps can use

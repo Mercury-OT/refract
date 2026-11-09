@@ -835,6 +835,7 @@ truth or completeness of the adapter's normalization.
 | `span_exists` | `span` |
 | `span_attr` | `span`, `attr`, `op`, `value` |
 | `object_field_equals` | `object`, `id`, `field`, `value` |
+| `object_absent` | `object`, `id` |
 
 `span_attr` uses `>`, `>=`, `<`, `<=`, or `==`; ordering requires finite numeric
 operands, excluding booleans and numeric strings. Unsupported observed types
@@ -886,12 +887,35 @@ value matches and does not inherit span polling. This slice covers synchronous
 committed state, not eventual-consistency waiting. Different objects need not
 share a transaction; multiple fields on the same object must share a snapshot.
 
-A complete lookup with no object, an absent field or an unequal value fails the
-check. Ambiguous matches, wrong query/object identity, query exceptions,
+A complete lookup with no object, an absent field or an unequal value fails an
+`object_field_equals` check. Ambiguous matches, wrong query/object identity, query exceptions,
 incomplete observations and malformed facts cause ERROR. An absent object probe
 is visible degradation and cannot pass the strict gate. Backend and live e2e
 share this evaluation. Frontend mock execution and contract do not query storage
 and mark these declarations outside their checked scope.
+
+`object_absent` requires exactly the same business `object` and referenced `id`,
+with no `field` or `value`. It passes only when a valid, complete lookup returns
+zero objects; one object fails, and multiple objects remain an error. It is a
+backend-state check, not a UI absence check. The
+[create/verify/delete example](examples/sqlite_records/scenarios/create_verify_delete.yaml)
+first confirms committed existence, then deletes the same observed ID and checks
+absence independently of the successful HTTP response. An always-empty probe
+cannot satisfy that preceding existence control.
+
+Absence-only queries use `fields=()` but must still perform the actual lookup.
+Mixed equality and absence checks for one object share one snapshot and the
+union of fields required by equality; contradictory expectations are not
+silently simplified. Missing capability or incomplete evidence cannot establish
+absence. Existing ID validation, one-shot timing, API-poll behavior, failure
+continuation, include/Flow references and sensitive evidence ownership apply.
+
+Absence is scoped to the reviewed source and exact selector. A permission-filtered
+or paginated empty view is not proof of storage absence, nor is this a claim
+about every cache, replica or backup. A surviving soft-deleted object is present;
+use field equality for its deletion flag. Denied creation without a known ID and
+eventual deletion waiting are outside this assertion's bounded scope. A probe's
+completeness claim still requires mapping review; core cannot attest its truth.
 
 `StepResult.state_observations` retains copied facts, the observation's identity
 and source label, hidden from default repr as sensitive data. It is not a new

@@ -36,6 +36,7 @@ _TERMS = {
     },
     "backend_state": {
         "object_field_equals": ("object", "id", "field", "value"),
+        "object_absent": ("object", "id"),
         "span_exists": ("span",),
         "span_attr": ("span", "attr", "op", "value"),
     },

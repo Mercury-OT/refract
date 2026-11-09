@@ -346,6 +346,8 @@ def _request(raw, parameters, prior, bindings, where):
 def _validate_object_state(params, parameters):
     """Check known use-site values, including substituted include parameters."""
     for key, require in (("id", object_state.require_id), ("value", object_state.require_expected)):
+        if key not in params:
+            continue
         known = _known(params[key], parameters)
         if known is not UNKNOWN and known is not STRING:
             try:
@@ -431,10 +433,10 @@ def _assertions(point, raw, parameters, prior, bindings):
                     and isinstance(value, (list, dict))):
                 raise DeclarationError(f"{point}.{check}.{key} must be scalar or a reference")
             if key == "id" and not isinstance(value, ValueRef):
-                raise DeclarationError("object_field_equals.id must be a value reference")
+                raise DeclarationError(f"{check}.id must be a value reference")
             params[key] = value
-        if point == "backend_state" and check == object_state.CHECK:
-            if isinstance(params["value"], StringConcat):
+        if point == "backend_state" and check in object_state.CHECKS:
+            if isinstance(params.get("value"), StringConcat):
                 raise DeclarationError("object-state expected value must be a scalar or reference")
             _validate_object_state(params, parameters)
         if check == "span_attr":
@@ -754,7 +756,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
             if step.object_id is not None:
                 _validate_object_id(step.object_id, result.parameters)
             for assertion in step.expect.backend_state:
-                if assertion.check == object_state.CHECK:
+                if assertion.check in object_state.CHECKS:
                     _validate_object_state(assertion.params, result.parameters)
     return result
 

@@ -18,7 +18,7 @@ class ObservationError(ValueError):
 
 
 def assertions(step):
-    return [a for a in step.expect.backend_state if a.check == declaration.CHECK]
+    return [a for a in step.expect.backend_state if a.check in declaration.CHECKS]
 
 
 def _name(value):
@@ -55,7 +55,8 @@ def observe(step, probe, trace_id, *, projection, user, session_generation,
     if not selected:
         return [], []
     if probe is None:
-        return [], ["object_field_equals — no ObjectStateProbe (object-state evidence unavailable)"]
+        return [], [f"{check} — no ObjectStateProbe (object-state evidence unavailable)"
+                    for check in dict.fromkeys(a.check for a in selected)]
     if (projection not in {"backend", "e2e"} or not _name(trace_id)
             or not _name(step.id) or (user is not None and not _name(user))
             or type(session_generation) is not int
@@ -69,15 +70,20 @@ def observe(step, probe, trace_id, *, projection, user, session_generation,
         for assertion in selected:
             params = assertion.params
             identity, error = values.resolve(params["id"], bound_values=bound_values, inputs=inputs)
-            expected, expected_error = values.resolve(params["value"], bound_values=bound_values, inputs=inputs)
-            if error is not None or expected_error is not None:
+            if error is not None:
                 raise ValueError()
             declaration.require_id(identity)
-            declaration.require_expected(expected)
-            if not _name(params["object"]) or not _name(params["field"]):
+            if not _name(params["object"]):
                 raise ValueError()
+            name, expected = None, None
+            if assertion.check == declaration.CHECK:
+                expected, error = values.resolve(params["value"], bound_values=bound_values, inputs=inputs)
+                if error is not None or not _name(params["field"]):
+                    raise ValueError()
+                declaration.require_expected(expected)
+                name = params["field"]
             key = (params["object"], type(identity), identity)
-            groups.setdefault(key, []).append((params["field"], expected))
+            groups.setdefault(key, []).append((assertion.check, name, expected))
     except Exception:
         raise ObservationError("Object state selection or expected value is invalid") from None
 
@@ -87,7 +93,7 @@ def observe(step, probe, trace_id, *, projection, user, session_generation,
             observation_id=secrets.token_hex(16), projection=projection,
             step_id=step.id, trace_id=trace_id, user=user,
             session_generation=session_generation, object=object_name, id=identity,
-            fields=tuple(sorted({name for name, _ in comparisons})),
+            fields=tuple(sorted({name for check, name, _ in comparisons if check == declaration.CHECK})),
         )
         try:
             facts = probe.observe_object(copy.deepcopy(query))
@@ -103,8 +109,12 @@ def observe(step, probe, trace_id, *, projection, user, session_generation,
         if len(snapshot.objects) > 1:
             raise ObservationError("Object state identity is ambiguous")
         observed = snapshot.objects[0].fields if snapshot.objects else {}
-        for name, expected in comparisons:
-            ok = bool(snapshot.objects) and name in observed and values.equal(observed[name], expected)
-            detail = "" if ok else f"object field {name!r} absent or unequal"
-            checks.append(CheckResult("backend_state", declaration.CHECK, ok, detail, step=step.id))
+        for check, name, expected in comparisons:
+            if check == declaration.ABSENT_CHECK:
+                ok = not snapshot.objects
+                detail = "" if ok else "object is present"
+            else:
+                ok = bool(snapshot.objects) and name in observed and values.equal(observed[name], expected)
+                detail = "" if ok else f"object field {name!r} absent or unequal"
+            checks.append(CheckResult("backend_state", check, ok, detail, step=step.id))
     return checks, []

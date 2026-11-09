@@ -278,7 +278,7 @@ def prepare_step(step, scenario, prior_norms):
                 except ValueError:
                     invalid(original.params["value"], "resolved response header value must be a bounded string")
             for key in {"value", "id"} & set(assertion.params):
-                if point == "backend_state" and assertion.check == object_state.CHECK:
+                if point == "backend_state" and assertion.check in object_state.CHECKS:
                     require = object_state.require_id if key == "id" else object_state.require_expected
                     try:
                         require(assertion.params[key])

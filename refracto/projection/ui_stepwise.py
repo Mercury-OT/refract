@@ -18,7 +18,7 @@ from refracto import asyncwait, ports
 from refracto import headers as header_ops
 from refracto.projection.recording import _evidence_equal
 from refracto.query import wire_query, require_wire_query, request_path
-from refracto.declaration import binding, values
+from refracto.declaration import binding, values, object_state as object_state_declaration
 from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.projection import backend as backend_proj
 from refracto.projection.continuation import FlowState
@@ -491,7 +491,7 @@ def _assert_live_backend_state_for(step, state, trace_id, *, state_timeout=30,
                                   interval=1, now=None, sleep=None,
                                   bound_values=None, inputs=None):
     span_assertions = [a for a in step.expect.backend_state
-                       if a.check != "object_field_equals"]
+                       if a.check not in object_state_declaration.CHECKS]
     if not span_assertions:
         return [], []
     if state is None:

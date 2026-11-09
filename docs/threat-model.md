@@ -40,6 +40,12 @@ and unavailable dependencies keep their existing distinct handling. Do not add
 a universal rule that empty, false, null, or non-success HTTP responses must make
 every Scenario fail. Preserve valid negative scenarios and visible evidence gaps.
 
+Object absence requires a well-formed complete exact-ID lookup, not a failed
+query, a missing capability, or an empty permission-filtered/list page. A
+preceding existence control and failed-deletion controls exercise the mapping;
+core cannot attest that a cooperative probe's completeness claim is truthful.
+The observation is scoped to that reviewed source, not all copies of the object.
+
 The bounded Escape extension reuses the key receipt and requires the same input
 and focus throughout collection. Escape callbacks have no request-evidence origin;
 page checks separately establish dismissal and retained text. A synthetic event
