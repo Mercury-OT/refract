@@ -312,4 +312,12 @@ def prepare_step(step, scenario, prior_norms):
     if object_id is not None and not (type(object_id) is int or type(object_id) is str and object_id != ""):
         invalid(step.object_id, "resolved object_id must be a non-empty string or exact integer")
     prepared = replace(step, request=request, value=action_value, expect=expect, object_id=object_id)
+    try:
+        object_state.require_poll(prepared, lambda node: node)
+    except object_state.PollSelectionError as exc:
+        selectors = [assertion.params.get("id") for assertion in step.expect.backend_state]
+        raise InvalidDependency(str(exc), _sources(selectors, inputs, by_key,
+            flow_sources=scenario.flow_input_sources)) from None
+    except ValueError as exc:
+        invalid([assertion.params.get("id") for assertion in step.expect.backend_state], str(exc))
     return prepared, bound

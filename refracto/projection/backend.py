@@ -14,7 +14,7 @@ from refracto.query import wire_query, require_wire_query, request_path
 from refracto.normalization import normalize_response
 from refracto.errors import safe_action_failure
 from refracto.state_evidence import require_trace_id, validate_state_facts
-from refracto.declaration import binding, object_state
+from refracto.declaration import binding, object_state as object_state_declaration
 from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.declaration import values
 from refracto.declaration import collections
@@ -190,7 +190,7 @@ def assert_backend_state_for(step, state, trace_id, *, state_timeout=30, interva
     resolve any `span_attr.value` that references a bound placeholder.
     """
     span_assertions = [a for a in step.expect.backend_state
-                       if a.check not in object_state.CHECKS]
+                       if a.check not in object_state_declaration.CHECKS]
     checks, skipped = [], []
     if not span_assertions:
         return checks, skipped
@@ -508,21 +508,28 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
         apply_object_observation(result, step, object_state, projection=projection,
             user=scenario.effective_user(step),
             session_generation=session_lease.generation if session_lease is not None else None,
-            bound_values=bound_values, inputs=scenario.inputs)
+            bound_values=bound_values, inputs=scenario.inputs, poll_config=poll_config,
+            now=now, sleep=sleep)
     return result, norm
 
 
 def apply_object_observation(result, step, probe, *, projection, user,
-                             session_generation, bound_values=None, inputs=None):
+                             session_generation, bound_values=None, inputs=None,
+                             poll_config=None, now=None, sleep=None):
     """Keep response results and earlier snapshots when observation acquisition fails."""
     try:
+        result.object_poll = object_observation.poll_metadata(step, poll_config)
         checks, skipped = object_observation.observe(
             step, probe, result.trace_id, projection=projection, user=user,
             session_generation=session_generation, observations=result.state_observations,
-            bound_values=bound_values, inputs=inputs)
+            bound_values=bound_values, inputs=inputs, poll_result=result.object_poll,
+            now=now, sleep=sleep)
         result.checks.extend(checks)
         result.skipped.extend(skipped)
-        if any(not check.ok for check in result.checks):
+        if result.object_poll is not None and result.object_poll.outcome == "timeout":
+            result.status = FAILED
+            result.detail = "Object state observation deadline expired"
+        elif any(not check.ok for check in result.checks):
             result.status = FAILED
         elif result.checks and result.status == "COMPLETED":
             result.status = PASSED
@@ -548,6 +555,8 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
     if unsupported is None:
         try:
             ensure_bound_run_values(scenario)
+            for step in scenario.steps:
+                object_state_declaration.require_poll(step)
             sessions.preflight()
         except Exception as exc:
             unsupported = str(exc)

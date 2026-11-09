@@ -16,6 +16,7 @@ from refracto.declaration.run_values import UNKNOWN, STRING, known_value, valida
 from refracto.declaration.collections import is_scalar
 from refracto.declaration import field_comparison
 from refracto.declaration import numeric_comparison
+from refracto.declaration import object_state
 from refracto.query import wire_query
 from refracto import headers as header_ops
 
@@ -294,6 +295,10 @@ def validate_instantiated(scenario):
         return node
 
     for step in scenario.steps:
+        try:
+            object_state.require_poll(step, known, unknown=(unknown, STRING))
+        except ValueError as exc:
+            _error(str(exc))
         for binding in step.bind:
             for declared in (binding.matching or {}).values():
                 value = known(declared)

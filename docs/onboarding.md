@@ -79,6 +79,15 @@ reads are errors, not absence; retained objects fail the check. Absence has the
 scope of the reviewed storage mapping, not every cache or a permission-filtered
 list. No storage queries or connection details enter the Scenario.
 
+For a service that accepts deletion before committing it, the
+[asynchronous example](../examples/sqlite_records/scenarios/create_verify_async_delete.yaml)
+adds `object_poll: {on_timeout: FAIL}` to the delete step. Send the request once,
+then read the same object under the caller's PollConfig budget. Complete ordinary
+mismatches can retry; acquisition errors cannot. All conditions must match one
+snapshot, and a late match cannot pass. The reader must bound its own calls and
+release resources; the synchronous port cannot forcibly cancel a hung adapter.
+Without the policy, storage checks still read once.
+
 The declaration uses `schema_version: 1`, a required `users` list, a `parameters` mapping, and ordered
 steps. API commands are under `do.request`; response checks are under
 `expect.response`. Preparation is another visible step. Later steps can use

@@ -5,6 +5,20 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-09: bounded object-state waiting
+
+The [object-wait task](docs/tasks/object-state-polling.md) adds optional
+`object_poll: {on_timeout: FAIL}` on a request-bearing step. Format 1 and the
+probe port are unchanged; existing declarations keep one-shot object reads.
+Only read-only observations repeat, for one exact object identity, under the
+caller's existing PollConfig. No GET-poll/span combination or YAML budget is
+added. Query/evidence errors do not retry; deadline exhaustion fails.
+
+Step gains an optional keyword-only `object_poll`; StepResult gains separate
+value-free wait metadata. HTTP attempts remain HTTP attempts. Adapters must
+bound individual reads and close resources; synchronous probes cannot be
+forcibly interrupted by core. Raw observations remain sensitive report data.
+
 ## 2026-11-09: exact-ID object absence
 
 The [bounded absence task](docs/tasks/object-absence.md) adds only

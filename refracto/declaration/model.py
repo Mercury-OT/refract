@@ -101,6 +101,7 @@ class Step:
     on_failure: str = field(default="continue", kw_only=True)
     user: str | None = field(default=None, kw_only=True)
     session: str | None = field(default=None, kw_only=True)
+    object_poll: PollPolicy | None = field(default=None, kw_only=True)
 
 @dataclass
 class Scenario:

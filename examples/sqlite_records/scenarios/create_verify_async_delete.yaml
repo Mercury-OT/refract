@@ -1,0 +1,60 @@
+schema_version: 1
+scenario: records.create_verify_async_delete
+description: Observe a committed deletion after a single accepted request
+users: [creator]
+parameters:
+  record_code: {from_run: unique}
+  record_name: Example record
+steps:
+  - id: create
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records]
+        body:
+          code: {from_parameter: record_code}
+          name: {from_parameter: record_name}
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: success}
+        - {check: has, field: id}
+  - id: verify_exists
+    on_failure: stop
+    do:
+      request:
+        method: GET
+        path:
+          - records
+          - {from_step: create, response_field: id}
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - check: field_equals
+          field: id
+          value: {from_step: create, response_field: id}
+      backend_state:
+        - check: object_field_equals
+          object: record
+          id: {from_step: create, response_field: id}
+          field: code
+          value: {from_parameter: record_code}
+  - id: delete
+    do:
+      request:
+        method: DELETE
+        path:
+          - records
+          - {from_step: create, response_field: id}
+    # Repeat only independent read-only observation, never the DELETE request.
+    # Timeout and interval come from the caller's PollConfig.
+    object_poll:
+      on_timeout: FAIL
+    expect:
+      response:
+        - {check: status_equals, value: 202}
+      backend_state:
+        - check: object_absent
+          object: record
+          id: {from_step: create, response_field: id}
