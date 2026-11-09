@@ -13,7 +13,7 @@ remain recording evidence, but do not change which declared endpoint a provider
 response satisfies.
 """
 from refracto.contract import store
-from refracto.declaration import object_state
+from refracto.declaration import object_state, values
 from refracto.declaration.run_values import ensure_bound_run_values
 from refracto.report import (CheckResult, DomainResult, StepResult, PASSED, FAILED,
                             ERROR, BLOCKED, NOT_APPLICABLE, SKIPPED, COMPLETED)
@@ -62,6 +62,11 @@ def _execution_provenance(scenario, recordings, execution_steps, flow_blocks=Non
         raise ValueError("missing backend execution provenance")
     for step_id in unexecuted:
         causes = outcomes[step_id].blocked_by
+        # Generated parameter IDs may disagree without depending on an earlier
+        # response. Prove that exact conflict from this frozen run declaration;
+        # an empty cause list alone is never sufficient blocking evidence.
+        if type(causes) is list and not causes and _conflicting_object_ids(scenario, declarations[step_id]):
+            continue
         # run_flow supplies only blocks already established by its own frozen
         # entry snapshot or Scenario boundary. Ordinary standalone provenance
         # retains its existing same-Scenario dependency/continuation checks.
@@ -83,6 +88,25 @@ def _execution_provenance(scenario, recordings, execution_steps, flow_blocks=Non
     return generations, unexecuted
 
 
+def _conflicting_object_ids(scenario, step):
+    if step.object_poll is None:
+        return False
+
+    def concrete(value):
+        result, error = values.resolve(value, inputs=scenario.inputs)
+        if error is not None:
+            raise ValueError()
+        return result
+
+    try:
+        object_state.require_poll(step, concrete)
+    except object_state.PollSelectionError:
+        return True
+    except (ValueError, KeyError, TypeError):
+        pass
+    return False
+
+
 def run(scenario, provider_recordings, normalizer, *, execution_steps=None,
         flow_blocks=None) -> DomainResult:
     not_checked = [f"{step.id}: {check} is outside contract scope"
@@ -95,6 +119,8 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None,
                        for step in scenario.steps if step.action == "press")
     not_checked.extend(f"{step.id}: hover is outside contract scope"
                        for step in scenario.steps if step.action == "hover")
+    not_checked.extend(f"{step.id}: object_poll is outside contract scope"
+                       for step in scenario.steps if step.object_poll is not None)
     try:
         ensure_bound_run_values(scenario)
     except ValueError as exc:

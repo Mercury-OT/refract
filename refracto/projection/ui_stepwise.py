@@ -531,6 +531,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     try:
         ensure_bound_run_values(scenario)
         for step in scenario.steps:
+            object_state_declaration.require_poll(step)
             if step.action == "hover":
                 if (type(step.target) is not str or not step.target.strip()
                         or step.value is not None or step.key is not None
@@ -751,7 +752,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         backend_proj.apply_object_observation(
                             sr, step, object_state, projection=projection, user=user,
                             session_generation=lease.generation, bound_values=bound,
-                            inputs=scenario.inputs)
+                            inputs=scenario.inputs, poll_config=poll_config, now=now, sleep=sleep)
             except binding.DependencyUnavailable as exc:
                 sr = (StepResult(declared.id, ERROR, detail=str(exc)) if prepared_ok else
                       StepResult(declared.id, BLOCKED, detail=str(exc), blocked_by=exc.sources))

@@ -874,7 +874,7 @@ introduced. The frontend assertion of the same name still uses its existing
 
 Wire the separate optional `Adapters.object_state` to an `ObjectStateProbe`.
 Core groups checks by semantic object and exact ID type/value, requests their
-fields once, and evaluates them against a single returned snapshot. The probe
+fields together, and evaluates them against a single returned snapshot. The probe
 receives only object/ID/field selection and execution identity, not expected
 values or assertions. Its mapping to concrete storage and its read-only
 connection belong to the adapter. Existing trace-based `StateProbe` checks are
@@ -882,10 +882,11 @@ unchanged; database observations are never represented as fabricated spans.
 
 Observation occurs after the step's real response, even if an ordinary response
 assertion failed. A successful terminal API poll leads to one object lookup;
-an unsuccessful poll or SKIP does not. Object lookup does not retry until a
-value matches and does not inherit span polling. This slice covers synchronous
-committed state, not eventual-consistency waiting. Different objects need not
-share a transaction; multiple fields on the same object must share a snapshot.
+an unsuccessful poll or SKIP does not. Without an explicit `object_poll`, object
+lookup is one-shot and does not inherit span polling. The optional bounded
+object policy below is the only retry mechanism for these observations.
+Different objects need not share a transaction; multiple fields on the same
+object must share a snapshot.
 
 A complete lookup with no object, an absent field or an unequal value fails an
 `object_field_equals` check. Ambiguous matches, wrong query/object identity, query exceptions,
@@ -907,14 +908,15 @@ Absence-only queries use `fields=()` but must still perform the actual lookup.
 Mixed equality and absence checks for one object share one snapshot and the
 union of fields required by equality; contradictory expectations are not
 silently simplified. Missing capability or incomplete evidence cannot establish
-absence. Existing ID validation, one-shot timing, API-poll behavior, failure
+absence. Existing ID validation, default one-shot timing, API-poll behavior, failure
 continuation, include/Flow references and sensitive evidence ownership apply.
 
 Absence is scoped to the reviewed source and exact selector. A permission-filtered
 or paginated empty view is not proof of storage absence, nor is this a claim
 about every cache, replica or backup. A surviving soft-deleted object is present;
-use field equality for its deletion flag. Denied creation without a known ID and
-eventual deletion waiting are outside this assertion's bounded scope. A probe's
+use field equality for its deletion flag. Denied creation without a known ID is
+outside this assertion's bounded scope. Eventual deletion requires the explicit
+object-wait policy below; absence alone does not wait. A probe's
 completeness claim still requires mapping review; core cannot attest its truth.
 
 `StepResult.state_observations` retains copied facts, the observation's identity
@@ -923,6 +925,65 @@ reference source or include result. Identity echo and source labels establish
 local correspondence, not truth authentication. A matching stored row proves
 only the observed values at that time; it does not by itself prove the entire
 causal history, future durability or correctness of an arbitrary adapter.
+
+### Bounded object-state waiting
+
+The [asynchronous deletion example](examples/sqlite_records/scenarios/create_verify_async_delete.yaml)
+creates a record and independently confirms its committed existence before
+sending DELETE once. The service returns 202 while a separate worker finishes
+deletion. This step fragment refers to the actual ID from an earlier `create`:
+
+```yaml
+- id: delete_after_verification
+  do:
+    request:
+      method: DELETE
+      path: [records, {from_step: create, response_field: id}]
+  object_poll:
+    on_timeout: FAIL
+  expect:
+    response:
+      - check: status_equals
+        value: 202
+    backend_state:
+      - check: object_absent
+        object: record
+        id: {from_step: create, response_field: id}
+```
+
+`object_poll` repeats only read-only object observations after the real response;
+it never repeats the request, UI action or Scenario. Its mapping must contain
+exactly `on_timeout: FAIL`. Timeout and interval come from the caller's existing
+`PollConfig`, in seconds, and are recorded in `StepResult.object_poll`. No
+inline YAML budget, SKIP, GET `poll` combination or span-check combination is
+supported. Require a declared request and at least one object-state check, all
+for the same business object and exact typed ID. IDs must be valid and equal
+after binding, before the action executes. Include/Flow expansion preserves the
+policy and existing references; it adds no include level.
+
+Every attempt obtains a new snapshot and observation identity. All declared
+object conditions must hold in that one snapshot; facts from different attempts
+are not accumulated. Complete ordinary mismatches may be retried. Invalid,
+incomplete, ambiguous or wrong-identity facts and query errors terminate as
+ERROR immediately. A missing probe remains visible degradation. Evidence is
+retained in `state_observations`; only the final object checks determine the
+object-condition result. A prior response or UI failure is never erased.
+
+The object budget starts before the first read, after response evaluation.
+Reads and sleeps consume this budget; sleeps are limited to its remaining
+duration. No read starts at or after the deadline, and a matching read returned
+at or after it cannot pass. Exhaustion is FAILED and follows the existing
+step/Flow continuation policy. The report records timeout, interval, actual
+observation attempts, elapsed time and outcome separately from HTTP attempts.
+Frontend and contract do not query storage or claim that this wait was checked.
+
+The unchanged probe port is synchronous: the framework cannot forcibly cancel
+a blocked adapter. Readers must have a finite per-read timeout and release
+resources between reads. This policy rejects late success and stops further
+reads, but is not a hard wall-clock cancellation guarantee. The SQLite example
+uses separate closed read-only connections and a bounded lock wait; that proves
+only its exact indexed-lookup integration. A match establishes one snapshot
+within the budget, not continuous state, lack of later resurrection or causality.
 
 ## Parameters and prior response values
 

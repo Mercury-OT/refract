@@ -51,6 +51,16 @@ class BindingSource:
 
 
 @dataclass
+class ObjectPollResult:
+    """Value-free timing of read-only observation, separate from HTTP attempts."""
+    timeout: float
+    interval: float
+    attempts: int = 0
+    elapsed: float = 0.0
+    outcome: str = "error"
+
+
+@dataclass
 class StepResult:
     step_id: str
     status: str
@@ -72,6 +82,7 @@ class StepResult:
                           compare=False, metadata={"sensitive": True})
     state_observations: list = field(default_factory=list, kw_only=True, repr=False,
                                     compare=False, metadata={"sensitive": True})
+    object_poll: ObjectPollResult | None = field(default=None, kw_only=True, compare=False)
     user: str | None = field(default=None, kw_only=True)
     session_generation: int | None = field(default=None, kw_only=True)
     resolved_bindings: dict[str, object] = field(

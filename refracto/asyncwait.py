@@ -1,7 +1,7 @@
 """Universal async-wait primitive.
 
-Polling throughout the framework goes through this helper so timeout handling
-remains explicit at the call site.
+Request and span waiting use this helper so timeout handling remains explicit
+at the call site. Object observation separately enforces its read deadline.
 """
 import time
 from dataclasses import dataclass

@@ -89,6 +89,8 @@ def expansion_view(scenario):
             item["expect"] = expect
         if step.poll is not None:
             item["poll"] = {"on_timeout": step.poll.on_timeout}
+        if step.object_poll is not None:
+            item["object_poll"] = {"on_timeout": step.object_poll.on_timeout}
         steps.append(item)
     return {"view": "expanded-review/1", "scenario": scenario.id,
             "users": list(scenario.users), "description": scenario.description,

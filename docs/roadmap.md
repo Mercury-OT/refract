@@ -75,6 +75,18 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved [bounded object-state waiting](tasks/object-state-polling.md)
+on 2026-11-09. Optional `object_poll: {on_timeout: FAIL}` repeats only read-only
+observations for one exact object identity after a single real action. Existing
+format 1, inclusion depth, one-shot reads and request polling stay intact.
+Concrete SQLite lock-timeout, resource-release and fresh-snapshot feasibility
+passed before implementation. Development, independent audit and architect
+acceptance passed: 6519 full-suite tests, 5274 dev-only tests per supported
+Python version and 39 independent controls. See the
+[verification record](tasks/object-state-polling-acceptance.md). Publication
+is separately evidenced by the associated PR/commit history. No generic
+cancellation, temporal logic, new assertion or private integration is authorized.
+
 The maintainer approved [exact-ID object absence](tasks/object-absence.md) on
 2026-11-09. This resumes the previously paused absence slice: one bounded
 `backend_state.object_absent` assertion, reusing the existing read-only object
@@ -87,6 +99,8 @@ Python version, plus 82 independent controls. See the
 [verification record](tasks/object-absence-acceptance.md). Task-branch delivery
 is authorized after these gates; hosted checks, merge and cleanup belong to the
 associated PR/commit history, not to the local acceptance claim.
+Delivered through PR #52 in main `672f0c8`: eight branch/PR checks and four main
+jobs passed, and both task branches were removed.
 
 The maintainer approved [execution-evidence repairs](tasks/execution-evidence-repairs.md)
 on 2026-11-08: strict passed properties, consistent state correlation, explicit

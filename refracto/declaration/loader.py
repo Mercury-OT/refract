@@ -616,7 +616,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
                     raise DeclarationError("composition exceeds 1000 expanded leaves")
                 continue
         user = _step_user(item, users)
-        _mapping(item, {"id", "do", "target", "key", "object_id", "value", "duration", "expect", "poll", "on_failure", "user", "session"}, "step")
+        _mapping(item, {"id", "do", "target", "key", "object_id", "value", "duration", "expect", "poll", "object_poll", "on_failure", "user", "session"}, "step")
         if "session" in item and (type(item["session"]) is not str or item["session"] != "new"):
             raise DeclarationError("session must be the literal string new; omit it to reuse")
         if "on_failure" in item and (type(item["on_failure"]) is not str or item["on_failure"] != "stop"):
@@ -687,9 +687,19 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
             if policy not in vocab.POLL_ON_TIMEOUT:
                 raise DeclarationError("poll.on_timeout must be FAIL or SKIP")
             poll = PollPolicy(policy)
+        object_poll = None
+        if "object_poll" in item:
+            policy = _mapping(item["object_poll"], {"on_timeout"}, "object_poll")
+            if set(policy) != {"on_timeout"} or policy["on_timeout"] != "FAIL":
+                raise DeclarationError("object_poll requires exactly on_timeout: FAIL")
+            object_poll = PollPolicy("FAIL")
         step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted,
                     on_failure=item.get("on_failure", "continue"), user=user, session=item.get("session"),
-                    object_id=object_id, key=key)
+                    object_id=object_id, key=key, object_poll=object_poll)
+        try:
+            object_state.require_poll(step, lambda node: _known(node, declared_parameters), unknown=(UNKNOWN, STRING))
+        except ValueError as exc:
+            raise DeclarationError(str(exc)) from None
         steps.append(step)
         reference_bindings.update({binding.placeholder: binding for binding in bindings})
         execution_ids.add(sid)

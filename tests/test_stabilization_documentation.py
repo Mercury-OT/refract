@@ -30,6 +30,7 @@ DOCUMENT = ROOT / "SCENARIO.md"
 # Each signature identifies a context, never a copied declaration. Unknown,
 # duplicate and missing fences require an explicit inventory decision.
 CONTEXTS = {
+    "object_poll": "- id: delete_after_verification\n",
     "escape_press": "- id: dismiss_suggestions\n",
     "hover": "- id: reveal_menu\n",
     "enter_press": "- id: submit_search\n",
@@ -149,7 +150,7 @@ def render_context(name, body):
             "    expect:\n      response:\n        - check: success\n")
     earlier = {"query": "first_page", "comparison": "read_before", "collection": "create",
                "dictionary": "create", "member": "locate", "stop": "create",
-               "object_selection": "create"}.get(name)
+               "object_selection": "create", "object_poll": "create"}.get(name)
     prior = indent(yaml.safe_dump([request(earlier)], sort_keys=False), "  ") if earlier else ""
     if name == "results":
         return prefix + "steps:\n" + indent(yaml.safe_dump([request("create_request")],
@@ -271,6 +272,7 @@ class Consumer:
 
 
 EXAMPLES = {
+    "examples/sqlite_records/scenarios/create_verify_async_delete.yaml": Consumer("tests/test_object_poll_sqlite.py::test_async_deletion_passes_after_positive_existence_control", "backend, API e2e; real SQLite worker and separate read-only observations"),
     "examples/sqlite_records/scenarios/create_verify_delete.yaml": Consumer("tests/test_object_absence_sqlite.py::test_committed_deletion_passes_after_positive_existence_control", "backend, API e2e; SQLite"),
     "examples/ui_escape_suggestions/scenario.yaml": Consumer("tests/browser/test_ui_escape_consumer.py::test_real_escape_closes_suggestions_and_preserves_input", "frontend mock, live UI e2e; frozen listener and property search-suggestions handlers"),
     "examples/ui_hover_menu/scenario.yaml": Consumer("tests/browser/test_ui_hover_consumer.py::test_real_hover_reveals_menu_before_separate_click", "frontend mock, live UI e2e; frozen CSS and JavaScript menu implementations"),
@@ -326,7 +328,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 31
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 32
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps
