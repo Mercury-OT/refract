@@ -123,6 +123,8 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None,
                        for step in scenario.steps if step.object_poll is not None)
     try:
         ensure_bound_run_values(scenario)
+        from refracto.files import preflight
+        preflight(scenario, capability=False)
     except ValueError as exc:
         return DomainResult("contract", steps=[StepResult("contract", ERROR, detail=str(exc))],
                             not_checked=not_checked)
@@ -135,6 +137,8 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None,
             required_status_keys=frozenset(key for key, shape in consumer.entries.items()
                                            if shape.allowed_http_statuses is not None),
             required_users={(step.id, step.request.method, step.request.path): scenario.effective_user(step)
+                            for step in scenario.steps if step.request is not None},
+            required_files={(step.id, step.request.method, step.request.path): step.request.files
                             for step in scenario.steps if step.request is not None},
             required_sessions=generations)
     except Exception as exc:

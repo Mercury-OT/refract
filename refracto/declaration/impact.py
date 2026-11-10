@@ -233,21 +233,40 @@ def _decode(snapshot, path):
         return None
 
 
-def _leaf(raw):
+def _freeze_review(scenario, snapshot):
+    """Use this review's bounded source snapshot, never a CWD-based loader."""
+    from refracto.ports import UploadFile
+    for step in scenario.steps:
+        request = step.request
+        if request is None or request.file_descriptors is None or request.files is not None:
+            continue
+        uploads = {}
+        for name, descriptor in request.file_descriptors.items():
+            path = _safe_file(request._file_base, descriptor["path"])
+            data = snapshot.capture(path)
+            if data is None or _sha(data) != descriptor["sha256"]:
+                raise DeclarationError("review asset is unavailable or its fingerprint differs")
+            uploads[name] = UploadFile(filename=path.name, data=data, sha256=descriptor["sha256"])
+        request.files = uploads
+        request._file_base = None
+    return scenario
+
+
+def _leaf(raw, path, snapshot):
     if isinstance(raw, dict) and isinstance(raw.get("steps"), list):
         if any(is_include(step) for step in raw["steps"]):
             raise DeclarationError("child must be a leaf")
-    child = _load_document(copy.deepcopy(raw))
+    child = _load_document(copy.deepcopy(raw), source_path=path)
     if any("/" in step.id for step in child.steps):
         raise DeclarationError("child step ID contains slash")
-    return child
+    return _freeze_review(child, snapshot)
 
 
 def _parse_leaf(snapshot, path, raw):
     if raw is None:
         return None
     try:
-        return _leaf(raw)
+        return _leaf(raw, path, snapshot)
     except (DeclarationError, ValueError, TypeError, KeyError, RecursionError):
         snapshot.gap("invalid-child", path)
         return None
@@ -430,9 +449,10 @@ def _parameter_default(value, show_values):
     return _describe(value, show_values)
 
 
-def _validity(raw, dependencies):
+def _validity(raw, dependencies, path, snapshot):
     try:
-        _load_document(copy.deepcopy(raw), dependencies=copy.deepcopy(dependencies) or None)
+        _freeze_review(_load_document(copy.deepcopy(raw), dependencies=copy.deepcopy(dependencies) or None,
+                                     source_path=path), snapshot)
         return "valid"
     except (DeclarationError, ValueError, KeyError, TypeError, RecursionError):
         return "invalid"
@@ -535,7 +555,7 @@ def inspect_impact(before, after, parents, *, show_values=False, limits=None):
             continue
         dependencies, selected, usable = _dependencies(snapshot, path, raw, new_path)
         if not selected or not comparable:
-            if usable and _validity(raw, dependencies) != "valid":
+            if usable and _validity(raw, dependencies, path, snapshot) != "valid":
                 snapshot.gap("invalid-declaration", path)
             continue
         item = _parent_record(snapshot, path, raw, selected, old_raw, new_raw, old_hash, new_hash, show_values)
@@ -548,8 +568,8 @@ def inspect_impact(before, after, parents, *, show_values=False, limits=None):
             for sid, entry in selected.items():
                 old_deps[sid] = (old_child, old_hash, entry["path"])
                 new_deps[sid] = (new_child, new_hash, entry["path"])
-            previous = _validity(raw, old_deps)
-            following = _validity(raw, new_deps)
+            previous = _validity(raw, old_deps, path, snapshot)
+            following = _validity(raw, new_deps, path, snapshot)
             item["validity"].update(hypothetical_before=previous, hypothetical_after=following,
                                     actual=following if pins <= {"after", "both"} else "invalid")
             if previous != "valid":

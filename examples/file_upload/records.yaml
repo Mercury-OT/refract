@@ -1,0 +1,35 @@
+schema_version: 1
+scenario: records.attach_and_read
+users: [editor]
+parameters:
+  caption: Archive attachment
+steps:
+  - id: upload
+    on_failure: stop
+    do:
+      request:
+        method: POST
+        path: [records, archive, attachments]
+        body:
+          caption: {from_parameter: caption}
+        files:
+          blob:
+            path: fixtures/sample.txt
+            sha256: bd8d03cbbbd4c28fc0d0169b48ad89d0a9575a3e432bb70c8aa49c0b1cf9af36
+    expect:
+      response:
+        - {check: status_equals, value: 201}
+        - {check: has, field: id}
+  - id: read
+    do:
+      request:
+        method: GET
+        path: [records, archive, attachments, {from_step: upload, response_field: id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: id, value: {from_step: upload, response_field: id}}
+        - {check: field_equals, field: title, value: {from_parameter: caption}}
+        - {check: field_equals, field: filename, value: sample.txt}
+        - {check: field_equals, field: size, value: 16}
+        - {check: field_equals, field: sha256, value: bd8d03cbbbd4c28fc0d0169b48ad89d0a9575a3e432bb70c8aa49c0b1cf9af36}

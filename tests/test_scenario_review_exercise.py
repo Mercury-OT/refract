@@ -95,6 +95,7 @@ def concrete_plan(version, form, returned_id):
             "on_failure": prepared.on_failure,
             "user": prepared.user, "session": prepared.session,
             "request": {"method": request.method, "path": request.path, "body": request.body},
+            "files": request.file_descriptors,
             "expect": {point: [{"check": a.check, **a.params}
                                for a in getattr(prepared.expect, point)]
                        for point in ("frontend", "response", "backend_state")},

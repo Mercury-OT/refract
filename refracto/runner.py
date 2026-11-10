@@ -57,10 +57,10 @@ _VALID_PROJECTIONS = {"backend", "frontend", "e2e", "contract"}
 
 def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "contract"),
                  level=None, module=None, poll_config=None, now=None, sleep=None,
-                 mock_plan=None, run_time=None):
+                 mock_plan=None, run_time=None, file_config=None):
     _parse_run_time(run_time)
     poll_config = poll_config or PollConfig()
-    scenario = load_scenario(path)
+    scenario = load_scenario(path, file_config=file_config)
     report = RunReport(scenario_id=scenario.id,
                        source_lookup=copy.deepcopy(scenario.source_lookup))
 
@@ -130,7 +130,8 @@ def run_scenario(path, adapters, *, projections=("backend", "frontend", "e2e", "
 
 
 def run_flow(path, adapters, *, projections=("backend", "frontend", "e2e", "contract"),
-             poll_config=None, now=None, sleep=None, mock_plan=None, run_time=None):
+             poll_config=None, now=None, sleep=None, mock_plan=None, run_time=None,
+             file_config=None):
     """Execute pinned Scenario invocations with projection-local shared state.
 
     A projection enters its action engine once, retaining its user sessions and
@@ -141,7 +142,7 @@ def run_flow(path, adapters, *, projections=("backend", "frontend", "e2e", "cont
     from refracto.flow import FlowExecution
 
     _parse_run_time(run_time)
-    declaration = load_flow(path)
+    declaration = load_flow(path, file_config=file_config)
     scenario = declaration.scenario
     unknown = set(projections) - _VALID_PROJECTIONS
     if unknown:

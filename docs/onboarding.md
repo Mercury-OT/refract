@@ -36,6 +36,15 @@ For an existing integration, the [selected compatibility notes](../CHANGELOG.md)
 provide dated commits, old/new signatures and the low-level binding-helper
 migration separately from adapter ports.
 
+For a fixed single-file API upload, use the
+[standalone upload/read consumers](../examples/file_upload/README.md). The
+Scenario names a reviewed local asset and its content fingerprint. An API
+driver opts in and sends the frozen bytes; it never reads the Scenario's
+expectations or replaces the asset. File-free drivers stay unchanged. The
+examples use real local HTTP and read actual saved bytes; an upload success
+response by itself cannot establish that a file was stored correctly. This
+slice does not add page file selection or download checks.
+
 Object-specific UI clicks additionally require an explicit
 `supports_object_targeting(mode)` opt-in and a checked actual-selection receipt.
 Ordinary clicks need no migration; an old driver cannot ignore a new `object_id`

@@ -58,6 +58,8 @@ def expansion_view(scenario):
             result["query"] = value(template.query)
         if template.headers is not None:
             result["headers"] = value(template.headers)
+        if template.file_descriptors is not None:
+            result["files"] = copy.deepcopy(template.file_descriptors)
         return result
 
     steps = []

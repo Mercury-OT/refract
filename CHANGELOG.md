@@ -5,6 +5,30 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-10: fixed single-file API input
+
+The [upload task](docs/tasks/single-file-upload.md) adds optional `do.request.files`
+with exactly one `{path, sha256}` descriptor. Format 1 and one-level inclusion
+remain. `RequestAction` and `RequestSpec` gain optional keyword-only `files`;
+values are frozen `UploadFile` objects containing filename, raw bytes and digest,
+not local file paths. Resolvers must preserve them and drivers must explicitly
+opt in with `supports_file_upload()`, default false. File-free adapters need no
+migration. Core remains free of HTTP or product dependencies.
+
+RequestSpec's path/body, RecordedResponse's JSON/text and NormalizedResponse's
+fields/raw are now hidden from their default representations, alongside upload
+bytes and filenames. Readback responses can contain the uploaded content too.
+The values remain available through explicit field access; callers must select
+diagnostic fields rather than depending on the former default repr. Arbitrary
+serialization is not a safe publication mechanism.
+
+`FileConfig` supplies per-file and composition-wide budgets to the loader and
+run entry points outside YAML. Files are checked and frozen before execution;
+include/Flow use the declaring Scenario's source directory. Upload requests
+accept only flat text body fields. There is no browser file-selection action,
+new assertion, content transformation or implication that a client recording
+independently proves server receipt or persistence.
+
 ## 2026-11-09: bounded object-state waiting
 
 The [object-wait task](docs/tasks/object-state-polling.md) adds optional

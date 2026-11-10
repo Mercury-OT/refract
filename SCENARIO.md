@@ -146,7 +146,7 @@ execution, not a multi-action adapter primitive.
 | Press | `do: press`, `target`, `key: Enter` or `key: Escape` | press and release the declared key once on the unique, already focused logical input |
 | Hover | `do: hover`, `target` | move the pointer onto one unique visible logical control and observe its UI |
 | Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
-| API request | `do: {request: {method, path, query?, headers?, body?}}` | send the declared request |
+| API request | `do: {request: {method, path, query?, headers?, body?, files?}}` | send the declared request; optional fixed single-file input is API-only |
 
 Targets map to elements, not multi-action business scripts. A click must not
 secretly perform an adapter's sequence of navigation, filling and submission.
@@ -297,6 +297,56 @@ percent data and ordinary punctuation are not dot-segment navigation.
 One step may have no expectations. The entire Scenario must have at least one
 effective request constraint or bounded assertion. An API command, wait, or
 empty expectation container alone does not make a test.
+
+### Fixed single-file API input
+
+An explicit `do.request` may add `files`, containing exactly one literal file
+field mapped to `{path, sha256}`. Both values are literal strings, not references.
+The path names a regular local test asset relative to the Scenario which declares
+it; SHA-256 is its 64-character lowercase content fingerprint. The filename sent
+to the target is that asset's basename. See the executable
+[Documents upload/read Scenario](examples/file_upload/documents.yaml) and the
+independent [Records attachment Scenario](examples/file_upload/records.yaml).
+No file format, MIME selector, encoding or filename override is added to YAML.
+
+When files are present, body fields must be a flat string mapping, optionally
+using existing references that resolve to strings. File and text field names
+cannot overlap. No implicit conversion or nested-body convention is inferred.
+Text, PNG, PDF, video and other binary data are unchanged byte inputs; the
+target decides which types it accepts. This does not inspect media contents or
+prove successful rendering, playback or import processing.
+
+Loading validates all assets before execution. Absolute/escaping paths, URLs,
+symlinks, non-regular files, missing assets, changed fingerprints and exceeded
+budgets are errors. Files are frozen once for the loaded execution; senders use
+those bytes rather than reopening a path. Include and Flow preserve the child's
+source directory. A later load rechecks content identity; a hash is not approval.
+Host-side `FileConfig` defaults to 10 MiB per file and 64 MiB across distinct
+loaded source assets, including composition. Empty files are valid inputs;
+limits can be configured outside YAML. There is no chunking or resumable upload.
+The secure asset reader requires directory-relative, no-symlink file operations
+as provided by the tested POSIX hosts; unsupported platforms fail explicitly
+before sending, rather than falling back to a weaker pathname check.
+
+API drivers explicitly opt in with `supports_file_upload()`. Missing capability
+is an execution error before authentication or earlier business actions; an old
+driver cannot ignore a file silently. Resolvers receive immutable file bytes and
+identity in an owned mapping, never local paths or expectations. They may not
+replace, omit or add files. Unusable runtime text dependencies block the step
+before it sends. Genuine response mismatches use the existing failure rules.
+
+Backend and live e2e explicit API actions use this support. It supplies no
+browser-upload evidence: UI file selection and `expect.request.files` remain
+unsupported, and frontend still rejects explicit API actions. Contract reuses
+recordings without uploading again. Request pairing checks a driver's account
+of the operation, not arbitrary adapter honesty or independent packet capture.
+The synthetic consumers separately verify actual received and saved bytes.
+An upload response alone does not prove persistence; later reads establish only
+their declared facts. File contents and identities remain sensitive evidence,
+hidden from default representations, including raw/normalized response payloads
+which may contain file readback. Explicit field access and arbitrary serialization
+still expose sensitive data and require deliberate handling. See the
+[task](docs/tasks/single-file-upload.md).
 
 ### Selecting a control for a business object
 

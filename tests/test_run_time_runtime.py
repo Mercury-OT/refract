@@ -72,7 +72,7 @@ def test_fixed_time_is_repeatable_without_reading_clock_or_reusing_unique_token(
 def test_repeated_concurrent_runs_freeze_independent_copies(monkeypatch):
     loaded = _load_document(time_document())
     before = copy.deepcopy(loaded)
-    monkeypatch.setattr(runner, "load_scenario", lambda path: loaded)
+    monkeypatch.setattr(runner, "load_scenario", lambda path, *, file_config=None: loaded)
     lock, ticks = Lock(), []
     def clock():
         with lock:

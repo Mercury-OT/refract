@@ -272,6 +272,8 @@ class Consumer:
 
 
 EXAMPLES = {
+    "examples/file_upload/documents.yaml": Consumer("tests/test_file_upload_consumers.py::test_public_upload_examples_parse_multipart_and_read_saved_bytes", "backend, contract; actual local multipart HTTP and saved-byte reads"),
+    "examples/file_upload/records.yaml": Consumer("tests/test_file_upload_consumers.py::test_public_upload_examples_parse_multipart_and_read_saved_bytes", "backend, contract; independent attachment mapping and saved-byte reads"),
     "examples/sqlite_records/scenarios/create_verify_async_delete.yaml": Consumer("tests/test_object_poll_sqlite.py::test_async_deletion_passes_after_positive_existence_control", "backend, API e2e; real SQLite worker and separate read-only observations"),
     "examples/sqlite_records/scenarios/create_verify_delete.yaml": Consumer("tests/test_object_absence_sqlite.py::test_committed_deletion_passes_after_positive_existence_control", "backend, API e2e; SQLite"),
     "examples/ui_escape_suggestions/scenario.yaml": Consumer("tests/browser/test_ui_escape_consumer.py::test_real_escape_closes_suggestions_and_preserves_input", "frontend mock, live UI e2e; frozen listener and property search-suggestions handlers"),
@@ -328,7 +330,7 @@ def assert_pin(parent, child=None):
 
 
 def test_all_linked_examples_exist_load_and_have_exact_indirect_pins():
-    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 32
+    assert len(linked_examples(DOCUMENT.read_text(encoding="utf-8"))) == 34
     for relative, consumer in EXAMPLES.items():
         path = ROOT / relative
         assert load_scenario(path).steps

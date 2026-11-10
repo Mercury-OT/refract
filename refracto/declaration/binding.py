@@ -251,6 +251,12 @@ def prepare_step(step, scenario, prior_norms):
         if body is not None and not isinstance(body, dict):
             invalid(request.body, "resolved request body must be a mapping or null")
         _require_data(body)
+        if request.files is not None:
+            from refracto.files import require_text_body
+            try:
+                require_text_body(body, request.files)
+            except ValueError as exc:
+                invalid(request.body, str(exc))
         query = None if request.query is None else concrete(request.query)
         if query is not None:
             try:
@@ -265,7 +271,9 @@ def prepare_step(step, scenario, prior_norms):
             except ValueError:
                 invalid(request.headers, "resolved business headers require valid names and bounded string values")
         request = replace(request, path=path, body=body,
-                          declared_path=request.declared_path or request.path, query=query, headers=headers)
+                          declared_path=request.declared_path or request.path, query=query, headers=headers,
+                          files=copy.deepcopy(request.files),
+                          file_descriptors=copy.deepcopy(request.file_descriptors))
     expect = Expect(**{
         point: [Assertion(a.check, concrete(a.params)) for a in getattr(step.expect, point)]
         for point in ("frontend", "response", "backend_state")
