@@ -36,7 +36,7 @@ def normalize_response(normalizer, response):
                          for name in ("request_header_items", "header_items")}
     supplied = copy.deepcopy(response)
     norm = header_ops.call_port("Normalizer", normalizer.normalize, supplied,
-                                sensitive=header_ops.recorded(response))
+                                sensitive=header_ops.recorded(response) or protected_request.files is not None)
     if (not isinstance(norm, NormalizedResponse) or type(norm.succeeded) is not bool
             or not isinstance(norm.fields, dict)
             or any(type(key) is not str for key in norm.fields)):
@@ -53,6 +53,9 @@ def normalize_response(normalizer, response):
     if (not _evidence_equal(supplied.request.headers, protected_request.headers)
             or (raw_request is not None and not _evidence_equal(raw_request.headers, protected_request.headers))):
         raise ValueError("Normalizer changed request business headers")
+    if (not _evidence_equal(supplied.request.files, protected_request.files)
+            or (raw_request is not None and not _evidence_equal(raw_request.files, protected_request.files))):
+        raise ValueError("Normalizer changed request upload evidence")
     for name, expected in protected_headers.items():
         if (not _evidence_equal(getattr(supplied, name, None), expected)
                 or (norm.raw is not None and not _evidence_equal(getattr(norm.raw, name, None), expected))):

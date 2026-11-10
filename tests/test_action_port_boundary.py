@@ -20,10 +20,11 @@ from tests.fakes import FakeApi, FakeAuth, FakeNormalizer, FakeRecorder, FakeSta
 from tests.ui_support import ScriptedUi, rendered, response
 
 
-REQUEST_FIELDS = {"method", "path", "body", "query", "headers"}
+REQUEST_FIELDS = {"method", "path", "body", "query", "headers", "files"}
 PERMIT_FIELDS = {"execution_id", "action_id", "step_id", "mode", "action", "target", "object_id", "key",
                  "value", "token", "user", "session_generation", "context_id"}
 TRANSPORT_FIELDS = {ports.RequestAction: REQUEST_FIELDS, ports.UiActionPermit: PERMIT_FIELDS,
+                    ports.UploadFile: {"filename", "data", "sha256"},
                     ports.MockResponse: {item.name for item in fields(ports.MockResponse)},
                     ports.MockResponseQueue: {"plan", "index"}}
 
@@ -40,7 +41,7 @@ def inspect_operation_data(value):
         return {key: inspect_operation_data(item) for key, item in value.items()}
     if type(value) in (list, tuple):
         return [inspect_operation_data(item) for item in value]
-    assert value is None or type(value) in (str, int, float, bool)
+    assert value is None or type(value) in (str, int, float, bool, bytes)
     return value
 
 
@@ -166,7 +167,7 @@ def test_real_runner_resolver_has_only_prepared_request_data(tmp_path, projectio
     assert len(seen) == 2
     assert seen[0] == {"method": "POST", "path": "records",
                        "body": {"expect": {"literal": ["business-input", False, 0]}},
-                       "query": {"limit": 1, "blank": ""}, "headers": {"X-Key": "business-key"}}
+                       "query": {"limit": 1, "blank": ""}, "headers": {"X-Key": "business-key"}, "files": None}
     assert all(sentinel not in json.dumps(seen) for sentinel in sentinels)
 
 

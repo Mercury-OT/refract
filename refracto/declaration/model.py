@@ -52,12 +52,15 @@ class Assertion:
 @dataclass
 class RequestTemplate:
     method: str
-    path: str
-    body: dict | None = None
-    path_segments: list | None = field(default=None, kw_only=True)
-    declared_path: str | None = field(default=None, kw_only=True)
+    path: str = field(repr=False, metadata={"sensitive": True})
+    body: dict | None = field(default=None, repr=False, metadata={"sensitive": True})
+    path_segments: list | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    declared_path: str | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
     query: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
     headers: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    files: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    file_descriptors: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    _file_base: object = field(default=None, kw_only=True, compare=False, repr=False, metadata={"sensitive": True})
 
 @dataclass(frozen=True)
 class Binding:

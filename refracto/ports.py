@@ -27,6 +27,15 @@ class RenderedAnchor(TypedDict):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class UploadFile:
+    """One verified immutable asset; no source path or file-reading callback."""
+
+    filename: str = field(repr=False, metadata={"sensitive": True})
+    data: bytes = field(repr=False, metadata={"sensitive": True})
+    sha256: str = field(repr=False, metadata={"sensitive": True})
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class RequestAction:
     """Prepared operation data; nested containers are owned by the recipient.
 
@@ -39,16 +48,18 @@ class RequestAction:
     body: dict | None = field(default=None, repr=False, metadata={"sensitive": True})
     query: dict | None = field(default=None, repr=False, metadata={"sensitive": True})
     headers: dict | None = field(default=None, repr=False, metadata={"sensitive": True})
+    files: dict[str, UploadFile] | None = field(default=None, repr=False, metadata={"sensitive": True})
 
 
 @dataclass
 class RequestSpec:
     method: str
-    path: str
-    body: dict | None = None
+    path: str = field(repr=False, metadata={"sensitive": True})
+    body: dict | None = field(default=None, repr=False, metadata={"sensitive": True})
     traceparent: str | None = None
     query: dict[str, str] = field(default_factory=dict, kw_only=True, repr=False, metadata={"sensitive": True})
     headers: dict[str, str] = field(default_factory=dict, kw_only=True, repr=False, metadata={"sensitive": True})
+    files: dict[str, UploadFile] | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -63,8 +74,8 @@ class BrowserNetworkIdentity:
 class RecordedResponse:
     status: int
     headers: dict = field(repr=False, metadata={"sensitive": True})
-    json: dict | None
-    text: str
+    json: dict | None = field(repr=False, metadata={"sensitive": True})
+    text: str = field(repr=False, metadata={"sensitive": True})
     trace_id: str | None
     request: RequestSpec
     # Recording identity for step-based execution.
@@ -127,9 +138,9 @@ class ObjectStateFacts:
 @dataclass
 class NormalizedResponse:
     succeeded: bool
-    fields: dict
+    fields: dict = field(repr=False, metadata={"sensitive": True})
     status: int
-    raw: "RecordedResponse"
+    raw: "RecordedResponse" = field(repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -297,6 +308,10 @@ class Authenticator(ABC):
 
 
 class ApiDriver(ABC):
+    def supports_file_upload(self) -> bool:
+        """Explicitly opt into sending owned immutable file bytes."""
+        return False
+
     @abstractmethod
     def send(self, spec: RequestSpec, session: object) -> RecordedResponse: ...
 

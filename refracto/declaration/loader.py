@@ -280,7 +280,8 @@ def _header_value(declared, parameters, prior, bindings, where):
 
 
 def _request(raw, parameters, prior, bindings, where):
-    _mapping(raw, {"method", "path", "body", "query", "headers"}, where)
+    _mapping(raw, {"method", "path", "body", "query", "headers"} |
+             ({"files"} if where == "do.request" else set()), where)
     method = _string(raw.get("method"), f"{where}.method").upper()
     if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
         raise DeclarationError(f"{where}: unsupported HTTP method")
@@ -339,8 +340,17 @@ def _request(raw, parameters, prior, bindings, where):
                 raise DeclarationError("duplicate case-insensitive header name")
             names.add(folded)
             headers[name] = _header_value(declared, parameters, prior, bindings, "request header value")
+    file_descriptors = None
+    if "files" in raw:
+        from refracto.files import descriptors, require_text_body, known_body
+        try:
+            file_descriptors = descriptors(raw["files"])
+            require_text_body(known_body(body, parameters), file_descriptors, unknown=(UNKNOWN, STRING))
+        except ValueError as exc:
+            raise DeclarationError(str(exc)) from None
     return RequestTemplate(method, template_path, body, path_segments=segments,
-                           declared_path=template_path, query=query, headers=headers)
+                           declared_path=template_path, query=query, headers=headers,
+                           file_descriptors=file_descriptors)
 
 
 def _validate_object_state(params, parameters):
@@ -484,20 +494,26 @@ def _decode_document(data):
         raise DeclarationError("invalid YAML or UTF-8 declaration") from exc
 
 
-def load_scenario(path: str) -> Scenario:
+def load_scenario(path: str, *, file_config=None) -> Scenario:
     from refracto.declaration.includes import load_dependencies
+    from refracto.files import AssetSnapshots
+    snapshots = AssetSnapshots(file_config)
     file = Path(path)
     data = file.read_bytes()
     raw = _decode_document(data)
     dependencies = load_dependencies(file, raw, _decode_document, _load_document)
-    return _load_document(raw, dependencies=dependencies,
-                          source_hash=hashlib.sha256(data).hexdigest())
+    scenario = _load_document(raw, dependencies=dependencies, source_path=file,
+                              source_hash=hashlib.sha256(data).hexdigest())
+    try:
+        return snapshots.freeze(scenario)
+    except ValueError as exc:
+        raise DeclarationError(str(exc)) from None
 
 
-def load_flow(path: str):
+def load_flow(path: str, *, file_config=None):
     """Preflight a pinned local Flow and compile its namespaced execution plan."""
     from refracto.declaration.flows import load_flow as load
-    return load(path)
+    return load(path, file_config=file_config)
 
 
 def _parameter_data(value):
@@ -560,7 +576,7 @@ def _parse_parameters(parameters, *, flow_keys=None):
 
 
 def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
-                   allow_write_flow=False) -> Scenario:
+                   allow_write_flow=False, source_path=None) -> Scenario:
     allowed = {"schema_version", "scenario", "description", "users", "parameters", "grid", "steps", "results"}
     if flow_keys is not None and allow_write_flow:
         allowed.add("write_flow")
@@ -632,6 +648,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
             if set(action) != {"request"}:
                 raise DeclarationError("do mapping must contain only request")
             request = _request(action["request"], declared_parameters, prior, bindings, "do.request")
+            if request.file_descriptors is not None:
+                request._file_base = Path(source_path).parent if source_path is not None else None
             action = "request"
         elif action not in ("open", "click", "fill", "press", "hover", "wait"):
             raise DeclarationError("do must be open/click/fill/press/hover/wait or a request mapping")
@@ -681,7 +699,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
         poll = None
         if "poll" in item:
             p = _mapping(item["poll"], {"on_timeout"}, "poll")
-            if action != "request" or request.method != "GET" or not expect.response:
+            if (action != "request" or request.method != "GET" or not expect.response
+                    or request.file_descriptors is not None):
                 raise DeclarationError("poll requires do.request GET and response stop assertions")
             policy = p.get("on_timeout", "FAIL")
             if policy not in vocab.POLL_ON_TIMEOUT:

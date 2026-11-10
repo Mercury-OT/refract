@@ -75,6 +75,19 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved [fixed single-file API uploads](tasks/single-file-upload.md)
+on 2026-11-10, including unchanged binary inputs within host-side size limits.
+The bounded extension is `do.request.files`, preserving format 1, one-level
+inclusion and current assertions. Frozen local assets, explicit API capability,
+actual multipart receipt and later saved-byte reads are the delivery focus.
+Development, independent core/consumer audits and architect acceptance passed:
+6670 full-suite tests, 5425 dev-only tests per supported Python version, and 84
+independent adversarial controls. See the
+[verification record](tasks/single-file-upload-acceptance.md). Submission and
+merge are authorized after acceptance and successful hosted checks; delivery
+and cleanup are recorded by the associated PR and main history.
+No page file selection, download, streaming or private integration is included.
+
 The maintainer approved [bounded object-state waiting](tasks/object-state-polling.md)
 on 2026-11-09. Optional `object_poll: {on_timeout: FAIL}` repeats only read-only
 observations for one exact object identity after a single real action. Existing

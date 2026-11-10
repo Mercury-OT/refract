@@ -468,6 +468,10 @@ class _VerifiedApi:
     def __init__(self, api):
         self.api = api
 
+    def supports_file_upload(self):
+        callback = getattr(self.api, "supports_file_upload", None)
+        return callable(callback) and callback() is True
+
     def send(self, request, session):
         expected = copy.deepcopy(request)
         response = self.api.send(copy.deepcopy(expected), session)
@@ -530,6 +534,8 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                    for s in scenario.steps)
     try:
         ensure_bound_run_values(scenario)
+        from refracto.files import preflight as file_preflight
+        file_preflight(scenario, api, capability=mode == "live")
         for step in scenario.steps:
             object_state_declaration.require_poll(step)
             if step.action == "hover":

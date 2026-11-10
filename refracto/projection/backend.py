@@ -10,6 +10,7 @@ import secrets
 import time
 from refracto import asyncwait, ports, object_state as object_observation
 from refracto import headers as header_ops
+from refracto import files as file_ops
 from refracto.query import wire_query, require_wire_query, request_path
 from refracto.normalization import normalize_response
 from refracto.errors import safe_action_failure
@@ -257,9 +258,10 @@ def _check_option_b(step, template, spec):
         raise ValueError("resolver changed declared business headers")
     if wire_query(template.query or {}) != spec.query:
         raise ValueError("resolver changed declared query; transport mapping must not invent values")
-    if step.request.method.upper() != spec.method.upper():
-        raise ValueError(
-            f"resolver changed declared method {step.request.method!r} -> {spec.method!r}")
+    if not file_ops.same_files(spec.files, template.files):
+        raise ValueError("resolver changed declared upload files")
+    if type(spec.method) is not str or step.request.method.upper() != spec.method.upper():
+        raise ValueError("resolver changed declared method")
     # None and an empty mapping retain their established absent-body equivalence;
     # other falsy values must keep their actual types through ownership checks.
     declared_body = {} if template.body is None else template.body
@@ -273,7 +275,7 @@ def _send_verified(api, spec, session, *, sensitive_headers=False):
     """Preserve the outbound request before handing a copy to the driver."""
     expected = copy.deepcopy(spec)
     response = header_ops.call_port("ApiDriver", api.send, copy.deepcopy(expected), session,
-        sensitive=bool(expected.headers) or sensitive_headers)
+        sensitive=bool(expected.headers) or sensitive_headers or expected.files is not None)
     if type(response) is not ports.RecordedResponse or type(response.request) is not ports.RequestSpec:
         raise TypeError("ApiDriver.send must return RecordedResponse with RequestSpec")
     if not all(_evidence_equal(getattr(response.request, field.name), getattr(expected, field.name))
@@ -466,6 +468,15 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
     """Execute a prepared explicit request (also reused by the e2e loop)."""
     if step.action == "request" and step.expect.frontend:
         raise ValueError("direct API action with UI assertions is not supported")
+    file_ops.preflight(scenario, api)
+    if step.request is not None and step.request.files is not None:
+        if step.action != "request" or step.request_asserted or step.poll is not None:
+            raise ValueError("uploads require a non-polling explicit API action")
+        file_ops.require_files(step.request.files)
+        file_ops.require_text_body(step.request.body, step.request.files)
+        capability = getattr(api, "supports_file_upload", None)
+        if not callable(capability) or _call_action_port("API file upload capability", capability) is not True:
+            raise ValueError("API file upload capability not supported")
     if session is _NO_SESSION:
         manager = SessionManager(scenario, auth)
         manager.preflight()
@@ -491,10 +502,12 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
         method=template.method, path=template.path,
         body=copy.deepcopy(template.body), query=copy.deepcopy(template.query),
         headers=copy.deepcopy(template.headers),
+        files=copy.deepcopy(template.files),
     )
     spec = _call_action_port("Request resolver", resolve_request, action)
     if type(spec) is not ports.RequestSpec:
         raise TypeError("resolver must return RequestSpec")
+    file_ops.require_files(spec.files)
     # The resolver can retain its result or alias the supplied action containers.
     # Own it first, then validate the actual snapshot that will be executed.
     # A copy hook must not change the business request after it passes checks.
@@ -555,6 +568,7 @@ def run(scenario, *, auth, api, state, recorder, resolve_request, normalizer,
     if unsupported is None:
         try:
             ensure_bound_run_values(scenario)
+            file_ops.preflight(scenario, api)
             for step in scenario.steps:
                 object_state_declaration.require_poll(step)
             sessions.preflight()

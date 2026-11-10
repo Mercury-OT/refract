@@ -108,7 +108,7 @@ def test_each_execution_projection_gets_a_unique_value_and_contract_reuses_backe
 def test_repeated_and_concurrent_runs_never_mutate_or_reuse_loaded_inputs(monkeypatch):
     loaded = _load_document(unique_document())
     before = copy.deepcopy(loaded)
-    monkeypatch.setattr(runner, "load_scenario", lambda path: loaded)
+    monkeypatch.setattr(runner, "load_scenario", lambda path, *, file_config=None: loaded)
     def run_one(_):
         api = EchoApi()
         report = runner.run_scenario("unused", adapters(api), projections=("backend", "contract"))

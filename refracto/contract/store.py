@@ -130,7 +130,7 @@ def consumer_contract(scenario) -> Contract:
 
 
 def provider_contract(recordings, normalizer, *, required_status_keys=frozenset(), required_users=None,
-                      required_sessions=None) -> Contract:
+                      required_sessions=None, required_files=None) -> Contract:
     """Build the provider-side contract from real recordings.
 
     Provider entries are keyed on `(step_id, method, template_path)`, not the
@@ -147,6 +147,10 @@ def provider_contract(recordings, normalizer, *, required_status_keys=frozenset(
         step_id = getattr(r, "step_id", None)
         template = getattr(r, "template_path", None) or r.request.path
         key = (step_id, r.request.method, template)
+        if required_files is not None and key in required_files:
+            from refracto.files import same_files
+            if not same_files(r.request.files, required_files[key]):
+                raise ValueError("provider recording upload evidence differs from declaration")
         if required_users is not None and key in required_users:
             user = required_users[key]
             generation = getattr(r, "session_generation", None)

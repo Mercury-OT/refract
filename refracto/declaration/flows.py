@@ -89,6 +89,8 @@ def _compile(flow_id, description, users, definitions, calls, dependencies, poli
                 request = replace(request, path=path, declared_path=path, path_segments=segments,
                                   body=_map(request.body, convert), query=_map(request.query, convert),
                                   headers=_map(request.headers, convert))
+                request.files = copy.deepcopy(original.request.files)
+                request.file_descriptors = copy.deepcopy(original.request.file_descriptors)
             expect = Expect(**{
                 point: [Assertion(assertion.check, _map(assertion.params, convert))
                         for assertion in getattr(original.expect, point)]
@@ -136,10 +138,12 @@ def _compile(flow_id, description, users, definitions, calls, dependencies, poli
     return Flow(flow_id, description, list(users), definitions, nodes, scenario, dependency_view, policy)
 
 
-def load_flow(path):
+def load_flow(path, *, file_config=None):
     from refracto.declaration.loader import (
         _decode_document, _json, _load_document, _mapping, _string,
     )
+    from refracto.files import AssetSnapshots
+    snapshots = AssetSnapshots(file_config)
     file = Path(path)
     data = file.read_bytes()
     raw = _decode_document(data)
@@ -217,14 +221,18 @@ def load_flow(path):
         includes_pin = _fingerprint(entry["includes_sha256"]) if has_includes else None
         child_dependencies = load_dependencies(
             source, source_raw, _decode_document,
-            lambda document: _load_document(document, flow_keys=set(definitions)),
+            lambda document, **context: _load_document(document, flow_keys=set(definitions), **context),
             expected_sidecar_hash=includes_pin)
         child = _load_document(source_raw, dependencies=child_dependencies, source_hash=pin,
-                               flow_keys=set(definitions), allow_write_flow=True)
+                               flow_keys=set(definitions), allow_write_flow=True, source_path=source)
         if child.id != target:
             _error("Flow dependency Scenario ID does not match target")
         dependencies[target] = (child, copy.deepcopy(entry))
     compiled = _compile(flow_id, description, users, definitions, calls, dependencies, policy)
+    try:
+        snapshots.freeze(compiled.scenario)
+    except ValueError as exc:
+        _error(str(exc))
     return replace(compiled, source_pins={
         "flow_sha256": hashlib.sha256(data).hexdigest(),
         "manifest_sha256": hashlib.sha256(manifest_data).hexdigest(),

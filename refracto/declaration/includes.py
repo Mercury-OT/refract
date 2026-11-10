@@ -120,7 +120,7 @@ def load_dependencies(parent, raw, decode, parse, *, expected_sidecar_hash=None)
         if isinstance(child_raw, dict) and isinstance(child_raw.get("steps"), list):
             if any(is_include(item) for item in child_raw["steps"]):
                 _error("included Scenario must not include another Scenario")
-        child = parse(child_raw)
+        child = parse(child_raw, source_path=file)
         if child.id != target:
             _error("dependency Scenario ID does not match include target")
         if any("/" in step.id for step in child.steps):
@@ -259,6 +259,8 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
             request = replace(request, path=path, declared_path=path,
                               path_segments=segments, body=_map(request.body, convert),
                               query=_map(request.query, convert), headers=_map(request.headers, convert))
+            request.files = copy.deepcopy(original.request.files)
+            request.file_descriptors = copy.deepcopy(original.request.file_descriptors)
         expect = Expect(**{point: [Assertion(a.check, _map(a.params, convert))
                                   for a in getattr(original.expect, point)]
                            for point in ("frontend", "response", "backend_state")})
@@ -314,6 +316,12 @@ def validate_instantiated(scenario):
             body = known(step.request.body)
             if body is not unknown and body is not None and not isinstance(body, dict):
                 _error("instantiated request body must be a mapping")
+            if step.request.file_descriptors is not None:
+                from refracto.files import require_text_body
+                try:
+                    require_text_body(body, step.request.file_descriptors, unknown=(unknown, STRING))
+                except ValueError as exc:
+                    _error(str(exc))
             for key, declared in (step.request.query or {}).items():
                 value = known(declared)
                 if value is not unknown and value is not STRING:
