@@ -75,6 +75,20 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved [browser single-file selection and submission](tasks/browser-single-file-upload.md)
+on 2026-11-15. Pre-implementation binary capture, actual input and native click
+association probes passed on the tested Chromium build; missing native file
+segments remain an explicit refusal. Development, independent mechanism/core
+and consumer audits, and architect acceptance passed: 6957 full-suite tests and
+5612 dev-only tests per supported Python version. See the
+[verification record](tasks/browser-single-file-upload-acceptance.md).
+The authorized extension is select_file/file plus a click's
+expect.request.files, preserving format 1, inclusion depth and assertions.
+No automatic-upload, chooser, media rendering, streaming or private integration
+is included. Task-branch submission and merge are authorized after acceptance
+and green hosted checks; publication and cleanup are recorded in PR/main history.
+This synthetic delivery does not establish actual product adoption.
+
 The maintainer approved [fixed single-file API uploads](tasks/single-file-upload.md)
 on 2026-11-10, including unchanged binary inputs within host-side size limits.
 The bounded extension is `do.request.files`, preserving format 1, one-level
@@ -83,10 +97,11 @@ actual multipart receipt and later saved-byte reads are the delivery focus.
 Development, independent core/consumer audits and architect acceptance passed:
 6670 full-suite tests, 5425 dev-only tests per supported Python version, and 84
 independent adversarial controls. See the
-[verification record](tasks/single-file-upload-acceptance.md). Submission and
-merge are authorized after acceptance and successful hosted checks; delivery
-and cleanup are recorded by the associated PR and main history.
-No page file selection, download, streaming or private integration is included.
+[verification record](tasks/single-file-upload-acceptance.md). Delivered through
+PR #54 in main `492f0e3`, with eight branch/PR checks and four main jobs passing,
+both task branches removed and the public main synchronized and clean.
+That API-only delivery excluded page file selection, download, streaming and
+private integration; browser selection has the separate authorization above.
 
 The maintainer approved [bounded object-state waiting](tasks/object-state-polling.md)
 on 2026-11-09. Optional `object_poll: {on_timeout: FAIL}` repeats only read-only

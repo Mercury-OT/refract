@@ -21,6 +21,9 @@ The `demo` extra continues to include Playwright. Installing only the core or
 
 ## Failure classification and page errors
 
+The separately documented [single-file selection and submission](#single-file-selection-and-submission)
+uses the same failure categories and ownership rules below.
+
 Unavailable or invalid execution evidence produces a step ERROR, followed by the
 existing blocking rules. A completed, trustworthy observation that differs from
 the declaration produces an ordinary FAILED check. Aggregate reports retain their
@@ -49,6 +52,59 @@ still consumes no fixture and reaches no live API service. In native transport,
 an ordinary unassociated background connection failure retains its diagnostic-only
 policy. Legacy transport retains its existing acquisition-error behavior. See the
 [repair scope](tasks/execution-evidence-repairs.md).
+
+## Single-file selection and submission
+
+The native HTTP helper supports the [browser upload contract](tasks/browser-single-file-upload.md).
+Map `select_file` to one visible enabled main-document file input and pass the
+original permit to `perform(..., selector=...)`. The permit carries frozen
+UploadFile bytes, not a source path or expectations. File assets have already
+passed the shared loader checks. Supply a memory buffer, never reopen a path.
+The helper pins the actual input and inspects its actual single selected file
+after setting it. `UiFileSelection` reports one target and the observed file.
+Input/change events are not trusted OS chooser evidence. No implicit click,
+focus repair, hidden-input proxy, directory selection or forced interaction.
+File.type uses the built-in standard filename-extension MIME table (no host MIME
+files), with application/octet-stream only for unknown extensions. Bytes are
+not inspected or transformed. Browser-ambiguous double-quote/encoded quote or line-break
+filenames fail before UI execution; API filename support is unchanged.
+
+Drivers opt into `supports_file_selection(mode)` and `supports_file_requests(mode)`
+separately. Use explicit BrowserNetworkPolicy/native HTTP collection; legacy
+HTTP routing cannot claim this support. A later click carries an explicit
+`expect.request.files` requirement. Only its own associated request may satisfy
+it. Selection auto-upload is unsupported: rejection-only selection provenance
+must never become accepted request evidence, including delayed work. Mock mode
+cannot consume a later click's fixture or forward such traffic to a live API.
+
+Capture complete multipart bytes from browser-level Fetch.requestPaused native
+postDataEntries. Every entry must contain valid base64 bytes. Disk-backed and
+unsupported bodies may contain missing segments, including apparently empty
+files; these error. Never reconstruct missing bytes from the selected input,
+local file, permit or expectation, and never fall back to lossy postData text.
+The parser uses observed Content-Type and complete framing to extract actual
+text/file fields. Ambiguous headers/names, duplicate fields, nested multipart
+and transfer encodings are unsupported. An observed missing file is files=None;
+a valid zero-byte file is distinct. Well-formed wrong file evidence is passed
+to core for ordinary request failure, not repaired by the browser helper.
+An empty filename/zero-content browser placeholder represents no selected file;
+an empty filename with nonempty content remains an evidence error.
+
+Host-side FileConfig retains the default 10 MiB file limit. Raw multipart is
+bounded to that limit plus 64 KiB; non-file overhead is at most 64 KiB, with
+32 parts and 128 native segments. Check encoded and decoded sizes. Limits bound
+helper decoding/retention, not Chromium's pre-event allocation. Existing action
+deadlines, native identity pairing, network policy and owned cleanup remain.
+These observations assume cooperative adapters/page code, not hostile-process
+attestation or universal packet capture. A successful response or a client digest
+does not prove persistence; the neutral consumers separately read saved bytes.
+
+The [two runnable page consumers](../examples/browser_file_upload/README.md)
+cover native form/fetch and appended-file/XHR pages. Live e2e is their complete
+upload/read gate. Frontend mocks establish only simulated page/request behavior;
+backend/contract cannot establish file-input delivery. Multiple files, native
+navigation submission, streams, chunks, downloads and media rendering remain
+outside this slice.
 
 ## Hover with page-only evidence
 
@@ -715,7 +771,8 @@ checks continue to compare those actual values with Scenario expectations.
 
 An available empty byte string represents an empty mapping. When the browser
 exposes no body, evidence retains None rather than guessing an empty form.
-Outside the form branch, the previous JSON-object/null decoder remains in use,
+Outside the form and separately supported native multipart branches, the
+previous JSON-object/null decoder remains in use,
 including its handling of missing and non-form Content-Type. Form-looking data
 is not guessed from its contents, and a malformed form claim never falls back
 to JSON. This slice does not add a general media-type conformance checker.
@@ -730,7 +787,8 @@ Unassigned form traffic cannot become evidence merely by matching a declaration.
 There is no new YAML encoding field. An API adapter may already choose JSON or
 form serialization by endpoint. Scenario describes business input; protocol
 requirements such as accepting a particular media type need their own explicit
-test rather than being inferred from this decoder. Multipart/file upload,
+test rather than being inferred from this decoder. Multipart files use the
+separate [single-file native contract](#single-file-selection-and-submission);
 arbitrary body formats and native form navigation remain unsupported. The
 [mixed JSON/form example](../examples/browser-form-requests/README.md) is loaded
 and executed by real-browser tests on a public synthetic page.

@@ -119,6 +119,8 @@ def run(scenario, provider_recordings, normalizer, *, execution_steps=None,
                        for step in scenario.steps if step.action == "press")
     not_checked.extend(f"{step.id}: hover is outside contract scope"
                        for step in scenario.steps if step.action == "hover")
+    not_checked.extend(f"{step.id}: file selection is outside contract scope"
+                       for step in scenario.steps if step.action == "select_file")
     not_checked.extend(f"{step.id}: object_poll is outside contract scope"
                        for step in scenario.steps if step.object_poll is not None)
     try:

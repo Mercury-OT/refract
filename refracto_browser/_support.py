@@ -14,6 +14,7 @@ from refracto import ports
 from refracto.errors import ActionFailure, ActionFailureReason as Reason, safe_action_failure
 from refracto.headers import header_map, match_headers, require_header_items, validate_name
 from refracto.query import parse_query
+from refracto.files import FileConfig, require_files
 
 from ._instrument import SCRIPT, NATIVE_SCRIPT
 from ._policy import BrowserNetworkPolicy
@@ -23,6 +24,7 @@ from ._request_body import is_form_content_type, parse_form_body
 from ._object_target import ObjectTarget, PinnedObjectTarget, require_browser_id
 from ._key_press import KeyPressBoundary, PinnedKeyPress
 from ._hover import PinnedHover
+from ._file_selection import PinnedFileSelection
 
 
 _runtime = threading.local()
@@ -92,6 +94,7 @@ class _Context:
     navigation: object = None
     key_boundary: object = None
     block_unassociated_mock: bool = False
+    selecting_file: bool = False
     diagnostic_notes: list = field(default_factory=list)
 
     def __repr__(self):
@@ -111,11 +114,15 @@ class BrowserSupport:
     contexts retain their existing behavior.
     """
 
-    def __init__(self, base_url, read_rendered, logical_path=None, timeout_ms=5000, *, network_policy=None):
+    def __init__(self, base_url, read_rendered, logical_path=None, timeout_ms=5000, *, network_policy=None,
+                 file_config=None):
         self._origin = _origin(base_url)
         if network_policy is not None and (type(network_policy) is not BrowserNetworkPolicy or logical_path is not None):
             raise ValueError("native browser policy cannot use a logical-path callback")
         self._network_policy = network_policy
+        if file_config is not None and type(file_config) is not FileConfig:
+            raise ValueError("file_config must be FileConfig")
+        self._file_config = file_config if file_config is not None else FileConfig()
         self._page_origin = network_policy.bind(base_url) if network_policy is not None else None
         if not callable(read_rendered) or (logical_path is not None and not callable(logical_path)):
             raise ValueError("browser rendering and path mappings must be callable")
@@ -130,6 +137,12 @@ class BrowserSupport:
 
     def __repr__(self):
         return "<BrowserSupport>"
+
+    def supports_file_selection(self, mode):
+        return self._network_policy is not None and mode in {"live", "mock"}
+
+    def supports_file_requests(self, mode):
+        return self.supports_file_selection(mode)
 
     def open(self, mode, mock_plan=None, context_options=None, *, mock_queue=None,
              user=None, session_generation=0, context_id=""):
@@ -284,7 +297,7 @@ class BrowserSupport:
     def _authorize(self, context, permit, url, selector, object_target=None):
         if not isinstance(permit, ports.UiActionPermit):
             raise ValueError("browser action requires an action permit")
-        if permit.mode != context.mode or permit.action not in {"open", "click", "fill", "press", "hover"}:
+        if permit.mode != context.mode or permit.action not in {"open", "click", "fill", "press", "hover", "select_file"}:
             raise ValueError("browser action permit is incompatible with context")
         for name in ("user", "session_generation", "context_id"):
             actual, expected = getattr(permit, name), getattr(context, name)
@@ -309,6 +322,14 @@ class BrowserSupport:
             raise ValueError("browser fill requires a string value")
         if permit.action != "fill" and permit.value is not None:
             raise ValueError("browser action does not accept a bound value")
+        if permit.action == "select_file":
+            if not self.supports_file_selection(context.mode):
+                raise ValueError("browser file selection requires native transport")
+            require_files({'file': permit.file})
+            if len(permit.file.data) > self._file_config.max_file_bytes:
+                raise ValueError("browser file byte budget exceeded")
+        elif permit.file is not None:
+            raise ValueError("browser action does not accept a file")
         if (permit.action == "press" and (type(permit.key) is not str or permit.key not in {"Enter", "Escape"})
                 or permit.action != "press" and permit.key is not None):
             raise ValueError("browser action key is invalid")
@@ -328,7 +349,7 @@ class BrowserSupport:
         # making the authorization registry retain a closed context.
         _authorizations[permit.token] = self
         context.permits[permit.action_id] = permit
-        if permit.action == "hover" or permit.action == "press" and permit.key == "Escape":
+        if permit.action in {"hover", "select_file"} or permit.action == "press" and permit.key == "Escape":
             # These page-only actions have no ordered request fixture. Keep the
             # protection for deferred callbacks on the reused context as well.
             # Contexts without these actions retain their legacy policy.
@@ -344,6 +365,7 @@ class BrowserSupport:
         start, diagnostic_start, mock_start = context.traffic_cursor, context.diagnostic_cursor, context.mock_cursor
         pressed = None
         hovered = None
+        selected_file = None
         failure_phase = Reason.COLLECTION_FAILED
         try:
             self._check(context)
@@ -356,6 +378,7 @@ class BrowserSupport:
             selection = None
             key_press = None
             hover = None
+            file_selection = None
             if permit.action == "open":
                 if context.navigation is not None:
                     context.navigation.opening = True
@@ -363,7 +386,11 @@ class BrowserSupport:
             else:
                 failure_phase = Reason.TARGET_UNAVAILABLE
                 pinned = None
-                if permit.action == "press":
+                if permit.action == "select_file":
+                    context.selecting_file = True
+                    selected_file = PinnedFileSelection(context.page, selector, permit.action_id,
+                                                       lambda: self._remaining(context), self._file_config)
+                elif permit.action == "press":
                     if context.key_boundary is None:
                         context.key_boundary = KeyPressBoundary(context)
                     context.key_boundary.begin()
@@ -401,7 +428,9 @@ class BrowserSupport:
                         "type": "click" if permit.action == "click" else "input"})
                 try:
                     failure_phase = Reason.COLLECTION_FAILED
-                    if permit.action == "press":
+                    if permit.action == "select_file":
+                        selected_file.select(permit.file)
+                    elif permit.action == "press":
                         # page.keyboard has no locator focus or click behavior.
                         # The capture guard revalidates each actual trusted event.
                         context.page.keyboard.down(permit.key)
@@ -422,7 +451,7 @@ class BrowserSupport:
                         # A rejected secondary target can leave the opener's
                         # renderer unresponsive. Owning-resource cleanup below
                         # must not wait for another evaluation in that renderer.
-                        if pressed is None and hovered is None and not context.errors:
+                        if pressed is None and hovered is None and selected_file is None and not context.errors:
                             context.page.evaluate("""() => {
                             window.__refractBrowser.armed = null;
                             window.__refractBrowser.event = null;
@@ -464,13 +493,21 @@ class BrowserSupport:
                 hovered = None
                 context.key_boundary.check()
                 self._remaining(context)
+            if selected_file is not None:
+                failure_phase = Reason.EVIDENCE_INVALID
+                file_selection = selected_file.receipt()
+                selected_file.close()
+                selected_file = None
+                context.selecting_file = False
+                self._check(context)
+                self._remaining(context)
             current, diagnostics = [], list(context.diagnostics[diagnostic_start:diagnostic_end])
             for traffic in context.traffic[start:traffic_end]:
                 if traffic.action_id == permit.action_id:
                     current.append(traffic)
                 else:
                     diagnostics.append(traffic.response)
-            if (permit.action == "hover" or permit.action == "press" and permit.key == "Escape") and current:
+            if (permit.action in {"hover", "select_file"} or permit.action == "press" and permit.key == "Escape") and current:
                 raise ActionFailure(Reason.EVIDENCE_INVALID)
             result = ports.UiActionResult(evidence=ports.UiActionEvidence(
                 execution_id=permit.execution_id, action_id=permit.action_id,
@@ -482,7 +519,7 @@ class BrowserSupport:
                 mock_recordings=mock_recordings,
                 diagnostic_notes=list(context.native.notes) if context.native is not None else list(context.diagnostic_notes),
                 object_selection=selection,
-                key_press=key_press, hover=hover,
+                key_press=key_press, hover=hover, file_selection=file_selection,
             ))
             if context.navigation is not None:
                 context.navigation.end()
@@ -494,6 +531,12 @@ class BrowserSupport:
             self._fail(context, self._reason(context, error, failure_phase),
                        cleanup_failed=(safe_action_failure(error) or (None, False))[1])
         finally:
+            if selected_file is not None:
+                try:
+                    selected_file.close()
+                except Exception:
+                    pass
+            context.selecting_file = False
             if hovered is not None:
                 try:
                     hovered.close()

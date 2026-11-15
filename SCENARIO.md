@@ -145,8 +145,9 @@ execution, not a multi-action adapter primitive.
 | Fill | `do: fill`, `target`, `value` | fill one logical input |
 | Press | `do: press`, `target`, `key: Enter` or `key: Escape` | press and release the declared key once on the unique, already focused logical input |
 | Hover | `do: hover`, `target` | move the pointer onto one unique visible logical control and observe its UI |
+| Select file | `do: select_file`, `target`, `file: {path, sha256}` | select one frozen file in one logical file input; submission is a separate click |
 | Wait | `do: wait`, `duration` | core waits a nonnegative integer number of milliseconds |
-| API request | `do: {request: {method, path, query?, headers?, body?, files?}}` | send the declared request; optional fixed single-file input is API-only |
+| API request | `do: {request: {method, path, query?, headers?, body?, files?}}` | send the declared request, optionally with a fixed single-file input |
 
 Targets map to elements, not multi-action business scripts. A click must not
 secretly perform an adapter's sequence of navigation, filling and submission.
@@ -335,9 +336,9 @@ identity in an owned mapping, never local paths or expectations. They may not
 replace, omit or add files. Unusable runtime text dependencies block the step
 before it sends. Genuine response mismatches use the existing failure rules.
 
-Backend and live e2e explicit API actions use this support. It supplies no
-browser-upload evidence: UI file selection and `expect.request.files` remain
-unsupported, and frontend still rejects explicit API actions. Contract reuses
+Backend and live e2e explicit API actions use this support. An explicit API
+upload supplies no browser-upload evidence; use the separate browser selection
+contract below. Frontend still rejects explicit API actions. Contract reuses
 recordings without uploading again. Request pairing checks a driver's account
 of the operation, not arbitrary adapter honesty or independent packet capture.
 The synthetic consumers separately verify actual received and saved bytes.
@@ -347,6 +348,50 @@ hidden from default representations, including raw/normalized response payloads
 which may contain file readback. Explicit field access and arbitrary serialization
 still expose sensitive data and require deliberate handling. See the
 [task](docs/tasks/single-file-upload.md).
+
+### Browser single-file selection and submission
+
+`do: select_file` requires a literal logical `target` and one `file` descriptor
+with exactly the same literal `path` and `sha256` rules. It selects frozen bytes
+in one actual file input; it does not click Submit or open a native chooser.
+Optional UI checks observe the result. No request, response, backend_state,
+value, key, object_id, polling or duration is accepted on selection.
+
+A separately declared `do: click` may use `expect.request.files`, with the
+existing single-field file mapping and flat string body rules. The selection
+input and request expectation are separate: a page can select the right file
+but send the wrong one. Core must compare actual captured bytes/name/field,
+not fill them from a selected input or the declaration. See the complete
+[Documents browser upload](examples/browser_file_upload/documents.yaml) and
+[Records attachment](examples/browser_file_upload/records.yaml) consumers.
+
+The shared helper supports one visible enabled main-document file input and
+finite fetch/XHR submission through its native HTTP collector. Actual selected
+input bytes are checked against the one-use file permit. Input/change events
+are not claimed to be trusted native chooser events. Browser file selection
+and file-request observation require separate explicit driver capabilities.
+Unsupported capabilities fail before context creation or earlier actions.
+
+Native multipart capture must contain every binary segment. Missing segments,
+invalid framing, ambiguous target or unavailable request association is ERROR;
+complete observed wrong/missing file content fails the request check. An empty
+file is a file, not missing evidence. Background, synthetic, old-action and
+selection-triggered requests cannot stand in for the Submit click. Selection
+auto-upload is outside this slice. No file-text fallback or source-file refill.
+
+Backend skips requestless selection and may send the click's explicit file
+request; it does not verify the page. A selection-only backend/contract is EMPTY.
+Frontend mocks verify only their actual page/request and supplied response
+checks; they cannot establish live persistence. Live e2e is the full example's
+primary gate. Contract reuses recordings rather than uploading or independently
+observing the network. Keep the existing strict pass and unchecked-obligation
+rules, including frontend's refusal of the example's final direct API read.
+
+No hidden input proxy, drag/drop, multiple files, directory, navigation submit,
+streaming, chunking or media rendering is promised. Files and observed bodies
+remain sensitive. Browser limits bound helper decoding/retention, not prior
+Chromium protocol-event allocation. See the [browser guide](docs/browser-support.md)
+and [task boundary](docs/tasks/browser-single-file-upload.md).
 
 ### Selecting a control for a business object
 

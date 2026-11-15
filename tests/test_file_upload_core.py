@@ -161,9 +161,9 @@ def test_upload_text_fields_are_flat_strings(tmp_path, body):
         load_scenario(write(tmp_path, declaration(body=body)))
 
 
-def test_invalid_later_ui_files_rejected_before_any_asset_open(tmp_path, monkeypatch):
+def test_invalid_later_non_click_ui_files_rejected_before_any_asset_open(tmp_path, monkeypatch):
     raw = declaration()
-    raw["steps"].append({"id": "ui", "do": "click", "target": "upload",
+    raw["steps"].append({"id": "ui", "do": "open", "target": "upload",
         "expect": {"request": deepcopy(raw["steps"][0]["do"]["request"])}})
     path = write(tmp_path, raw)
     monkeypatch.setattr(os, "open", lambda *a, **k: pytest.fail("asset opened before UI rejection"))

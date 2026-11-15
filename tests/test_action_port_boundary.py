@@ -21,7 +21,7 @@ from tests.ui_support import ScriptedUi, rendered, response
 
 
 REQUEST_FIELDS = {"method", "path", "body", "query", "headers", "files"}
-PERMIT_FIELDS = {"execution_id", "action_id", "step_id", "mode", "action", "target", "object_id", "key",
+PERMIT_FIELDS = {"execution_id", "action_id", "step_id", "mode", "action", "target", "object_id", "key", "file",
                  "value", "token", "user", "session_generation", "context_id"}
 TRANSPORT_FIELDS = {ports.RequestAction: REQUEST_FIELDS, ports.UiActionPermit: PERMIT_FIELDS,
                     ports.UploadFile: {"filename", "data", "sha256"},

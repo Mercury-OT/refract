@@ -1,4 +1,4 @@
-"""Bounded local snapshots for fixed single-file API actions.
+"""Bounded local snapshots for fixed single-file actions.
 
 One loaded composition counts a canonical source pathname once, even when it
 is referenced by several leaves. Different pathnames (including hard links)
@@ -85,6 +85,18 @@ def require_files(value):
         raise ValueError("prepared upload requires a safe filename and verified immutable bytes")
 
 
+def require_file(value):
+    """Validate one selected or observed immutable file without a source path."""
+    require_files({"file": value})
+
+
+def require_browser_file(value):
+    """Reject filename spellings ambiguous under browser multipart escaping."""
+    require_file(value)
+    if '"' in value.filename or re.search(r"%(?:22|0a|0d)", value.filename, re.IGNORECASE):
+        raise ValueError("browser upload filename escaping is unsupported")
+
+
 def same_files(actual, expected):
     require_files(actual)
     require_files(expected)
@@ -156,6 +168,9 @@ class AssetSnapshots:
 
     def freeze(self, scenario):
         for step in scenario.steps:
+            if step.file_descriptor is not None:
+                step.file = self.read(step._file_base, step.file_descriptor)
+                step._file_base = None
             request = step.request
             if request is not None and request.file_descriptors is not None:
                 request.files = {name: self.read(request._file_base, descriptor)
@@ -164,11 +179,22 @@ class AssetSnapshots:
         return scenario
 
 
-def preflight(scenario, api=None, *, capability=True):
+def preflight(scenario, api=None, *, capability=True, api_requests_only=False):
     """Reject every invalid or unsupported upload before any action/authentication."""
     present = False
-    from refracto.declaration.run_values import known_value, UNKNOWN, STRING
+    from refracto.declaration.run_values import UNKNOWN, STRING
     for step in scenario.steps:
+        if step.action == "select_file":
+            if (type(step.target) is not str or not step.target.strip()
+                    or step.value is not None or step.key is not None
+                    or step.duration is not None or step.object_id is not None
+                    or step.poll is not None or step.object_poll is not None
+                    or step.request is not None or step.request_asserted
+                    or step.expect.response or step.expect.backend_state):
+                raise ValueError("UI file selection requires a literal target and UI expectations only")
+            require_file(step.file)
+        elif step.file is not None or step.file_descriptor is not None:
+            raise ValueError("file is only supported on select_file steps")
         request = step.request
         if request is None:
             continue
@@ -176,9 +202,11 @@ def preflight(scenario, api=None, *, capability=True):
             raise ValueError("upload assets have not been frozen")
         if request.files is None:
             continue
-        present = True
-        if step.action != "request" or step.request_asserted or step.poll is not None:
-            raise ValueError("uploads require a non-polling explicit API action")
+        present = present or not api_requests_only or step.action == "request"
+        if (step.poll is not None or not (
+                step.action == "request" and not step.request_asserted
+                or step.action == "click" and step.request_asserted)):
+            raise ValueError("uploads require an explicit API action or declared click request")
         require_files(request.files)
         body = known_body(request.body, scenario.parameters)
         require_text_body(body, request.files, unknown=(UNKNOWN, STRING))

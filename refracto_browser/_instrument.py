@@ -109,6 +109,11 @@ _TEMPLATE = r"""(() => {
   const capture = options => typeof options === 'boolean' ? options : !!options?.capture;
   const eventOrigin = event => {
     const arm = state.armed;
+    // Selection callbacks carry rejection provenance only. Their measured
+    // input/change events are untrusted; NativeCollector never accepts them
+    // as request ownership, including asynchronous continuations.
+    if (arm?.type === 'select_file') return event.target === arm.control &&
+      ['input', 'change'].includes(event.type) ? arm.action_id : null;
     // Hover has a DOM delivery receipt only. No hover callback, including a
     // property handler or its native-await continuation, owns request evidence.
     if (arm?.type === 'hover') return null;
@@ -202,7 +207,7 @@ _TEMPLATE = r"""(() => {
     return propertyWrappers.get(listener);
   };
   for (const prototype of [Window.prototype, Document.prototype, HTMLElement.prototype, SVGElement.prototype]) {
-    for (const property of ['onclick', 'oninput', 'onkeydown', 'onkeypress', 'onkeyup', 'onsubmit',
+    for (const property of ['onclick', 'oninput', 'onchange', 'onkeydown', 'onkeypress', 'onkeyup', 'onsubmit',
         'onmouseover', 'onmouseenter', 'onmousemove', 'onmouseout', 'onmouseleave',
         'onpointerover', 'onpointerenter', 'onpointermove', 'onpointerout', 'onpointerleave']) {
       const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
@@ -216,7 +221,7 @@ _TEMPLATE = r"""(() => {
       });
     }
   }
-  for (const type of ['click', 'input', 'keydown', 'keypress', 'keyup', 'submit',
+  for (const type of ['click', 'input', 'change', 'keydown', 'keypress', 'keyup', 'submit',
       'mouseover', 'mouseenter', 'mousemove', 'mouseout', 'mouseleave',
       'pointerover', 'pointerenter', 'pointermove', 'pointerout', 'pointerleave']) add.call(window, type, event => {
     // Null-origin events need property wrappers too: otherwise a nested inline

@@ -236,18 +236,22 @@ def _decode(snapshot, path):
 def _freeze_review(scenario, snapshot):
     """Use this review's bounded source snapshot, never a CWD-based loader."""
     from refracto.ports import UploadFile
+    def asset(base, descriptor):
+        path = _safe_file(base, descriptor["path"])
+        data = snapshot.capture(path)
+        if data is None or _sha(data) != descriptor["sha256"]:
+            raise DeclarationError("review asset is unavailable or its fingerprint differs")
+        return UploadFile(filename=path.name, data=data, sha256=descriptor["sha256"])
+
     for step in scenario.steps:
+        if step.file_descriptor is not None and step.file is None:
+            step.file = asset(step._file_base, step.file_descriptor)
+            step._file_base = None
         request = step.request
         if request is None or request.file_descriptors is None or request.files is not None:
             continue
-        uploads = {}
-        for name, descriptor in request.file_descriptors.items():
-            path = _safe_file(request._file_base, descriptor["path"])
-            data = snapshot.capture(path)
-            if data is None or _sha(data) != descriptor["sha256"]:
-                raise DeclarationError("review asset is unavailable or its fingerprint differs")
-            uploads[name] = UploadFile(filename=path.name, data=data, sha256=descriptor["sha256"])
-        request.files = uploads
+        request.files = {name: asset(request._file_base, descriptor)
+                         for name, descriptor in request.file_descriptors.items()}
         request._file_base = None
     return scenario
 

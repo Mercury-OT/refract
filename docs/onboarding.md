@@ -43,7 +43,16 @@ driver opts in and sends the frozen bytes; it never reads the Scenario's
 expectations or replaces the asset. File-free drivers stay unchanged. The
 examples use real local HTTP and read actual saved bytes; an upload success
 response by itself cannot establish that a file was stored correctly. This
-slice does not add page file selection or download checks.
+API slice does not itself establish browser selection or download behavior.
+
+For page selection followed by a separate Submit click, use the
+[browser single-file consumers](../examples/browser_file_upload/README.md).
+`select_file` supplies the frozen file; the click's `expect.request.files`
+checks the actual upload independently. Explicit UI capabilities and native
+binary request observation are required. Missing or ambiguous evidence errors;
+the helper never refills it from the file declaration. Start with live e2e for
+the complete upload/read example; its direct API read remains unsupported by
+frontend mocks. See the [bounded browser guide](browser-support.md#single-file-selection-and-submission).
 
 Object-specific UI clicks additionally require an explicit
 `supports_object_targeting(mode)` opt-in and a checked actual-selection receipt.

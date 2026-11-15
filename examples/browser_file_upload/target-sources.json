@@ -1,0 +1,10 @@
+{
+  "manifest_version": 1,
+  "sha256": {
+    "app.py": "06ed8154f0b3e150b8f8c11f363f8327deac7450fe98963cc02733425996214a",
+    "documents.html": "499227eafb77e49f1bd386480fae308294959dace5508a012435c5b7e60577ca",
+    "documents.js": "7930a197b38c463b87b954cfc41e0b22ebfa6eb6df68a74c7695d781466da6d0",
+    "records.html": "0ca67f1251d6866cdab77f45f7663eaeb56809857db0961a6e35aa119ff49344",
+    "records.js": "f46f112436260438ebb5aad37063f4ae8b9e97caf76db3237d784d27cf1b2c94"
+  }
+}

@@ -468,10 +468,12 @@ def execute_api_step(scenario, step, *, api, state, recorder, resolve_request,
     """Execute a prepared explicit request (also reused by the e2e loop)."""
     if step.action == "request" and step.expect.frontend:
         raise ValueError("direct API action with UI assertions is not supported")
-    file_ops.preflight(scenario, api)
+    file_ops.preflight(scenario, api, api_requests_only=projection != "backend")
     if step.request is not None and step.request.files is not None:
-        if step.action != "request" or step.request_asserted or step.poll is not None:
-            raise ValueError("uploads require a non-polling explicit API action")
+        if (step.poll is not None or not (
+                step.action == "request" and not step.request_asserted
+                or projection == "backend" and step.action == "click" and step.request_asserted)):
+            raise ValueError("uploads require an explicit API action or projected click request")
         file_ops.require_files(step.request.files)
         file_ops.require_text_body(step.request.body, step.request.files)
         capability = getattr(api, "supports_file_upload", None)
