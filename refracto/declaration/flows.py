@@ -102,6 +102,7 @@ def _compile(flow_id, description, users, definitions, calls, dependencies, poli
             step = replace(original, id=f"{node_id}/{original.id}", request=request, expect=expect,
                            value=_map(original.value, convert), object_id=_map(original.object_id, convert),
                            bind=[binding(item.placeholder) for item in original.bind],
+                           file=copy.deepcopy(original.file), file_descriptor=copy.deepcopy(original.file_descriptor),
                            user=None if not users else effective)
             steps.append(step)
             source = copy.deepcopy(child.source_lookup[original.id])

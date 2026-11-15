@@ -96,12 +96,14 @@ def _eval_frontend(assertion, rendered, bound_values=None, inputs=None):
 
 
 def _eval_request_shape(request, outgoing, *, request_header_items=None):
+    from refracto.files import same_files
     headers_ok = header_ops.match_headers(request.headers or {}, request_header_items)
     ok = len(outgoing) == 1 and (
         outgoing[0].method == request.method
         and outgoing[0].path == request.path
         and (request.query is None or outgoing[0].query == wire_query(request.query))
         and (request.body is None or ui_stepwise._subset(outgoing[0].body, request.body))
+        and (request.files is None or same_files(outgoing[0].files, request.files))
         and headers_ok
     )
     return CheckResult("request", "request", ok,

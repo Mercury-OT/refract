@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from refracto import asyncwait, ports
 from refracto import headers as header_ops
+from refracto import files as file_ops
 from refracto.projection.recording import _evidence_equal
 from refracto.query import wire_query, require_wire_query, request_path
 from refracto.declaration import binding, values, object_state as object_state_declaration
@@ -128,9 +129,14 @@ def _native_trace(request, response):
 
 
 def _signature_payload(data):
+    asset = data["file"]
+    file_value = None
+    if asset is not None:
+        file_ops.require_file(asset)
+        file_value = [asset.filename, asset.sha256, hashlib.sha256(asset.data).hexdigest()]
     return json.dumps(
         [data[k] for k in ("execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id", "key",
-                           "user", "session_generation", "context_id")],
+                           "user", "session_generation", "context_id")] + [file_value],
         ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True,
     ).encode()
 
@@ -139,6 +145,7 @@ def _issue_permit(secret, execution_id, step, mode, lease, context_id):
     data = dict(execution_id=execution_id, action_id=secrets.token_hex(16),
                 step_id=step.id, mode=mode, action=step.action,
                 target=step.target, value=copy.deepcopy(step.value), object_id=copy.deepcopy(step.object_id), key=step.key,
+                file=copy.deepcopy(step.file),
                 user=lease.user,
                 session_generation=lease.generation, context_id=context_id)
     return ports.UiActionPermit(
@@ -201,6 +208,9 @@ def _validate_diagnostic_request(request, accepted_traces):
         raise TypeError("invalid diagnostic request")
     require_wire_query(request.query)
     request_path(request.path, {})
+    file_ops.require_files(request.files)
+    if request.files is not None:
+        file_ops.require_text_body(request.body, request.files)
     parent = request.traceparent
     if parent is None:
         return
@@ -226,8 +236,10 @@ def _has_returned_headers(result):
     for items in (evidence.diagnostic_recorded, evidence.mock_recordings):
         if type(items) is list:
             responses.extend(items)
-    return any(header_ops.recorded(response) for response in responses
-               if type(response) is ports.RecordedResponse)
+    return (evidence.file_selection is not None
+            or any(header_ops.recorded(response) or (type(response.request) is ports.RequestSpec
+                   and response.request.files is not None) for response in responses
+                   if type(response) is ports.RecordedResponse))
 
 
 def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, seen_traces,
@@ -235,12 +247,14 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     if type(result) is not ports.UiActionResult:
         raise TypeError("perform_step must return UiActionResult")
     data = {k: getattr(permit, k) for k in (
-        "execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id", "key",
+        "execution_id", "action_id", "step_id", "mode", "action", "target", "value", "object_id", "key", "file",
         "user", "session_generation", "context_id")}
     signed = hmac.new(secret, _signature_payload(data), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(permit.token, signed):
         raise ValueError("action permit was modified")
     if result.evidence is None:
+        if permit.action == "select_file":
+            raise ValueError("UI file selection requires selection evidence")
         if permit.action == "hover":
             raise ValueError("UI hover requires pointer delivery evidence")
         if permit.action == "press":
@@ -256,6 +270,18 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
     if evidence.permit_token in accepted_tokens:
         raise ValueError("replayed action evidence")
     _require_equal("permit token", evidence.permit_token, permit.token)
+    file_selection = evidence.file_selection
+    if permit.action != "select_file":
+        if file_selection is not None:
+            raise ValueError("non-selection UI action must not claim file selection")
+    else:
+        if type(file_selection) is not ports.UiFileSelection:
+            raise TypeError("UI file selection requires UiFileSelection")
+        if type(file_selection.target_matches) is not int or file_selection.target_matches != 1:
+            raise ValueError("UI file selection requires exactly one target")
+        file_ops.require_file(file_selection.file)
+        if not file_ops.same_files({"file": file_selection.file}, {"file": permit.file}):
+            raise ValueError("UI selected file differs from permitted file")
     hover = evidence.hover
     if permit.action != "hover":
         if hover is not None:
@@ -292,6 +318,8 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
             raise ValueError("UI object and control selection must both be unique")
     if type(evidence.traffic) is not list:
         raise TypeError("rendered and traffic must be dict/list")
+    if permit.action == "select_file" and (evidence.traffic or evidence.mock_recordings):
+        raise ValueError("UI file selection must not claim associated request traffic or consume mock fixtures")
     if permit.action == "hover" and evidence.traffic:
         raise ValueError("UI hover must not claim associated request traffic")
     if permit.action == "press" and permit.key == "Escape" and evidence.traffic:
@@ -321,6 +349,9 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
             raise TypeError("traffic must pair RequestSpec and RecordedResponse")
         require_wire_query(req.query)
         request_path(req.path, {})
+        file_ops.require_files(req.files)
+        if req.files is not None:
+            file_ops.require_text_body(req.body, req.files)
         if not _request_values_equal(req, resp.request):
             raise ValueError("request/response pairing mismatch")
         _require_equal("request identity pairing", resp.request_id, traffic.request_id)
@@ -422,7 +453,8 @@ def _record_verified_primary(recorder, response, expected_recordings):
     if recorder is None:
         raise ValueError("e2e live execution requires a Recorder")
     expected = copy.deepcopy(response)
-    sensitive = header_ops.recorded(expected) or any(header_ops.recorded(item) for item in expected_recordings)
+    sensitive = any(header_ops.recorded(item) or item.request.files is not None
+                    for item in [expected, *expected_recordings])
     header_ops.call_port("Recorder", recorder.record, copy.deepcopy(expected), sensitive=sensitive)
     observed = header_ops.call_port("Recorder", recorder.responses, sensitive=sensitive)
     wanted = [*expected_recordings, expected]
@@ -530,12 +562,24 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
         mock_plan=None, now=None, sleep=None, object_state=None,
         flow_execution=None):
     """No legacy path: every Scenario uses this one action/expectation loop."""
-    needs_ui = any(s.action in {"open", "click", "fill", "press", "hover"} or s.expect.frontend
+    needs_ui = any(s.action in {"open", "click", "fill", "press", "hover", "select_file"} or s.expect.frontend
                    for s in scenario.steps)
     try:
         ensure_bound_run_values(scenario)
-        from refracto.files import preflight as file_preflight
-        file_preflight(scenario, api, capability=mode == "live")
+        file_ops.preflight(scenario, api, capability=mode == "live", api_requests_only=True)
+        for step in scenario.steps:
+            if step.action == "select_file":
+                file_ops.require_browser_file(step.file)
+            elif step.action == "click" and step.request is not None and step.request.files is not None:
+                for asset in step.request.files.values():
+                    file_ops.require_browser_file(asset)
+        for required, name in (
+                (any(step.action == "select_file" for step in scenario.steps), "supports_file_selection"),
+                (any(step.action != "request" and step.request is not None
+                     and step.request.files is not None for step in scenario.steps), "supports_file_requests")):
+            if required and (not isinstance(ui, ports.StepwiseUiDriver) or backend_proj._call_action_port(
+                    "UI file capability", getattr(ui, name), mode) is not True):
+                raise ValueError("UI file capability not supported")
         for step in scenario.steps:
             object_state_declaration.require_poll(step)
             if step.action == "hover":
@@ -594,7 +638,8 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
     secret, execution_id = secrets.token_bytes(32), secrets.token_hex(16)
     accepted_tokens, seen_requests, seen_traces = set(), set(), set()
     retained_plan = copy.deepcopy(mock_plan) if mode == "mock" else None
-    sensitive_headers = (any(header_ops.declared(item) for item in scenario.steps)
+    sensitive_headers = (any(header_ops.declared(item) or item.file is not None
+        or item.request is not None and item.request.files is not None for item in scenario.steps)
         or any(item.request_headers is not None or item.response_headers is not None
                for item in (retained_plan or [])))
     consumed, results, recordings, prior = [], [], [], {}
@@ -652,7 +697,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                 blocked.user = user
                 results.append(blocked)
                 continue
-            resolved, norm, object_selection, key_press, hover = {}, None, None, None, None
+            resolved, norm, object_selection, key_press, hover, file_selection = {}, None, None, None, None, None
             lease = None
             prepared_ok = False
             try:
@@ -700,6 +745,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
                         object_selection = copy.deepcopy(evidence.object_selection) if evidence is not None else None
                         key_press = copy.deepcopy(evidence.key_press) if evidence is not None else None
                         hover = copy.deepcopy(evidence.hover) if evidence is not None else None
+                        file_selection = copy.deepcopy(evidence.file_selection) if evidence is not None else None
                         if evidence is None:
                             sr = StepResult(step.id, SKIPPED, skipped=[outcome.skip_reason])
                             sr.resolved_bindings = resolved
@@ -769,6 +815,7 @@ def run(scenario, *, ui, normalizer, auth, eval_frontend, eval_request_shape,
             sr.object_selection = object_selection
             sr.key_press = key_press
             sr.hover = hover
+            sr.file_selection = file_selection
             sr.resolved_bindings = resolved
             sr.user = user
             sr.session_generation = lease.generation if lease is not None else None

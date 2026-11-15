@@ -78,11 +78,17 @@ def concrete_plan(version, form, returned_id):
     # Fail closed if the public model adds a new field this comparison ignores.
     assert {f.name for f in fields(Step)} == {
         "id", "request", "expect", "bind", "poll", "action", "target",
-        "value", "duration", "request_asserted", "on_failure", "user", "session", "object_id", "key", "object_poll"}
+        "value", "duration", "request_asserted", "on_failure", "user", "session", "object_id", "key", "object_poll",
+        "file", "file_descriptor", "_file_base"}
     assert {f.name for f in fields(Expect)} == {"frontend", "response", "backend_state"}
     prior, result = {}, []
     for step in scenario.steps:
         prepared, _ = prepare_step(step, scenario, prior)
+        # This frozen review exercise is file-free. Check the new action input
+        # fields explicitly rather than silently omitting them from equivalence.
+        assert prepared.file is None
+        assert prepared.file_descriptor is None
+        assert prepared._file_base is None
         request = prepared.request
         result.append({
             "id": id_map[step.id], "action": prepared.action,

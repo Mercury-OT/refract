@@ -70,6 +70,8 @@ def expansion_view(scenario):
                 "do": {"request": request(step.request)} if step.action == "request" else step.action}
         if step.target is not None:
             item["target"] = step.target
+        if step.file_descriptor is not None:
+            item["file"] = copy.deepcopy(step.file_descriptor)
         if step.action == "press":
             item["key"] = step.key
         if step.object_id is not None:

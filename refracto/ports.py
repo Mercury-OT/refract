@@ -163,6 +163,7 @@ class UiActionPermit:
     context_id: str = ""
     object_id: object = field(default=None, repr=False, metadata={"sensitive": True})
     key: str | None = field(default=None, repr=False)
+    file: UploadFile | None = field(default=None, repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -235,6 +236,14 @@ class UiHover:
 
 
 @dataclass(frozen=True, kw_only=True)
+class UiFileSelection:
+    """Observed single-file input selection, independently checked by core."""
+
+    target_matches: int
+    file: UploadFile = field(repr=False, metadata={"sensitive": True})
+
+
+@dataclass(frozen=True, kw_only=True)
 class UiActionEvidence:
     """Adapter evidence returned for one permitted semantic UI action."""
 
@@ -271,6 +280,7 @@ class UiActionEvidence:
     object_selection: UiObjectSelection | None = field(default=None, repr=False, metadata={"sensitive": True})
     key_press: UiKeyPress | None = field(default=None, repr=False, metadata={"sensitive": True})
     hover: UiHover | None = field(default=None, repr=False, metadata={"sensitive": True})
+    file_selection: UiFileSelection | None = field(default=None, repr=False, metadata={"sensitive": True})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -354,6 +364,14 @@ class StepwiseUiDriver(ABC):
 
     def supports_hover(self, mode: str) -> bool:
         """Opt in only when pointer delivery provides a validated target receipt."""
+        return False
+
+    def supports_file_selection(self, mode: str) -> bool:
+        """Opt into frozen single-file input selection with a checked receipt."""
+        return False
+
+    def supports_file_requests(self, mode: str) -> bool:
+        """Opt into complete observed multipart file evidence for clicks."""
         return False
 
     @abstractmethod

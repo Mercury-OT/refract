@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+from refracto.ports import UploadFile
+
 @dataclass(frozen=True)
 class Grid:
     level: str
@@ -105,6 +107,9 @@ class Step:
     user: str | None = field(default=None, kw_only=True)
     session: str | None = field(default=None, kw_only=True)
     object_poll: PollPolicy | None = field(default=None, kw_only=True)
+    file: UploadFile | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    file_descriptor: dict | None = field(default=None, kw_only=True, repr=False, metadata={"sensitive": True})
+    _file_base: object = field(default=None, kw_only=True, compare=False, repr=False, metadata={"sensitive": True})
 
 @dataclass
 class Scenario:

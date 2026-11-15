@@ -1,0 +1,53 @@
+schema_version: 1
+scenario: records.browser_attach_and_read
+users: [editor]
+parameters:
+  caption: Archive attachment
+steps:
+  - id: open_upload_page
+    do: open
+    target: records.upload_page
+  - id: fill_caption
+    do: fill
+    target: records.caption_input
+    value: {from_parameter: caption}
+  - id: choose_attachment
+    on_failure: stop
+    do: select_file
+    target: records.attachment_input
+    file:
+      path: fixtures/sample.txt
+      sha256: bd8d03cbbbd4c28fc0d0169b48ad89d0a9575a3e432bb70c8aa49c0b1cf9af36
+    expect:
+      ui:
+        - {check: objects_matching_count, anchor: records.selected_files, field: filename, value: sample.txt, count: 1}
+  - id: submit_attachment
+    on_failure: stop
+    do: click
+    target: records.upload_button
+    expect:
+      request:
+        method: POST
+        path: [records, archive, attachments]
+        body:
+          caption: {from_parameter: caption}
+        files:
+          blob:
+            path: fixtures/sample.txt
+            sha256: bd8d03cbbbd4c28fc0d0169b48ad89d0a9575a3e432bb70c8aa49c0b1cf9af36
+      response:
+        - {check: status_equals, value: 201}
+        - {check: has, field: id}
+      ui:
+        - {check: objects_matching_count, anchor: records.uploaded_files, field: filename, value: sample.txt, count: 1}
+  - id: read_saved_record
+    do:
+      request:
+        method: GET
+        path: [records, archive, attachments, {from_step: submit_attachment, response_field: id}]
+    expect:
+      response:
+        - {check: status_equals, value: 200}
+        - {check: field_equals, field: title, value: {from_parameter: caption}}
+        - {check: field_equals, field: filename, value: sample.txt}
+        - {check: field_equals, field: content, value: "sample document\n"}

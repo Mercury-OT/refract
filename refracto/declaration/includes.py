@@ -268,6 +268,7 @@ def instantiate(call, dependencies, parameters, prior, mapping, caller_parameter
         object_id = _map(original.object_id, convert)
         step = replace(original, id=f"{sid}/{original.id}", request=request,
                        expect=expect, value=value, object_id=object_id, bind=list(used.values()),
+                       file=copy.deepcopy(original.file), file_descriptor=copy.deepcopy(original.file_descriptor),
                        user=None if implicit_anonymous else user)
         result.append(step)
         if reference_bindings is not None:

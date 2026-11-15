@@ -16,9 +16,25 @@ from refracto.headers import header_map, match_headers, require_header_items
 from refracto.query import parse_query
 from ._request_body import is_form_content_type, parse_form_body
 from ._async_origin import ASYNC_DEPTH, invocation_origin
+from ._file_selection import selection_ancestry
+from ._multipart import OVERHEAD_LIMIT, multipart_boundary, native_body, parse_multipart
 
 _MARKER = re.compile(r'^__refract_native_([0-9a-f]{32})__(.*)$')
 _NOTICE = 'background diagnostics truncated'
+
+
+def _binary_size(value):
+    if type(value) is not bytes:
+        raise ValueError()
+    return {'byte_length': len(value)}
+
+
+def _diagnostic_size(recording):
+    # Count immutable bytes without serializing their contents or making the
+    # diagnostics ledger depend on JSON's lack of a binary scalar.
+    file_bytes = sum(len(file.data) for file in (recording.request.files or {}).values())
+    return file_bytes + len(json.dumps(asdict(recording), ensure_ascii=False, allow_nan=False,
+        separators=(',', ':'), default=_binary_size).encode('utf-8'))
 
 
 class NativeCollector:
@@ -102,7 +118,13 @@ class NativeCollector:
                     event.get('initiator', {}).get('stack')))
                 if action is not None and action not in self.context.permits:
                     raise ValueError()
+            denied_selection = ((action is not None and self.context.permits[action].action == 'select_file')
+                                or action is None and selection_ancestry(
+                                    event.get('initiator', {}).get('stack'), self.context.permits))
+            if denied_selection:
+                action = None
             self.requests[identity] = {'event': event, 'action': action, 'done': False,
+                'denied_selection': denied_selection,
                 'claim': marker.group(1) if marker and not marker.group(2) and event.get('type') == 'Fetch' else None}
             if identity in self.extra_requests:
                 self._request_extra(self.extra_requests.pop(identity))
@@ -162,16 +184,26 @@ class NativeCollector:
         entry.update(origin=origin, logical=logical, fetch_id=event['requestId'],
                      preflight=event['resourceType'] == 'Preflight' or request['method'] == 'OPTIONS')
         if logical is not None:
+            if entry.get('denied_selection') or self.context.selecting_file:
+                raise ActionFailure(Reason.POLICY_DENIED)
             request_items = list(request['headers'].items())
             require_header_items(request_items)
-            body = None
-            raw = request.get('postData')
-            if request.get('hasPostData') and raw is None:
-                raw = self.session.send('Network.getRequestPostData', {'requestId': identity})['postData']
-            if raw is not None:
-                body = parse_form_body(raw.encode('utf-8')) if is_form_content_type(request_items) else json.loads(raw)
-                if body is not None and type(body) is not dict:
-                    raise ValueError()
+            body, files = None, None
+            boundary = multipart_boundary(request_items)
+            if boundary is not None:
+                if entry['action'] is not None and self.context.permits[entry['action']].action != 'click':
+                    raise ActionFailure(Reason.POLICY_DENIED)
+                limit = self.owner._file_config.max_file_bytes
+                raw = native_body(request, limit + OVERHEAD_LIMIT)
+                body, files = parse_multipart(raw, boundary, limit)
+            else:
+                raw = request.get('postData')
+                if request.get('hasPostData') and raw is None:
+                    raw = self.session.send('Network.getRequestPostData', {'requestId': identity})['postData']
+                if raw is not None:
+                    body = parse_form_body(raw.encode('utf-8')) if is_form_content_type(request_items) else json.loads(raw)
+                    if body is not None and type(body) is not dict:
+                        raise ValueError()
             lower = {name.lower(): value for name, value in request_items}
             traceparent = lower.get('traceparent')
             trace_id = None
@@ -180,7 +212,7 @@ class NativeCollector:
                     raise ValueError()
                 trace_id = traceparent.split('-')[1]
             spec = ports.RequestSpec(request['method'], logical, body, traceparent,
-                                     query=parse_query(urlsplit(request['url']).query))
+                                     query=parse_query(urlsplit(request['url']).query), files=files)
             entry.update(spec=spec, request_items=request_items, trace_id=trace_id,
                          actual_path=urlsplit(request['url']).path, fixture_id=None)
             if self.context.mode == 'mock':
@@ -352,7 +384,7 @@ class NativeCollector:
                 browser_identity=copy.deepcopy(network),
             )
             if diagnostic:
-                size = len(json.dumps(asdict(recording), ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode('utf-8'))
+                size = _diagnostic_size(recording)
                 if self.background_count >= 100 or self.background_bytes + size > 256 * 1024:
                     if self.context.mode == 'mock':
                         # Mock consumption is exact; truncation must not conceal

@@ -5,6 +5,23 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-15: browser single-file selection and submission
+
+The [browser upload task](docs/tasks/browser-single-file-upload.md) adds
+`do: select_file` with `file: {path, sha256}` and permits the existing single-file
+descriptor under a click's `expect.request.files`. Format 1, one-level inclusion
+and assertion vocabulary remain. API file-free adapters retain their behavior.
+
+UI drivers explicitly opt into `supports_file_selection(mode)` and
+`supports_file_requests(mode)`, both default false. `UiActionPermit.file` is an
+optional frozen UploadFile; selection returns `UiFileSelection(target_matches,
+file)` in evidence's `file_selection`, retained on StepResult. File bytes remain
+hidden from default representations. Action ports still receive no expectations.
+The native browser helper uses frozen in-memory input and complete binary
+request segments; unavailable segments error instead of using declared bytes.
+BrowserSupport accepts host-side FileConfig; this is not a universal browser
+memory cap. See the task for scope and failure classifications.
+
 ## 2026-11-10: fixed single-file API input
 
 The [upload task](docs/tasks/single-file-upload.md) adds optional `do.request.files`
@@ -25,9 +42,10 @@ serialization is not a safe publication mechanism.
 `FileConfig` supplies per-file and composition-wide budgets to the loader and
 run entry points outside YAML. Files are checked and frozen before execution;
 include/Flow use the declaring Scenario's source directory. Upload requests
-accept only flat text body fields. There is no browser file-selection action,
-new assertion, content transformation or implication that a client recording
-independently proves server receipt or persistence.
+accept only flat text body fields. This API slice introduced no browser
+file-selection action, new assertion or content transformation. A client
+recording does not independently prove server receipt or persistence. Browser
+selection was separately authorized in the later entry above.
 
 ## 2026-11-09: bounded object-state waiting
 

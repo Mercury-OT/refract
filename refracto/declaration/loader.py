@@ -279,9 +279,9 @@ def _header_value(declared, parameters, prior, bindings, where):
     return value
 
 
-def _request(raw, parameters, prior, bindings, where):
+def _request(raw, parameters, prior, bindings, where, *, allow_files=False):
     _mapping(raw, {"method", "path", "body", "query", "headers"} |
-             ({"files"} if where == "do.request" else set()), where)
+             ({"files"} if where == "do.request" or allow_files else set()), where)
     method = _string(raw.get("method"), f"{where}.method").upper()
     if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
         raise DeclarationError(f"{where}: unsupported HTTP method")
@@ -632,7 +632,7 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
                     raise DeclarationError("composition exceeds 1000 expanded leaves")
                 continue
         user = _step_user(item, users)
-        _mapping(item, {"id", "do", "target", "key", "object_id", "value", "duration", "expect", "poll", "object_poll", "on_failure", "user", "session"}, "step")
+        _mapping(item, {"id", "do", "target", "key", "object_id", "value", "file", "duration", "expect", "poll", "object_poll", "on_failure", "user", "session"}, "step")
         if "session" in item and (type(item["session"]) is not str or item["session"] != "new"):
             raise DeclarationError("session must be the literal string new; omit it to reuse")
         if "on_failure" in item and (type(item["on_failure"]) is not str or item["on_failure"] != "stop"):
@@ -651,15 +651,23 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
             if request.file_descriptors is not None:
                 request._file_base = Path(source_path).parent if source_path is not None else None
             action = "request"
-        elif action not in ("open", "click", "fill", "press", "hover", "wait"):
-            raise DeclarationError("do must be open/click/fill/press/hover/wait or a request mapping")
+        elif action not in ("open", "click", "fill", "press", "hover", "select_file", "wait"):
+            raise DeclarationError("do must be open/click/fill/press/hover/select_file/wait or a request mapping")
         allowed = ({"target"} if action in ("open", "click", "hover") else
                    {"target", "value"} if action == "fill" else
                    {"target", "key"} if action == "press" else
+                   {"target", "file"} if action == "select_file" else
                    {"duration"} if action == "wait" else set())
-        if ((set(item) & {"target", "key", "value", "duration"}) - allowed) or not allowed <= set(item):
+        if ((set(item) & {"target", "key", "value", "file", "duration"}) - allowed) or not allowed <= set(item):
             raise DeclarationError(f"{action}: wrong action fields; required {sorted(allowed)}")
         target = _string(item["target"], "target") if "target" in item else None
+        file_descriptor = None
+        if action == "select_file":
+            from refracto.files import descriptors
+            try:
+                file_descriptor = descriptors({"file": item["file"]})["file"]
+            except ValueError as exc:
+                raise DeclarationError(str(exc)) from None
         key = item.get("key")
         if action == "press" and (type(key) is not str or key not in ("Enter", "Escape")):
             raise DeclarationError("press key must be the literal string Enter or Escape")
@@ -677,6 +685,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
         if action == "wait" and (type(duration) is not int or duration < 0):
             raise DeclarationError("duration must be a non-negative integer in milliseconds")
         exp = _mapping(item.get("expect", {}), {"request", "ui", "response", "backend_state"}, "expect")
+        if action == "select_file" and set(exp) - {"ui"}:
+            raise DeclarationError("select_file supports only UI expectations")
         if action == "hover" and set(exp) - {"ui"}:
             raise DeclarationError("hover supports only UI expectations; request evidence is unsupported")
         if action == "press" and key == "Escape" and set(exp) - {"ui"}:
@@ -687,7 +697,10 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
                 raise DeclarationError("do.request must not also declare expect.request")
             if action == "wait":
                 raise DeclarationError("wait has no action/request correlation; expect.request is unsupported")
-            request = _request(exp["request"], declared_parameters, prior, bindings, "expect.request")
+            request = _request(exp["request"], declared_parameters, prior, bindings, "expect.request",
+                               allow_files=action == "click")
+            if request.file_descriptors is not None:
+                request._file_base = Path(source_path).parent if source_path is not None else None
         expect = Expect(
             frontend=_assertions("frontend", exp.get("ui", []), declared_parameters, prior, bindings),
             response=_assertions("response", exp.get("response", []), declared_parameters, prior, bindings),
@@ -714,7 +727,8 @@ def _load_document(raw, *, dependencies=None, source_hash=None, flow_keys=None,
             object_poll = PollPolicy("FAIL")
         step = Step(sid, request, expect, bindings, poll, action, target, value, duration, request_asserted,
                     on_failure=item.get("on_failure", "continue"), user=user, session=item.get("session"),
-                    object_id=object_id, key=key, object_poll=object_poll)
+                    object_id=object_id, key=key, object_poll=object_poll, file_descriptor=file_descriptor,
+                    _file_base=Path(source_path).parent if file_descriptor is not None and source_path is not None else None)
         try:
             object_state.require_poll(step, lambda node: _known(node, declared_parameters), unknown=(UNKNOWN, STRING))
         except ValueError as exc:

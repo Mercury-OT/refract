@@ -80,6 +80,8 @@ class StepResult:
                               compare=False, metadata={"sensitive": True})
     hover: object = field(default=None, kw_only=True, repr=False,
                           compare=False, metadata={"sensitive": True})
+    file_selection: object = field(default=None, kw_only=True, repr=False,
+                                   compare=False, metadata={"sensitive": True})
     state_observations: list = field(default_factory=list, kw_only=True, repr=False,
                                     compare=False, metadata={"sensitive": True})
     object_poll: ObjectPollResult | None = field(default=None, kw_only=True, compare=False)
