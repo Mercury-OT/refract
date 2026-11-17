@@ -75,6 +75,20 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved the [Mattermost API adoption and cost pilot](tasks/mattermost-api-pilot.md)
+on 2026-11-16: six reviewed API scenarios on two pinned, unmodified releases,
+an ordinary-HTTP comparison, bounded counterexamples and a page compatibility
+gate. The finite execution panel is complete: 36 planned native runs, 12
+independent audit runs and 12 ordinary-test runs passed. The unchanged browser
+helper could not complete the normal page gate; UI business scenarios remain
+unexecuted. See the [evidence and cost record](tasks/mattermost-api-pilot-acceptance.md).
+Independent audit and architect acceptance passed on 2026-11-17; the maintainer
+then accepted the delivery and separately authorized task-branch submission and
+merge after green checks. Actual publication and cleanup belong to the associated
+PR and main history. No core, declaration or browser capability was added. Further UI
+capability and download work remain paused; this pilot does not establish general
+maintenance savings.
+
 The maintainer approved [browser single-file selection and submission](tasks/browser-single-file-upload.md)
 on 2026-11-15. Pre-implementation binary capture, actual input and native click
 association probes passed on the tested Chromium build; missing native file
