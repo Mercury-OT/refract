@@ -348,8 +348,22 @@ def test_both_key_phases_keep_two_requests_separate(lab):
     support, context, _, api = lab("entry.onkeydown=()=>send('down');entry.onkeyup=()=>send('up')")
     focus(context)
     evidence = press(support, context)
-    assert [t.request.body for t in evidence.traffic] == [{'tag': 'down'}, {'tag': 'up'}]
+    # The two HTTP responses may complete in either order. Both key phases must
+    # retain distinct identities and the same action association.
+    assert sorted((t.request.body for t in evidence.traffic), key=lambda body: body['tag']) == [
+        {'tag': 'down'}, {'tag': 'up'}]
     assert len({t.request_id for t in evidence.traffic}) == len(api.requests) == 2
+    assert len({t.browser_identity for t in evidence.traffic}) == 2
+    for traffic in evidence.traffic:
+        assert traffic.action_id == evidence.action_id
+        assert traffic.step_id == traffic.response.step_id == evidence.step_id
+        assert traffic.request_id == traffic.response.request_id
+        assert traffic.browser_identity == traffic.response.browser_identity
+        assert traffic.request.method == 'POST'
+        assert traffic.request.path == 'records/echo'
+    assert all((request['method'], request['path']) == ('POST', '/api/echo') for request in api.requests)
+    assert sorted((json.loads(request['body']) for request in api.requests), key=lambda body: body['tag']) == [
+        {'tag': 'down'}, {'tag': 'up'}]
 
 
 @pytest.mark.parametrize('script', [
