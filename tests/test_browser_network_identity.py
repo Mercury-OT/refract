@@ -312,6 +312,9 @@ def test_missing_real_trace_cannot_satisfy_object_observation_identity():
     ["background HTTP acquisition failed"],
     ["background diagnostics truncated", "background HTTP acquisition failed"],
     ["background HTTP acquisition failed", "background diagnostics truncated"],
+    ["background request body not represented"],
+    ["background request body not represented", "background HTTP acquisition failed",
+     "background diagnostics truncated"],
 ])
 def test_fixed_diagnostic_notes_are_visible_owned_and_not_a_new_verdict(initial):
     notes = list(initial)
@@ -323,18 +326,23 @@ def test_fixed_diagnostic_notes_are_visible_owned_and_not_a_new_verdict(initial)
     assert all(step.not_checked == initial for step in result.steps)
 
 
-def test_truncation_note_cannot_hide_a_required_assertion_failure():
+@pytest.mark.parametrize("note", ["background diagnostics truncated",
+                                  "background request body not represented"])
+def test_diagnostic_note_cannot_hide_a_required_assertion_failure(note):
     def mutate(index, result, permit):
         return ports.UiActionResult(evidence=replace(result.evidence,
-            rendered={}, diagnostic_notes=["background diagnostics truncated"]))
+            rendered={}, diagnostic_notes=[note]))
     result = run(scenario(), NativeUi(mutate=mutate))
     assert [step.status for step in result.steps] == ["FAILED", "FAILED"]
-    assert all(step.not_checked == ["background diagnostics truncated"] for step in result.steps)
+    assert all(step.not_checked == [note] for step in result.steps)
 
 
 @pytest.mark.parametrize("notes", [None, "background diagnostics truncated", [False], ["secret-notice"],
                                    ["background diagnostics truncated"] * 2,
                                    ["background HTTP acquisition failed"] * 2,
+                                   ["background request body not represented"] * 2,
+                                   ["background diagnostics truncated", "background HTTP acquisition failed",
+                                    "background request body not represented", "secret-notice"],
                                    ["background diagnostics truncated", "background HTTP acquisition failed", "background diagnostics truncated"],
                                    ["background diagnostics truncated", "secret-notice"],
                                    [{"background HTTP acquisition failed": True}]])
@@ -345,6 +353,17 @@ def test_arbitrary_diagnostic_notes_cannot_enter_report(notes):
     assert result.steps[0].status == "ERROR"
     assert "secret-notice" not in repr(result)
     assert "secret-notice" not in result.steps[0].detail
+
+
+
+def test_omission_note_cannot_replace_missing_primary_evidence():
+    def mutate(index, result, permit):
+        return ports.UiActionResult(evidence=replace(result.evidence, traffic=[],
+            diagnostic_notes=["background request body not represented"]))
+    result = run(scenario(), NativeUi(mutate=mutate))
+    assert result.steps[0].status == "ERROR"
+    assert result.status != "PASSED"
+    assert result.provider_recordings == []
 
 
 def test_network_metadata_is_frozen_keyword_only_and_sensitive_in_default_repr():

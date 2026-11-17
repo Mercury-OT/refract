@@ -75,6 +75,18 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved [bounded background HTTP compatibility](tasks/browser-background-http-compatibility.md)
+on 2026-11-17. The repair separates explicitly configured XHR/Fetch assets and
+unassociated live JSON-array requests from primary action evidence. It changes
+Python browser configuration and one fixed diagnostic notice, preserving YAML,
+format 1, inclusion depth and business checks. Development, independent audit
+and architect acceptance passed: 7085 full-suite tests and 5716 dev-only tests
+per supported Python version. See the [verification record](tasks/browser-background-http-compatibility-acceptance.md).
+The maintainer accepted delivery and separately authorized task-branch submission
+and merge after green checks on 2026-11-17; actual publication and cleanup are
+recorded in PR/main history. Non-HTTP transports and downloads remain outside
+this task. Page business acceptance remains unverified.
+
 The maintainer approved the [Mattermost API adoption and cost pilot](tasks/mattermost-api-pilot.md)
 on 2026-11-16: six reviewed API scenarios on two pinned, unmodified releases,
 an ordinary-HTTP comparison, bounded counterexamples and a page compatibility

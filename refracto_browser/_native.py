@@ -21,6 +21,7 @@ from ._multipart import OVERHEAD_LIMIT, multipart_boundary, native_body, parse_m
 
 _MARKER = re.compile(r'^__refract_native_([0-9a-f]{32})__(.*)$')
 _NOTICE = 'background diagnostics truncated'
+_BODY_NOTICE = 'background request body not represented'
 
 
 def _binary_size(value):
@@ -202,7 +203,8 @@ class NativeCollector:
                     raw = self.session.send('Network.getRequestPostData', {'requestId': identity})['postData']
                 if raw is not None:
                     body = parse_form_body(raw.encode('utf-8')) if is_form_content_type(request_items) else json.loads(raw)
-                    if body is not None and type(body) is not dict:
+                    if body is not None and type(body) is not dict and not (
+                            type(body) is list and self.context.mode == 'live' and entry['action'] is None):
                         raise ValueError()
             lower = {name.lower(): value for name, value in request_items}
             traceparent = lower.get('traceparent')
@@ -211,8 +213,19 @@ class NativeCollector:
                 if not re.fullmatch(r'[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}', traceparent):
                     raise ValueError()
                 trace_id = traceparent.split('-')[1]
+            query = parse_query(urlsplit(request['url']).query)
+            if type(body) is list:
+                # Only unassociated live JSON arrays reach here. Validate JSON
+                # constants without changing the browser's original wire bytes.
+                json.dumps(body, allow_nan=False)
+                entry['unrepresented_body'] = True
+                if _BODY_NOTICE not in self.notes:
+                    self.notes.append(_BODY_NOTICE)
+                self._claim(entry)
+                self.target_guard.send('Fetch.continueRequest', {'requestId': event['requestId']})
+                return
             spec = ports.RequestSpec(request['method'], logical, body, traceparent,
-                                     query=parse_query(urlsplit(request['url']).query), files=files)
+                                     query=query, files=files)
             entry.update(spec=spec, request_items=request_items, trace_id=trace_id,
                          actual_path=urlsplit(request['url']).path, fixture_id=None)
             if self.context.mode == 'mock':
@@ -334,7 +347,8 @@ class NativeCollector:
             return
         try:
             entry['done'] = True
-            if entry.get('logical') is None or entry.get('preflight') or entry.get('over_limit'):
+            if (entry.get('logical') is None or entry.get('preflight') or entry.get('over_limit')
+                    or entry.get('unrepresented_body')):
                 return
             diagnostic = entry['action'] is None
             if diagnostic and self.context.mode != 'mock' and (

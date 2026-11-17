@@ -326,9 +326,10 @@ def _validate_evidence(result, permit, secret, accepted_tokens, seen_requests, s
         raise ValueError("UI Escape must not claim associated request traffic")
     if (type(evidence.diagnostic_notes) is not list or any(
             type(note) is not str or note not in {
-                "background diagnostics truncated", "background HTTP acquisition failed"}
+                "background diagnostics truncated", "background HTTP acquisition failed",
+                "background request body not represented"}
             for note in evidence.diagnostic_notes)
-            or len(evidence.diagnostic_notes) > 2
+            or len(evidence.diagnostic_notes) > 3
             or len(set(evidence.diagnostic_notes)) != len(evidence.diagnostic_notes)):
         raise ValueError("unsupported browser diagnostic note")
     _validate_rendered(evidence.rendered)
