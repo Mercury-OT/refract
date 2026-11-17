@@ -672,6 +672,26 @@ endpoint is rejected, not resolved by request timing or response content. With
 multiple services, assign disjoint logical prefixes. Prefix matching is bounded
 by path segments. Do not supply `logical_path` as a second mapping mechanism.
 
+For assets loaded by XHR or Fetch, declare a bounded resource route explicitly:
+
+```python
+from refracto_browser import ResourceRoute
+
+policy = BrowserNetworkPolicy(
+    api_endpoints=(ApiEndpoint("https://example.com:443", "/api", "records"),),
+    resource_routes=(ResourceRoute("https://example.com:443", "/assets"),),
+)
+```
+
+This permits GET/HEAD Fetch or XHR to `/assets` and its path-segment descendants.
+It does not turn CSS or other resources into API evidence. Ordinary stylesheet
+and script loading retain their existing rules. A route origin must already be
+the page origin or in `resource_origins`; the route does not grant credential
+permission. Root routes, duplicates, overlapping resource routes and overlaps
+with API paths at the same origin are rejected. Unknown paths, POST, OPTIONS
+and preflights receive no new permission. Declared API mappings must never be
+replaced with resource routes to bypass request checks.
+
 Origins are exact scheme/host/effective-port identities. The page origin is
 allowed for resources, not automatically for API evidence or credentials. API,
 resource and credential permissions are independent. Additional credential header
@@ -709,6 +729,21 @@ serialized records per context, including request values; truncation has a
 visible note. This is not a bound on all browser memory. Payloads and credentials
 are not printed in that note. A slow background request is not a reason to wait
 for global network idle.
+
+A live, unassociated request at a configured API endpoint may carry a valid
+JSON-array body. Chromium sends its original bytes; the helper does not wrap or
+convert the array. Because the typed request contract still accepts only an
+object or null, no complete diagnostic recording is manufactured for this
+request. The fixed note `background request body not represented` is visible in
+`not_checked`, once per context, with no payload or credential content. Such
+requests do not produce primary traffic or contract evidence. Associated arrays
+and mock arrays remain unsupported and cannot use this exception; mock requests
+do not fall through to a real API. Query, trace, credential, CORS, redirect and
+file-selection checks still apply. Non-JSON and scalar bodies gain no support.
+
+The three allowed diagnostic notes are `background diagnostics truncated`,
+`background HTTP acquisition failed` and `background request body not represented`.
+They describe optional observation limits and never waive a declared check.
 
 Optional background body retrieval reserves its work budget before calls that
 can process another event. Actual attempts plus pending reservations are capped

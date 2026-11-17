@@ -5,6 +5,20 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-17: bounded background HTTP compatibility
+
+The [background HTTP repair](docs/tasks/browser-background-http-compatibility.md)
+adds `ResourceRoute(origin, path_prefix)` and optional
+`BrowserNetworkPolicy.resource_routes` for explicit Fetch/XHR GET/HEAD assets.
+Existing positional policy arguments remain valid. Routes do not authorize new
+origins or credentials and cannot overlap API mappings.
+
+Live unassociated JSON-array API requests keep their original wire bytes. They
+produce the fixed note `background request body not represented`, not an invalid
+typed recording. Associated and mock arrays remain unsupported. Consumers of
+`diagnostic_notes`/`not_checked` should recognize this third safe note; YAML,
+RequestSpec body types, report statuses and assertion semantics are unchanged.
+
 ## 2026-11-15: browser single-file selection and submission
 
 The [browser upload task](docs/tasks/browser-single-file-upload.md) adds

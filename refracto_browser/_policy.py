@@ -66,11 +66,24 @@ class ApiEndpoint:
 
 
 @dataclass(frozen=True, slots=True)
+class ResourceRoute:
+    origin: str
+    path_prefix: str
+
+    def __post_init__(self):
+        object.__setattr__(self, 'origin', canonical_origin(self.origin, origin_only=True))
+        _prefix(self.path_prefix, actual=True)
+        if self.path_prefix == '/':
+            raise ValueError('browser resource route must identify a bounded path')
+
+
+@dataclass(frozen=True, slots=True)
 class BrowserNetworkPolicy:
     api_endpoints: tuple[ApiEndpoint, ...] = ()
     resource_origins: tuple[str, ...] = ()
     credential_origins: tuple[str, ...] = ()
     credential_headers: object = field(default_factory=dict, repr=False)
+    resource_routes: tuple[ResourceRoute, ...] = ()
 
     def __post_init__(self):
         if type(self.api_endpoints) not in {tuple, list} or not all(type(e) is ApiEndpoint for e in self.api_endpoints):
@@ -82,6 +95,15 @@ class BrowserNetworkPolicy:
                         or _contains(a.logical_prefix, b.logical_prefix) or _contains(b.logical_prefix, a.logical_prefix)):
                     raise ValueError('browser API endpoint ownership overlaps')
         object.__setattr__(self, 'api_endpoints', endpoints)
+        if type(self.resource_routes) not in {tuple, list} or not all(type(r) is ResourceRoute for r in self.resource_routes):
+            raise ValueError('browser resource routes must be explicit route entries')
+        routes = tuple(self.resource_routes)
+        for index, route in enumerate(routes):
+            for other in (*routes[index + 1:], *endpoints):
+                if (route.origin == other.origin and
+                        (_contains(route.path_prefix, other.path_prefix) or _contains(other.path_prefix, route.path_prefix))):
+                    raise ValueError('browser resource route ownership overlaps')
+        object.__setattr__(self, 'resource_routes', routes)
         for name in ('resource_origins', 'credential_origins'):
             values = getattr(self, name)
             if type(values) not in {tuple, list, set, frozenset}:
@@ -104,6 +126,8 @@ class BrowserNetworkPolicy:
 
     def bind(self, base_url):
         base = canonical_origin(base_url)
+        if any(route.origin not in {base, *self.resource_origins} for route in self.resource_routes):
+            raise ValueError('browser resource route names an unconfigured resource origin')
         connections = {base, *self.resource_origins, *(e.origin for e in self.api_endpoints)}
         if not set(self.credential_origins).issubset(connections) or any(not set(v).issubset(connections) for v in self.credential_headers.values()):
             raise ValueError('credential policy names an unconfigured destination')
@@ -131,6 +155,11 @@ class BrowserNetworkPolicy:
                 raise ValueError('native browser transport received a private wire marker')
         endpoints = [e for e in self.api_endpoints if e.origin == origin and _contains(e.path_prefix, urlsplit(url).path)]
         if resource_type in {'Fetch', 'XHR', 'Preflight'} or method == 'OPTIONS':
+            if (resource_type in {'Fetch', 'XHR'} and method in {'GET', 'HEAD'}
+                    and origin in {base, *self.resource_origins}
+                    and any(route.origin == origin and _contains(route.path_prefix, urlsplit(url).path)
+                            for route in self.resource_routes)):
+                return origin, None
             if len(endpoints) != 1:
                 raise ValueError('browser API destination is not configured')
             endpoint = endpoints[0]
