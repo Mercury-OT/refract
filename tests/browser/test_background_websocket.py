@@ -1,7 +1,7 @@
 """Socket permission does not imply an action, successful mock, or HTTP evidence."""
 from contextlib import contextmanager
-import asyncio
 from types import SimpleNamespace
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -18,27 +18,38 @@ from tests.browser.test_background_http_compatibility import ScenarioDriver
 from tests.browser.test_framework_failure_reporting import Auth, NoResponse
 
 
-def test_socket_denial_close_failure_aborts_before_driver_can_synthesize_open():
-    from playwright._impl._network import WebSocketRouteHandler
+def test_socket_denial_close_failure_aborts_before_driver_can_synthesize_open(monkeypatch):
+    from playwright.sync_api import WebSocketRoute, sync_playwright
     from refracto_browser._websocket import SocketBoundary
 
-    class Route:
-        completed = False
+    with SocketPeer() as peer, sync_playwright() as driver:
+        context = driver.chromium.launch().new_context()
+        ctx = SimpleNamespace(errors=[])
+        boundary = SocketBoundary(ctx, peer.url, ())
+        failures = []
 
-        def close(self, **kwargs):
-            raise ValueError('private-sentinel')
+        async def deny(route):
+            try:
+                await boundary.reject(route)
+            except ActionFailure as error:
+                failures.append(error)
+                raise
 
-        async def _after_handle(self):
-            self.completed = True
-
-    ctx, route = SimpleNamespace(errors=[]), Route()
-    boundary = SocketBoundary(ctx, 'https://example.com:443', ())
-    with pytest.raises(ActionFailure) as failure:
-        asyncio.run(WebSocketRouteHandler(None, '**/*', boundary.reject).handle(route))
-    assert failure.value.reason is Reason.POLICY_DENIED and failure.value.cleanup_failed
-    assert 'private-sentinel' not in str(failure.value) and failure.value.__context__ is None
-    assert ctx.errors == [Reason.POLICY_DENIED, Reason.CLEANUP_FAILED]
-    assert not route.completed
+        context.route_web_socket('**/control', lambda route: None)
+        context.route_web_socket('**/socket', deny)
+        page = context.new_page()
+        page.goto(peer.url)
+        # A normally returning route really does open a simulated socket in Chromium.
+        assert page.evaluate(ATTEMPT, [peer.socket + '/control', None]) == 'open'
+        failing_close = Mock(side_effect=ValueError('private-sentinel'))
+        monkeypatch.setattr(WebSocketRoute, 'close', failing_close)
+        assert page.evaluate(ATTEMPT, [peer.socket, None]) in {'closed', 'error', 'timeout'}
+        failing_close.assert_called_once_with(code=1008, reason='policy denied')
+        failure, = failures
+        assert failure.reason is Reason.POLICY_DENIED and failure.cleanup_failed
+        assert 'private-sentinel' not in str(failure) and failure.__context__ is None
+        assert ctx.errors == [Reason.POLICY_DENIED, Reason.CLEANUP_FAILED]
+        assert not peer.upgrades
 
 
 def permit(action='open', mode='live'):
