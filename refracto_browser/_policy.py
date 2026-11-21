@@ -78,12 +78,33 @@ class ResourceRoute:
 
 
 @dataclass(frozen=True, slots=True)
+class BackgroundWebSocket:
+    """One exact path at the page origin. Query keys are optional, never wildcards."""
+
+    path: str
+    query_keys: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        if (type(self.path) is not str or len(self.path) > 256
+                or not re.fullmatch(r'(/[A-Za-z0-9._~-]+)+', self.path)
+                or any(p in {'.', '..'} for p in self.path.split('/'))):
+            raise ValueError('background WebSocket requires an exact canonical path')
+        keys = self.query_keys
+        if (type(keys) not in {tuple, list} or len(keys) > 8
+                or any(type(k) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,32}', k) for k in keys)
+                or len(set(keys)) != len(keys)):
+            raise ValueError('background WebSocket requires distinct bounded query keys')
+        object.__setattr__(self, 'query_keys', tuple(keys))
+
+
+@dataclass(frozen=True, slots=True)
 class BrowserNetworkPolicy:
     api_endpoints: tuple[ApiEndpoint, ...] = ()
     resource_origins: tuple[str, ...] = ()
     credential_origins: tuple[str, ...] = ()
     credential_headers: object = field(default_factory=dict, repr=False)
     resource_routes: tuple[ResourceRoute, ...] = ()
+    background_websockets: tuple[BackgroundWebSocket, ...] = ()
 
     def __post_init__(self):
         if type(self.api_endpoints) not in {tuple, list} or not all(type(e) is ApiEndpoint for e in self.api_endpoints):
@@ -104,6 +125,12 @@ class BrowserNetworkPolicy:
                         (_contains(route.path_prefix, other.path_prefix) or _contains(other.path_prefix, route.path_prefix))):
                     raise ValueError('browser resource route ownership overlaps')
         object.__setattr__(self, 'resource_routes', routes)
+        sockets = self.background_websockets
+        if (type(sockets) not in {tuple, list} or len(sockets) > 16
+                or any(type(s) is not BackgroundWebSocket for s in sockets)
+                or len({s.path for s in sockets}) != len(sockets)):
+            raise ValueError('background WebSocket routes must have distinct exact paths')
+        object.__setattr__(self, 'background_websockets', tuple(sockets))
         for name in ('resource_origins', 'credential_origins'):
             values = getattr(self, name)
             if type(values) not in {tuple, list, set, frozenset}:
@@ -126,6 +153,16 @@ class BrowserNetworkPolicy:
 
     def bind(self, base_url):
         base = canonical_origin(base_url)
+        if self.background_websockets:
+            host = urlsplit(base).hostname
+            if base not in self.credential_origins:
+                raise ValueError('background WebSocket requires explicit page-origin credential permission')
+            if base.startswith('http:') and host != 'localhost':
+                try:
+                    if not ipaddress.ip_address(host).is_loopback:
+                        raise ValueError()
+                except ValueError:
+                    raise ValueError('cleartext background WebSocket requires a loopback page') from None
         if any(route.origin not in {base, *self.resource_origins} for route in self.resource_routes):
             raise ValueError('browser resource route names an unconfigured resource origin')
         connections = {base, *self.resource_origins, *(e.origin for e in self.api_endpoints)}
@@ -134,6 +171,8 @@ class BrowserNetworkPolicy:
         return base
 
     def validate_context_options(self, base, options):
+        if self.background_websockets and options.get('ignore_https_errors'):
+            raise ValueError('background WebSocket requires normal certificate validation')
         if any(options.get(name) for name in ('proxy', 'http_credentials', 'client_certificates')):
             raise ValueError('native browser transport does not support proxy or automatic transport authentication')
         connections = {base, *self.resource_origins, *(e.origin for e in self.api_endpoints)}

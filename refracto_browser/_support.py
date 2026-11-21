@@ -18,6 +18,7 @@ from refracto.files import FileConfig, require_files
 
 from ._instrument import SCRIPT, NATIVE_SCRIPT
 from ._policy import BrowserNetworkPolicy
+from ._websocket import SocketBoundary
 from ._native import NativeCollector
 from ._navigation import NavigationCollector
 from ._request_body import is_form_content_type, parse_form_body
@@ -195,18 +196,30 @@ class BrowserSupport:
             context.browser_context = context.browser.new_context(**options)
             context.browser_context.set_default_timeout(self._timeout_ms)
             context.browser_context.set_default_navigation_timeout(self._timeout_ms)
-            context.browser_context.add_init_script(NATIVE_SCRIPT if self._network_policy is not None else SCRIPT)
+            instrument = NATIVE_SCRIPT if self._network_policy is not None else SCRIPT
+            sockets = None
+            if self._network_policy is not None and self._network_policy.background_websockets:
+                sockets = SocketBoundary(context, self._page_origin, self._network_policy.background_websockets)
+                sockets.install()
+                instrument = sockets.script(instrument)
+            context.browser_context.add_init_script(instrument)
             if self._network_policy is None:
                 context.browser_context.route("**/*", lambda route: self._route(context, route))
             context.page = context.browser_context.new_page()
             if self._network_policy is not None:
                 context.native = NativeCollector(self, context, self._network_policy, self._page_origin)
+            if sockets is not None:
+                sockets.watch(context.native)
+            else:
+                context.page.on("websocket", lambda _: context.errors.append(Reason.POLICY_DENIED))
             context.page.on("response", lambda response: self._capture_mock_headers(context, response))
             # This is deliberately a whole-page policy, not proof that an
             # uncaught exception belongs to the current action's handler.
-            context.page.on("pageerror", lambda _: context.errors.append(Reason.PAGE_ERROR))
+            def page_error(_):
+                if Reason.PAGE_ERROR not in context.errors:
+                    context.errors.append(Reason.PAGE_ERROR)
+            context.page.on("pageerror", page_error)
             context.page.on("worker", lambda _: context.errors.append(Reason.POLICY_DENIED))
-            context.page.on("websocket", lambda _: context.errors.append(Reason.POLICY_DENIED))
             return context
         except Exception as error:
             self._fail(context, self._reason(context, error))
