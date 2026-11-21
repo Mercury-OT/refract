@@ -5,6 +5,14 @@ record, not a complete project changelog or a newly published package release.
 The development package version remains `0.1.0`; use the commit anchors below
 when identifying these Python interface changes.
 
+## 2026-11-21: opt-in live background WebSockets
+
+`BackgroundWebSocket(path, query_keys=())` and the optional
+`BrowserNetworkPolicy.background_websockets` configure an exact same-origin
+background connection for a live Chromium page. Existing positional policy
+arguments and Scenario YAML are unchanged. Mock mode never connects or reports
+a simulated open. See [usage and limits](docs/browser-support.md#background-websockets).
+
 ## 2026-11-17: bounded background HTTP compatibility
 
 The [background HTTP repair](docs/tasks/browser-background-http-compatibility.md)

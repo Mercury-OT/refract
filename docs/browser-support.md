@@ -755,7 +755,44 @@ consumption remains exact. Required network-policy
 checks still run for background traffic. This does not promise unlimited traffic
 throughput or identical completion time on differently loaded hosts.
 
-This mode still excludes streams, WebSocket, EventSource, workers/service workers,
+### Background WebSockets
+
+A live page can require a persistent notification connection just to render.
+Declare that transport in the adapter's Python policy, not in the Scenario:
+
+```python
+from refracto_browser import BackgroundWebSocket, BrowserNetworkPolicy
+
+policy = BrowserNetworkPolicy(
+    credential_origins=("https://example.com:443",),
+    background_websockets=(BackgroundWebSocket("/events", query_keys=("cursor",)),),
+)
+```
+
+Only the owned top document can open the exact configured same-origin socket.
+Use the complete canonical `wss:` URL (`ws:` on loopback only). A query is
+optional: each allowed key can occur once, with a plain ASCII letter, digit,
+underscore or hyphen value of at most 64 characters (including an empty value).
+Subpaths, wildcards, escaped values, fragments, userinfo, and nonempty
+subprotocols do not match. The origin must independently be authorized for
+credentials. The helper does not copy credentials, follow redirects or ignore
+certificate errors. The native helper checks ownership conservatively when other
+frames are present. Other windows cannot inherit this permission.
+
+The limit is one active connection and four upstream attempts per context;
+reloading the document does not replenish that budget. A context close also
+closes its connections. Missing configuration and mock mode do not connect or
+simulate a successful open. Do not add a URL here to make a mock page pass.
+
+A connection or an incoming message is never evidence of a declared HTTP
+request. Existing action ownership still applies to any later HTTP request.
+The helper does not subscribe to message contents for evidence or report URLs,
+query values or frame payloads. Support is verified with Playwright 1.62 and
+its Chromium. This opt-in needs requested-subprotocol inspection (introduced
+in Playwright 1.60); older versions are not an alternative permissive path.
+No need to change Scenario YAML.
+
+This mode still excludes streams, unconfigured WebSockets, EventSource, workers/service workers,
 frames/popups, redirect following, and generalized authentication flows. Native
 async ownership is limited to the bounded ancestry described above; timers and
 unsupported or missing async ancestry remain diagnostic. A missing

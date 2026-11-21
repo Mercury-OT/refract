@@ -75,6 +75,13 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The maintainer approved [bounded background WebSockets](tasks/browser-background-websocket.md)
+on 2026-11-21: opt-in same-origin connectivity for live page navigation, never
+a substitute for action evidence. No declaration change, mock connection or
+business UI acceptance is implied. Development, independent audit and local
+acceptance passed; submission is a separate gate. See the
+[verification record](tasks/browser-background-websocket-acceptance.md).
+
 The maintainer approved [bounded background HTTP compatibility](tasks/browser-background-http-compatibility.md)
 on 2026-11-17. The repair separates explicitly configured XHR/Fetch assets and
 unassociated live JSON-array requests from primary action evidence. It changes

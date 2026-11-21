@@ -355,9 +355,44 @@ _TEMPLATE = r"""(() => {
   };
   // Unsupported transports must fail before a handshake can send context
   // credentials to a destination that HTTP routing has not validated.
+  const socketPolicy = null;
+  let socketDenied = false;
+  const denySocket = () => {
+    if (!socketDenied) {
+      socketDenied = true;
+      reportError('background WebSocket denied');
+      if (socketPolicy) window.__refractSocketDenied();
+    }
+    throw new Error('background WebSocket denied');
+  };
+  const allowsSocket = (raw, protocols, arity) => {
+    if (!socketPolicy?.live || window !== window.top || location.origin !== socketPolicy.page ||
+        arity > 2 || (protocols !== undefined && !(Array.isArray(protocols) && protocols.length === 0)) ||
+        typeof raw !== 'string' || raw.length > 2048) return false;
+    const parts = raw.split('?');
+    if (parts.length > 2 || !parts[0].startsWith(socketPolicy.origin + '/')) return false;
+    const path = parts[0].slice(socketPolicy.origin.length);
+    if (!Object.hasOwn(socketPolicy.paths, path)) return false;
+    if (parts.length === 1) return true;
+    const keys = new Set();
+    for (const pair of parts[1].split('&')) {
+      const [key, value, ...extra] = pair.split('=');
+      if (!socketPolicy.paths[path].includes(key) || keys.has(key) || extra.length || value === undefined ||
+          value.length > 64 || /[^A-Za-z0-9_-]/.test(value)) return false;
+      keys.add(key);
+    }
+    return true;
+  };
   for (const name of ['WebSocket', 'EventSource', 'Worker', 'SharedWorker']) {
     const original = window[name];
     if (!original) continue;
+    if (name === 'WebSocket') {
+      window.WebSocket = new Proxy(original, {construct(target, args, receiver) {
+        if (!allowsSocket(args[0], args[1], args.length)) return denySocket();
+        return Reflect.construct(target, args, receiver);
+      }});
+      continue;
+    }
     const unsupported = function() {
       reportError('unsupported browser transport');
       throw new Error('unsupported browser transport');
