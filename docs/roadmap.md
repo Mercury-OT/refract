@@ -75,12 +75,20 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The [private-channel message pilot](tasks/mattermost-channel-message.md) exercises
+the reviewed send-and-reread Scenario on the fixed Mattermost release. Channel
+entry and text input passed. An onboarding overlay intercepted the real send
+click, leaving send and identity-based reread unverified. The
+[evidence and cost record](tasks/mattermost-channel-message-acceptance.md)
+separates this outcome from the earlier navigation and API results.
+
 The maintainer approved [bounded background WebSockets](tasks/browser-background-websocket.md)
 on 2026-11-21: opt-in same-origin connectivity for live page navigation, never
 a substitute for action evidence. No declaration change, mock connection or
 business UI acceptance is implied. Development, independent audit and local
 acceptance passed; submission is a separate gate. See the
 [verification record](tasks/browser-background-websocket-acceptance.md).
+The task was subsequently delivered through PR #58 in main `d91cc4a`.
 
 The maintainer approved [bounded background HTTP compatibility](tasks/browser-background-http-compatibility.md)
 on 2026-11-17. The repair separates explicitly configured XHR/Fetch assets and

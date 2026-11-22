@@ -96,9 +96,32 @@ the same assertions and observation channels, but are not randomized human-cost
 or production-performance studies. A version change requiring no adapter edits
 does not establish difficult-change maintenance savings.
 
-The page gate uses the unchanged browser helper. Unsupported normal application
-behavior is a visible integration blocker, not a business pass or product defect.
-No UI Scenario or download feature is introduced by this example.
+The original API pilot's page gate used the browser helper available at that
+time. It recorded a compatibility blocker before any UI business scenario ran.
+
+### Separate live channel-message pilot
+
+The [page Scenario](channel_message.yaml) uses the live e2e projection. Run it
+only in a disposable local 11.11.4 deployment. Each execution may create a real
+post even if evidence collection fails. Preserve each attempt separately.
+
+Before running, prepare an ordinary member of a private channel and obtain that
+member's browser storage state through the application's own login. Verify the
+authenticated identity, channel type, membership, and channel ID/path against
+the application independently of the message to be sent. Store a private JSON
+fixture outside the checkout with `base_url`, `server_version`, `channel_path`,
+`channel_id`, `member_id`, and the Playwright `storage_state` object.
+The latter contains credentials. Keep fixture and result directories local.
+
+```sh
+python -B -m examples.mattermost_api.channel_message \
+  --fixture "$PAGE_FIXTURE" --output-dir "$NEW_RUN_DIR"
+```
+
+The runner binds the three marked environment slots. To use an independently
+retained review copy, pass `--scenario` with its path. Check the native step
+results and the separate business verdict in the run output. A socket event or
+an API read alone cannot verify what the member saw after reopening the page.
 
 After independent verification, remove only the dedicated labeled resources:
 
