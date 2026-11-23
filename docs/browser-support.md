@@ -755,6 +755,41 @@ consumption remains exact. Required network-policy
 checks still run for background traffic. This does not promise unlimited traffic
 throughput or identical completion time on differently loaded hosts.
 
+### Reports on departure from a page
+
+An adapter can permit an exact, same-origin destination for a background
+`navigator.sendBeacon` report during a second `open` in the same tab:
+
+```python
+policy = BrowserNetworkPolicy(
+    credential_origins=("https://example.com:8443",),
+    background_beacon_paths=("/telemetry/departure",),
+)
+```
+
+Chromium sometimes pauses this POST as a main-frame `Ping` without a Network
+identifier. Only native live transport admits this case during ordinary document
+navigation. A bounded Fetch interception handle pairs the admission with its
+response for policy enforcement. It never identifies a business action.
+The original request goes to the real destination. The helper does not export
+the URL, body, headers or response as evidence. The fixed diagnostic note is
+`background request body not represented`. No receipt or success status is
+invented. Existing request constraints and redirect checks still apply.
+
+List up to 16 literal paths with no query, fragment or wildcards. The page
+origin needs explicit credential permission and normal TLS verification;
+cleartext is limited to loopback. At most 32 reports can be admitted per
+browser context. An unconfigured destination, unsupported pause or mock
+execution cannot take this path. A regular fetch or XHR to the same URL still
+requires its own established request identity and endpoint mapping.
+
+On a new main document, Chromium may have retired an optional live
+background response body from the previous document. The helper records
+`background HTTP acquisition failed` only for the specific missing-resource
+error and separately verified old and committed document identities. A
+required response body, a mock body, or a current-document acquisition error
+still fails the collection.
+
 ### Background WebSockets
 
 A live page can require a persistent notification connection just to render.

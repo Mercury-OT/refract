@@ -58,6 +58,11 @@ class NativeCollector:
         self.frame = self.session.send('Page.getFrameTree')['frameTree']['frame']['id']
         self.requests, self.waiting = {}, {}
         self.markers = set()
+        self.reopening = False
+        self.document_loader = self.departing_loader = None
+        # Fetch interception handles only pair policy decisions; they never enter
+        # the Network ledger, recorder, or action attribution.
+        self.report_handles = {}
         self.extra_requests, self.extra_responses = {}, {}
         self.background_count = 0
         self.background_bytes = 0
@@ -104,6 +109,10 @@ class NativeCollector:
             identity = event['requestId']
             if identity in self.requests or 'redirectResponse' in event:
                 raise ValueError()
+            if event.get('type') == 'Document' and event.get('frameId') == self.frame:
+                loader = event.get('loaderId')
+                self.departing_loader = self.document_loader if self.reopening and loader != self.document_loader else None
+                self.document_loader = loader
             frames = event.get('initiator', {}).get('stack', {}).get('callFrames', [])
             # A direct marker remains authoritative. A marker with no direct
             # origin can use only bounded invocation ancestry, never a matching
@@ -141,7 +150,11 @@ class NativeCollector:
             if event.get('frameId') != self.frame:
                 raise ValueError()
             identity = event.get('networkId')
-            if not identity:
+            if ('networkId' not in event and event.get('resourceType') == 'Ping'
+                    and self.policy.background_beacon_paths):
+                self._departure_report(event)
+                return
+            if not identity or event['requestId'] in self.report_handles:
                 raise ValueError()
             if identity not in self.requests:
                 self.waiting[identity] = event
@@ -150,6 +163,48 @@ class NativeCollector:
         except Exception as error:
             self._error(event.get('requestId'), reason=self.owner._reason(
                 self.context, error, Reason.EVIDENCE_INVALID))
+
+    def _departure_report(self, event):
+        request = event['request']
+        handle = event['requestId']
+        url = request['url']
+        if (self.context.mode != 'live' or event['resourceType'] != 'Ping'
+                or request['method'] != 'POST' or 'redirectedRequestId' in event
+                or not any(url == self.base + path for path in self.policy.background_beacon_paths)):
+            raise ActionFailure(Reason.POLICY_DENIED)
+        require_header_items(list(request['headers'].items()))
+        try:
+            self.policy.check_destination_headers(self.base, request['headers'])
+        except ValueError:
+            raise ActionFailure(Reason.POLICY_DENIED) from None
+        if type(handle) is not str or not handle:
+            raise ValueError()
+        if 'responseStatusCode' in event or 'responseErrorReason' in event:
+            if self.report_handles.get(handle) != url:
+                raise ValueError()
+            self.report_handles[handle] = None
+            if 'responseErrorReason' in event:
+                raise ActionFailure(Reason.COLLECTION_FAILED)
+            self._check_response(event)
+            self.target_guard.send('Fetch.continueResponse', {'requestId': handle})
+        else:
+            if not self.reopening or handle in self.report_handles or len(self.report_handles) >= 32:
+                raise ActionFailure(Reason.POLICY_DENIED)
+            self.report_handles[handle] = url
+            if _BODY_NOTICE not in self.notes:
+                self.notes.append(_BODY_NOTICE)
+            self.target_guard.send('Fetch.continueRequest', {'requestId': handle})
+
+    @staticmethod
+    def _check_response(event):
+        items = [(item['name'], item['value']) for item in event.get('responseHeaders', [])]
+        require_header_items(items)
+        status = event['responseStatusCode']
+        if any((300 <= status < 400 and name.lower() == 'location')
+               or (name.lower() == 'content-type' and 'text/event-stream' in value.lower())
+               for name, value in items):
+            raise ActionFailure(Reason.POLICY_DENIED)
+        return status
 
     def _process(self, event):
         identity = event['networkId']
@@ -165,14 +220,7 @@ class NativeCollector:
         if event['resourceType'] == 'Document' and origin != self.base:
             raise ActionFailure(Reason.POLICY_DENIED)
         if 'responseStatusCode' in event:
-            status = event['responseStatusCode']
-            items = [(item['name'], item['value']) for item in event.get('responseHeaders', [])]
-            require_header_items(items)
-            lower = {name.lower(): value for name, value in items}
-            if (300 <= status < 400 and 'location' in lower
-                    or 'text/event-stream' in lower.get('content-type', '').lower()):
-                raise ActionFailure(Reason.POLICY_DENIED)
-            entry['status'] = status
+            entry['status'] = self._check_response(event)
             self.target_guard.send('Fetch.continueResponse', {'requestId': event['requestId']})
             return
         if event.get('responseErrorReason'):
@@ -336,6 +384,20 @@ class NativeCollector:
             entry['drop_diagnostic'] = True
             self._truncate()
 
+    def _lost_departing_body(self, error, entry):
+        # Chromium retires old-document resource handles on navigation. A
+        # missing optional body is not evidence about the new business action.
+        event = entry['event']
+        missing = 'CDPSession.send: Protocol error (Network.getResponseBody): No resource with given identifier found'
+        if (self.context.mode != 'live' or entry['action'] is not None or str(error) != missing
+                or not self.departing_loader or not self.document_loader
+                or event.get('frameId') != self.frame or event.get('loaderId') != self.departing_loader):
+            return False
+        # The new main document must also have committed. An attempted
+        # navigation alone does not make a current resource expendable.
+        current = self.session.send('Page.getFrameTree')['frameTree']['frame']
+        return current['id'] == self.frame and current['loaderId'] == self.document_loader
+
     def _finished(self, event, *, read_deferred=False):
         identity = event['requestId']
         entry = self.requests.get(identity)
@@ -373,6 +435,12 @@ class NativeCollector:
             self.body_reads_active += 1
             try:
                 body = self.session.send('Network.getResponseBody', {'requestId': identity})
+            except Exception as error:
+                if not self._lost_departing_body(error, entry):
+                    raise
+                if 'background HTTP acquisition failed' not in self.notes:
+                    self.notes.append('background HTTP acquisition failed')
+                return
             finally:
                 self.body_reads_active -= 1
             text = (base64.b64decode(body['body'], validate=True).decode('utf-8')

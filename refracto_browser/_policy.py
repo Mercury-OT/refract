@@ -77,6 +77,12 @@ class ResourceRoute:
             raise ValueError('browser resource route must identify a bounded path')
 
 
+def _exact_path(path):
+    return (type(path) is str and len(path) <= 256
+            and re.fullmatch(r'(/[A-Za-z0-9._~-]+)+', path)
+            and all(part not in {'.', '..'} for part in path.split('/')))
+
+
 @dataclass(frozen=True, slots=True)
 class BackgroundWebSocket:
     """One exact path at the page origin. Query keys are optional, never wildcards."""
@@ -85,9 +91,7 @@ class BackgroundWebSocket:
     query_keys: tuple[str, ...] = ()
 
     def __post_init__(self):
-        if (type(self.path) is not str or len(self.path) > 256
-                or not re.fullmatch(r'(/[A-Za-z0-9._~-]+)+', self.path)
-                or any(p in {'.', '..'} for p in self.path.split('/'))):
+        if not _exact_path(self.path):
             raise ValueError('background WebSocket requires an exact canonical path')
         keys = self.query_keys
         if (type(keys) not in {tuple, list} or len(keys) > 8
@@ -105,6 +109,7 @@ class BrowserNetworkPolicy:
     credential_headers: object = field(default_factory=dict, repr=False)
     resource_routes: tuple[ResourceRoute, ...] = ()
     background_websockets: tuple[BackgroundWebSocket, ...] = ()
+    background_beacon_paths: tuple[str, ...] = ()
 
     def __post_init__(self):
         if type(self.api_endpoints) not in {tuple, list} or not all(type(e) is ApiEndpoint for e in self.api_endpoints):
@@ -131,6 +136,11 @@ class BrowserNetworkPolicy:
                 or len({s.path for s in sockets}) != len(sockets)):
             raise ValueError('background WebSocket routes must have distinct exact paths')
         object.__setattr__(self, 'background_websockets', tuple(sockets))
+        paths = self.background_beacon_paths
+        if (type(paths) not in (tuple, list) or len(paths) > 16 or not all(_exact_path(p) for p in paths)
+                or len(set(paths)) != len(paths)):
+            raise ValueError('background beacon routes must have distinct exact paths')
+        object.__setattr__(self, 'background_beacon_paths', tuple(paths))
         for name in ('resource_origins', 'credential_origins'):
             values = getattr(self, name)
             if type(values) not in {tuple, list, set, frozenset}:
@@ -153,16 +163,16 @@ class BrowserNetworkPolicy:
 
     def bind(self, base_url):
         base = canonical_origin(base_url)
-        if self.background_websockets:
+        if self.background_websockets or self.background_beacon_paths:
             host = urlsplit(base).hostname
             if base not in self.credential_origins:
-                raise ValueError('background WebSocket requires explicit page-origin credential permission')
+                raise ValueError('background channel requires explicit page-origin credential permission')
             if base.startswith('http:') and host != 'localhost':
                 try:
                     if not ipaddress.ip_address(host).is_loopback:
                         raise ValueError()
                 except ValueError:
-                    raise ValueError('cleartext background WebSocket requires a loopback page') from None
+                    raise ValueError('cleartext background channel requires a loopback page') from None
         if any(route.origin not in {base, *self.resource_origins} for route in self.resource_routes):
             raise ValueError('browser resource route names an unconfigured resource origin')
         connections = {base, *self.resource_origins, *(e.origin for e in self.api_endpoints)}
@@ -171,8 +181,8 @@ class BrowserNetworkPolicy:
         return base
 
     def validate_context_options(self, base, options):
-        if self.background_websockets and options.get('ignore_https_errors'):
-            raise ValueError('background WebSocket requires normal certificate validation')
+        if (self.background_websockets or self.background_beacon_paths) and options.get('ignore_https_errors'):
+            raise ValueError('background channel requires normal certificate validation')
         if any(options.get(name) for name in ('proxy', 'http_credentials', 'client_certificates')):
             raise ValueError('native browser transport does not support proxy or automatic transport authentication')
         connections = {base, *self.resource_origins, *(e.origin for e in self.api_endpoints)}
@@ -182,8 +192,7 @@ class BrowserNetworkPolicy:
             if not connections.issubset(permitted):
                 raise ValueError('global browser header cannot safely reach every configured destination')
 
-    def classify(self, base, url, resource_type, method, headers):
-        origin = canonical_origin(url)
+    def check_destination_headers(self, origin, headers):
         lowered = {name.lower(): value for name, value in headers.items()}
         for name in lowered:
             if name in _CREDENTIALS and origin not in self.credential_origins:
@@ -192,6 +201,10 @@ class BrowserNetworkPolicy:
                 raise ValueError('browser credential destination is not authorized')
             if name.startswith('x-refract-'):
                 raise ValueError('native browser transport received a private wire marker')
+
+    def classify(self, base, url, resource_type, method, headers):
+        origin = canonical_origin(url)
+        self.check_destination_headers(origin, headers)
         endpoints = [e for e in self.api_endpoints if e.origin == origin and _contains(e.path_prefix, urlsplit(url).path)]
         if resource_type in {'Fetch', 'XHR', 'Preflight'} or method == 'OPTIONS':
             if (resource_type in {'Fetch', 'XHR'} and method in {'GET', 'HEAD'}
