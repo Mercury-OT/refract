@@ -79,12 +79,12 @@ The [browser departure-report repair](tasks/browser-departure-report.md) covers
 an explicitly configured live page report and the loss of an optional background
 response from a retired document. It preserves primary action evidence on reopen.
 
-The [private-channel message pilot](tasks/mattermost-channel-message.md) exercises
-the reviewed send-and-reread Scenario on the fixed Mattermost release. Channel
-entry and text input passed. An onboarding overlay intercepted the real send
-click, leaving send and identity-based reread unverified. The
-[evidence and cost record](tasks/mattermost-channel-message-acceptance.md)
-separates this outcome from the earlier navigation and API results.
+The [private-channel identity pilot](tasks/mattermost-channel-message-identity.md)
+verified sending a post and rereading its server-assigned ID in a new document
+in the same browser session. A pre-existing post with identical text remains
+visible throughout the collision control. The [initial pilot
+record](tasks/mattermost-channel-message-acceptance.md) retains the earlier
+first-use onboarding blocker. The document-change repair was delivered in PR #60.
 
 The maintainer approved [bounded background WebSockets](tasks/browser-background-websocket.md)
 on 2026-11-21: opt-in same-origin connectivity for live page navigation, never

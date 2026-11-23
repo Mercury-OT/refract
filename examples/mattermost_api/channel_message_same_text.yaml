@@ -1,0 +1,72 @@
+schema_version: 1
+scenario: mattermost.private_channel_send_and_reread
+description: A member sends a message in a private channel and reads the same post after reopening it.
+users: [owner]
+
+parameters:
+  # Bind these three values from independently verified fixture records before sending.
+  channel_path: "<channel page path>"
+  channel_id: "<private channel ID>"
+  member_id: "<member ID>"
+
+  # A previously seeded post has this same text and a different server ID.
+  message: Friday delivery
+
+steps:
+  - id: enter_channel
+    do: open
+    target: channel.page
+    on_failure: stop
+    expect:
+      ui:
+        - {check: objects_matching_count, anchor: channel.view, field: path, value: {from_parameter: channel_path}, count: 1}
+        - {check: visible, anchor: channel.composer}
+
+  - id: enter_message
+    do: fill
+    target: channel.composer
+    value: {from_parameter: message}
+    on_failure: stop
+    expect:
+      ui:
+        - {check: objects_matching_count, anchor: channel.composer, field: value, value: {from_parameter: message}, count: 1}
+
+  - id: send
+    do: click
+    target: channel.send_button
+    on_failure: stop
+    expect:
+      request:
+        method: POST
+        path: [posts]
+        body:
+          channel_id: {from_parameter: channel_id}
+          message: {from_parameter: message}
+      response:
+        - {check: status_equals, value: 201}
+        - {check: has, field: id}
+        - {check: field_not_equals, field: id, value: ""}
+        - {check: field_equals, field: user_id, value: {from_parameter: member_id}}
+        - {check: field_equals, field: channel_id, value: {from_parameter: channel_id}}
+        - {check: field_equals, field: message, value: {from_parameter: message}}
+
+  - id: reopen_channel
+    do: open
+    target: channel.page
+    expect:
+      ui:
+        - {check: objects_matching_count, anchor: channel.view, field: path, value: {from_parameter: channel_path}, count: 1}
+
+        - {check: no_anonymous, anchor: channel.posts}
+
+        - check: objects_matching_count
+          anchor: channel.posts
+          field: post_id
+          value: {from_step: send, response_field: id}
+          count: 1
+
+        - check: object_field_equals
+          anchor: channel.posts
+          id: {from_step: send, response_field: id}
+          field: message
+          value: {from_parameter: message}

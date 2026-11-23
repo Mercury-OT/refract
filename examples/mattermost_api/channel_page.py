@@ -33,7 +33,7 @@ class ChannelPageAuth(ports.Authenticator):
 
 # Observe one coherent DOM snapshot. The narrow timeline bounds are specific to
 # this small, newly prepared channel. Neither the expected text nor the server
-# response is available to the observer. Grouped activity remains anonymous.
+# response is available to the observer. Keep unreadable rows visible as gaps.
 _READ_CHANNEL = r"""() => {
     const visible = e => e.checkVisibility({visibilityProperty: true, opacityProperty: true}) &&
         e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0;
@@ -50,19 +50,51 @@ _READ_CHANNEL = r"""() => {
             list.querySelector('.loading__content:not(.hideAnimation), .more-messages-text')) {
         return false;
     }
-    const wrappers = list.querySelectorAll(':scope > .innerList > *');
+    const directText = node => [...node.childNodes].some(n =>
+        n.nodeType === Node.TEXT_NODE && n.textContent.trim() !== '');
+    const inner = list.querySelectorAll(':scope > .innerList');
+    if (inner.length !== 1 || directText(inner[0])) return false;
+    const wrappers = inner[0].children;
     if (wrappers.length === 0 || wrappers.length > 100) return false;
     const posts = {identified: [], anonymous: []};
+    let grouped = 0;
+    let intros = 0;
+    function isGroupedActivity(card, text) {
+        const match = /^post_(user-activity-[a-z0-9]{26}(?:_[a-z0-9]{26})+)$/.exec(card.id);
+        if (!match || !card.classList.contains('post--system')) return false;
+        const compound = match[1];
+        const ids = compound.slice('user-activity-'.length).split('_');
+        if (new Set(ids).size !== ids.length) return false;
+        const root = ':scope > .post__content[data-testid="postContent"]';
+        if (card.querySelectorAll(root).length !== 1) return false;
+        const content = root + ' > div';
+        const bodies = card.querySelectorAll(content + ' > .post__body[data-testid="post-body"]');
+        const links = card.querySelectorAll(content + ' > .post__header > div > a.post__permalink');
+        return bodies.length === 1 && links.length === 1 &&
+            bodies[0].parentElement === links[0].parentElement.parentElement.parentElement &&
+            bodies[0].contains(text) && bodies[0].id === compound + '_message' &&
+            text.id === 'postMessageText_' + compound && links[0].id === 'CENTER_time_' + compound;
+    }
     for (const wrapper of wrappers) {
-        const cards = [...wrapper.querySelectorAll('.post, [data-testid="postView"]')];
-        if (cards.length === 0) {
-            if (!wrapper.querySelector('#channelIntro, .Separator')) return false;
+        // Inspect the actual row root. A class or ID embedded in rendered user
+        // content cannot turn an unknown wrapper into a separator or system row.
+        if (!wrapper.matches('div.item_measurer') || wrapper.children.length !== 1 || directText(wrapper)) return false;
+        const padding = wrapper.firstElementChild;
+        if (padding.tagName !== 'DIV' || padding.children.length !== 1 || directText(padding)) return false;
+        const card = padding.firstElementChild;
+        const roots = wrapper.querySelectorAll('.post, [data-testid="postView"]');
+        if (card.matches('div#channelIntro.channel-intro') && !roots.length) {
+            intros++;
             continue;
         }
-        if (cards.length !== 1 || !visible(cards[0])) return false;
-        const card = cards[0];
+        if (card.matches('div.Separator.BasicSeparator[data-testid="basicSeparator"]') && !roots.length) continue;
+        if (!card.matches('div.post[data-testid="postView"]') || roots.length !== 1 || !visible(card)) return false;
         const bodies = card.querySelectorAll('[data-testid="post-message-text"]');
         if (bodies.length !== 1 || !visible(bodies[0])) return false;
+        if (isGroupedActivity(card, bodies[0])) {
+            grouped++;
+            continue;
+        }
         const fields = {message: bodies[0].innerText};
         const match = /^post_([a-z0-9]{26})$/.exec(card.id);
         if (match && bodies[0].id === 'postMessageText_' + match[1]) {
@@ -72,8 +104,9 @@ _READ_CHANNEL = r"""() => {
             posts.anonymous.push({fields});
         }
     }
+    if (intros !== 1) return false;
     return {
-        'channel.view': {anonymous: [{fields: {path: location.pathname}}]},
+        'channel.view': {anonymous: [{fields: {path: location.pathname, grouped_activity_count: grouped}}]},
         'channel.composer': {anonymous: [{fields: {value: inputs[0].value}}]},
         'channel.posts': posts
     };
@@ -105,6 +138,7 @@ class ChannelPageUi(ports.UiDriver, ports.StepwiseUiDriver):
                 api_endpoints=(ApiEndpoint(base_url, '/api/v4', ''),),
                 credential_origins=(base_url,),
                 resource_routes=(ResourceRoute(base_url, '/static/files'),),
+                background_beacon_paths=('/api/v4/client_perf',),
                 background_websockets=(BackgroundWebSocket('/api/v4/websocket',
                     query_keys=('connection_id', 'sequence_number', 'posted_ack')),)))
 
