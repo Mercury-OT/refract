@@ -21,6 +21,9 @@ from .run import sha256, source_manifest, utc_now, write_json
 
 CANONICAL = Path(__file__).with_suffix(".yaml")
 CANONICAL_HASH = "144351dd991dd846caf2515292f362d8ad8a4a7e1bf72f37ce8c3640c1a2786f"
+SAME_TEXT = CANONICAL.with_name("channel_message_same_text.yaml")
+SAME_TEXT_HASH = "fee75189341f11fa12556e43f5d857f37211ab07790e22cfd2552a9be898d6c7"
+TEMPLATES = {CANONICAL: CANONICAL_HASH, SAME_TEXT: SAME_TEXT_HASH}
 ROOT = Path(__file__).resolve().parents[2]
 SLOTS = ("channel_path", "channel_id", "member_id")
 STEPNAMES = ("enter_channel", "enter_message", "send", "reopen_channel")
@@ -39,21 +42,31 @@ def reviewed_shape(document):
     return json.dumps(shape, sort_keys=True, allow_nan=False)
 
 
-def bind_declaration(reviewed_path, fixture, directory):
-    if sha256(CANONICAL) != CANONICAL_HASH:
-        raise ValueError("public review template hash changed")
+def _bind_reviewed(reviewed_path, fixture, directory):
     reviewed_bytes = Path(reviewed_path).read_bytes()
     reviewed = directory / "reviewed.yaml"
     reviewed.write_bytes(reviewed_bytes)
     load_scenario(reviewed)
     declaration = yaml.safe_load(reviewed_bytes)
-    if reviewed_shape(declaration) != reviewed_shape(yaml.safe_load(CANONICAL.read_bytes())):
+    shape = reviewed_shape(declaration)
+    for template, digest in TEMPLATES.items():
+        data = template.read_bytes()
+        if hashlib.sha256(data).hexdigest() != digest:
+            raise ValueError("public review template hash changed")
+        if shape == reviewed_shape(yaml.safe_load(data)):
+            break
+    else:
         raise ValueError("reviewed declaration differs from the approved four steps")
     for name in SLOTS:
         declaration["parameters"][name] = fixture[name]
     bound = directory / "bound.yaml"
     bound.write_text(yaml.safe_dump(declaration, allow_unicode=True, sort_keys=False), encoding="utf-8")
     load_scenario(bound)
+    return bound, template
+
+
+def bind_declaration(reviewed_path, fixture, directory):
+    bound, _ = _bind_reviewed(reviewed_path, fixture, directory)
     return bound
 
 
@@ -106,6 +119,8 @@ def page_observations(events):
                 for obj in source.get(kind, []):
                     item = {"kind": kind, **select_fields(obj, ("id",))}
                     fields = obj["fields"]
+                    if anchor == "channel.view":
+                        item.update(select_fields(fields, ("grouped_activity_count",)))
                     if anchor == "channel.posts":
                         item.update(select_fields(fields, ("post_id",)))
                     if field in fields and isinstance(fields[field], str):
@@ -162,6 +177,34 @@ def classify(steps, observations, records):
     return facts
 
 
+def same_text_control(observations, records, old_id):
+    """Compare the independently seeded row and the newly returned ID on both pages."""
+    sent = [r for r in records if r["step"] == "send"]
+    new_id = sent[0]["response"].get("id") if len(sent) == 1 else None
+    digest = hashlib.sha256(b"Friday delivery").hexdigest()
+    evidence = {"old_id": old_id, "new_id": new_id, "pages": {}}
+    for step in ("enter_channel", "reopen_channel"):
+        event = observations.get(step, {})
+        rows = event.get("rendered", {}).get("channel.posts")
+        if (not isinstance(rows, list) or event.get("timeline_complete") is not True
+                or event.get("new_document") is not True or not all(
+                    row.get("kind") == "identified" and row.get("id")
+                    and row.get("post_id") == row["id"] and "message_sha256" in row for row in rows)):
+            continue
+        old = [r for r in rows if r["id"] == old_id]
+        new = [r for r in rows if r["id"] == new_id]
+        evidence["pages"][step] = {
+            "old_count": len(old), "old_same_text": len(old) == 1 and old[0]["message_sha256"] == digest,
+            "new_count": len(new), "new_same_text": len(new) == 1 and new[0]["message_sha256"] == digest,
+        }
+    before = evidence["pages"].get("enter_channel", {})
+    after = evidence["pages"].get("reopen_channel", {})
+    evidence["verified"] = bool(isinstance(new_id, str) and new_id and old_id != new_id
+        and before.get("old_same_text") and before.get("new_count") == 0
+        and after.get("old_same_text") and after.get("new_same_text"))
+    return evidence
+
+
 def run(fixture_path, directory, reviewed_path=CANONICAL):
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     started_at, start = utc_now(), time.monotonic()
@@ -170,9 +213,13 @@ def run(fixture_path, directory, reviewed_path=CANONICAL):
         raise ValueError("fixture is missing an independent binding")
     if not re.fullmatch(r"/[a-z0-9_-]+/channels/[a-z0-9_-]+", fixture["channel_path"]):
         raise ValueError("invalid local channel route")
-    bound = bind_declaration(reviewed_path, fixture, directory)
+    bound, template = _bind_reviewed(reviewed_path, fixture, directory)
+    if template == SAME_TEXT:
+        old_id = fixture.get("old_post_id")
+        if not isinstance(old_id, str) or not re.fullmatch(r"[a-z0-9]{26}", old_id):
+            raise ValueError("the same-text control needs the independently seeded old_post_id")
     frozen = {
-        "public_template": CANONICAL_HASH, "reviewed": sha256(directory / "reviewed.yaml"),
+        "public_template": TEMPLATES[template], "template_name": template.name, "reviewed": sha256(directory / "reviewed.yaml"),
         "bound": sha256(bound), "fixture": sha256(fixture_path), "sources": sources(),
         "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "projections": ["e2e"], "started_at": started_at,
@@ -198,6 +245,10 @@ def run(fixture_path, directory, reviewed_path=CANONICAL):
         records = [safe_record(r) for r in domain.provider_recordings]
         facts = classify(steps, observations, records)
         passed = report.passed and all(v == "PASS" for v in facts.values())
+        if template == SAME_TEXT:
+            control = same_text_control(observations, records, fixture["old_post_id"])
+            result["same_text_control"] = control
+            passed = passed and control["verified"]
         result.update(native_status=report.status, domain_status=domain.status, steps=steps,
                       observations=observations, recordings=records, obligations=facts, strict_pass=passed,
                       run_unique_values=report.run_unique_values,
@@ -207,7 +258,7 @@ def run(fixture_path, directory, reviewed_path=CANONICAL):
         result["runner_error_type"] = type(exc).__name__
     result["integrity"] = (sha256(directory / "reviewed.yaml") == sha256(reviewed_path) == frozen["reviewed"]
                            and sha256(bound) == frozen["bound"] and sha256(fixture_path) == frozen["fixture"]
-                           and sources() == frozen["sources"] and sha256(CANONICAL) == frozen["public_template"])
+                           and sources() == frozen["sources"] and sha256(template) == frozen["public_template"])
     if not result["integrity"]:
         result.update(strict_pass=False, status=UNKNOWN)
     result.update(ended_at=utc_now(), elapsed_seconds=time.monotonic() - start)

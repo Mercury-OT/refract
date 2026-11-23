@@ -123,6 +123,22 @@ retained review copy, pass `--scenario` with its path. Check the native step
 results and the separate business verdict in the run output. A socket event or
 an API read alone cannot verify what the member saw after reopening the page.
 
+For the [same-text control](channel_message_same_text.yaml), create a separate
+older post with the exact text `Friday delivery` using normal product controls.
+Verify its server ID independently and add it to the local fixture as
+`old_post_id` before the run. Complete the normal onboarding interface for the
+ordinary member if it intercepts the send button. Invoke the same command with
+`--scenario examples/mattermost_api/channel_message_same_text.yaml` and an
+unused output directory. The seeded ID stays in the runner's evidence checks;
+the new post ID always comes from the response to the observed send action.
+
+Both profiles use identical steps and assertions. On this release, a positively
+identified grouped membership activity has a consistent system card, body and
+permalink. The page observation records the group count separately from the
+individual posts. Unidentified rows prevent a verified reread. The same-text
+control also requires the older post on both pages, the new ID absent on entry,
+and precisely one new row with the correct text after reentry.
+
 After independent verification, remove only the dedicated labeled resources:
 
 ```bash

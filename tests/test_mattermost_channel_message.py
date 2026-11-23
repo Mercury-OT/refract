@@ -1,12 +1,13 @@
 """Offline controls for the reviewed page declaration; none sends a target request."""
 
 import copy
+import json
 
 import pytest
 import yaml
 
 from examples.mattermost_api.channel_message import (
-    CANONICAL, UNKNOWN, bind_declaration, classify, load_scenario, page_observations,
+    CANONICAL, SAME_TEXT, UNKNOWN, bind_declaration, classify, load_scenario, page_observations, run, same_text_control,
 )
 from refracto.declaration.run_values import bind_run_values
 from refracto.projection.frontend import _eval_frontend
@@ -81,3 +82,64 @@ def test_unattributed_post_is_not_a_send_pass():
     steps = {"send": {"status": "ERROR"}}
     observations = {"send": {"associated_count": 0}}
     assert classify(steps, observations, [])["send"] == UNKNOWN
+
+
+def test_fixed_text_template_changes_only_message_data(tmp_path):
+    bound = bind_declaration(SAME_TEXT, BINDINGS, tmp_path)
+    original = yaml.safe_load(CANONICAL.read_bytes())
+    del original["parameters"]["run_token"]
+    original["parameters"]["message"] = "Friday delivery"
+    assert yaml.safe_load(SAME_TEXT.read_bytes()) == original
+    original["parameters"].update(BINDINGS)
+    assert yaml.safe_load(bound.read_bytes()) == original
+
+
+@pytest.mark.parametrize("case", [
+    "baseline", "old-missing-on-entry", "new-present-on-entry", "old-gone", "wrong-old-text",
+    "wrong-new-text", "duplicated-new", "unidentified-on-entry", "missing-snapshot",
+])
+def test_same_text_control_requires_both_identified_rows_across_documents(case):
+    import hashlib
+
+    digest = hashlib.sha256(b"Friday delivery").hexdigest()
+    old = {"kind": "identified", "id": "old", "post_id": "old", "message_sha256": digest}
+    new = {**old, "id": "new", "post_id": "new"}
+    before, after = [old], [old.copy(), new]
+    if case == "old-missing-on-entry":
+        before.clear()
+    if case == "new-present-on-entry":
+        before.append(new)
+    if case == "old-gone":
+        del after[0]
+    if case == "wrong-old-text":
+        after[0]["message_sha256"] = "different"
+    if case == "wrong-new-text":
+        new["message_sha256"] = "different"
+    if case == "duplicated-new":
+        after.append(new)
+    if case == "unidentified-on-entry":
+        before.append({"kind": "anonymous"})
+    observations = {}
+    for step, rows in (("enter_channel", before), ("reopen_channel", after)):
+        observations[step] = {"new_document": True, "timeline_complete": True,
+                              "rendered": {"channel.posts": rows}}
+    if case == "missing-snapshot":
+        del observations["enter_channel"]
+    records = [{"step": "send", "response": {"id": "new"}}]
+    control = same_text_control(observations, records, "old")
+    assert control["verified"] is (case == "baseline")
+
+
+@pytest.mark.parametrize("old_id", [None, True, [], "short"])
+def test_fixed_text_control_requires_independent_seed_binding(tmp_path, old_id):
+    fixture = tmp_path / "fixture.json"
+    fixture.write_text(json.dumps({**BINDINGS, "old_post_id": old_id}))
+    with pytest.raises(ValueError, match="old_post_id"):
+        run(fixture, tmp_path / "output", SAME_TEXT)
+
+
+def test_fixed_text_control_keeps_exact_assertion_types(tmp_path):
+    altered = tmp_path / "altered.yaml"
+    altered.write_text(SAME_TEXT.read_text().replace('field: id, value: ""', 'field: id, value: 0'))
+    with pytest.raises(ValueError, match="approved four steps"):
+        bind_declaration(altered, BINDINGS, tmp_path)
