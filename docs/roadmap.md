@@ -75,6 +75,10 @@ not by general-purpose completeness.
 
 ## Current priority
 
+The [browser departure-report repair](tasks/browser-departure-report.md) covers
+an explicitly configured live page report and the loss of an optional background
+response from a retired document. It preserves primary action evidence on reopen.
+
 The [private-channel message pilot](tasks/mattermost-channel-message.md) exercises
 the reviewed send-and-reread Scenario on the fixed Mattermost release. Channel
 entry and text input passed. An onboarding overlay intercepted the real send

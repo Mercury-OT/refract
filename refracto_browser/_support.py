@@ -395,7 +395,13 @@ class BrowserSupport:
             if permit.action == "open":
                 if context.navigation is not None:
                     context.navigation.opening = True
-                context.page.goto(url, wait_until="domcontentloaded", timeout=self._remaining(context))
+                if context.native is not None:
+                    context.native.reopening = context.page.url != "about:blank"
+                try:
+                    context.page.goto(url, wait_until="domcontentloaded", timeout=self._remaining(context))
+                finally:
+                    if context.native is not None:
+                        context.native.reopening = False
             else:
                 failure_phase = Reason.TARGET_UNAVAILABLE
                 pinned = None
