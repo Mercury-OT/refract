@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from playwright.sync_api import Error as BrowserError
 
 from refracto.errors import ActionFailure
 from refracto_browser import ApiEndpoint, BrowserNetworkPolicy, BrowserSupport
@@ -166,7 +167,7 @@ def test_beacon_configuration_requires_finite_distinct_literal_paths(paths):
 @pytest.mark.parametrize(("variation", "optional_loss"), [
     ("retired", True), ("current-document", False), ("no-old-loader", False),
     ("foreign-frame", False), ("uncommitted", False), ("foreground", False),
-    ("mock", False), ("different-error", False),
+    ("mock", False), ("different-error", False), ("unrelated-exception", False),
 ])
 def test_lost_body_requires_a_retired_optional_resource(variation, optional_loss):
     native = collector()
@@ -182,7 +183,9 @@ def test_lost_body_requires_a_retired_optional_resource(variation, optional_loss
 
     def dispatch(method, params=None):
         if method == "Network.getResponseBody":
-            raise RuntimeError("failure" if variation == "different-error" else error)
+            if variation == "unrelated-exception":
+                raise RuntimeError(error)
+            raise BrowserError("failure" if variation == "different-error" else error)
         assert method == "Page.getFrameTree"
         return {"frameTree": {"frame": {"id": "main", "loaderId": "old" if variation == "uncommitted" else "new"}}}
 

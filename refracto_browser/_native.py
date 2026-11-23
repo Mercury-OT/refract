@@ -387,11 +387,19 @@ class NativeCollector:
     def _lost_departing_body(self, error, entry):
         # Chromium retires old-document resource handles on navigation. A
         # missing optional body is not evidence about the new business action.
-        event = entry['event']
-        missing = 'CDPSession.send: Protocol error (Network.getResponseBody): No resource with given identifier found'
-        if (self.context.mode != 'live' or entry['action'] is not None or str(error) != missing
+        event = entry.get('event')
+        if (self.context.mode != 'live' or entry['action'] is not None or not event
                 or not self.departing_loader or not self.document_loader
                 or event.get('frameId') != self.frame or event.get('loaderId') != self.departing_loader):
+            return False
+        # Only Chromium's specific protocol error can identify a retired body.
+        # Preserve other exceptions for the normal safe-reason classifier.
+        try:
+            from playwright.sync_api import Error as BrowserError
+        except ImportError:
+            return False
+        missing = 'CDPSession.send: Protocol error (Network.getResponseBody): No resource with given identifier found'
+        if type(error) is not BrowserError or error.message != missing:
             return False
         # The new main document must also have committed. An attempted
         # navigation alone does not make a current resource expendable.
